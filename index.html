@@ -988,8 +988,9 @@ function addCategory() {
   section.innerHTML = `<div class="section-title">${name}</div>`;
   document.getElementById('section-container').appendChild(section);
 
-  updateSectionOptions();    // ★ 用統一方法重建
+  updateSectionOptions(); // 更新下拉選單
   closeModal('categoryModal');
+  saveTasksToFirebase(); // 儲存分類到 Firebase
 }
 
 
@@ -1063,7 +1064,7 @@ function confirmDeleteCategory(id) {
   confirmBox.style.display = 'flex';
   confirmBox.innerHTML = `
     <div class="modal-content">
-      <h3 style="text-align: center;">是否確認刪除此分類？</h3>
+      <h3 style="text-align: center;">是否確認刪除此分類？（任務將移到「其它」）</h3>
       <div class="confirm-buttons">
         <button class="confirm-btn">確認</button>
         <button class="cancel-btn">取消</button>
@@ -1073,7 +1074,26 @@ function confirmDeleteCategory(id) {
 
   // 綁定按鈕事件
   confirmBox.querySelector('.confirm-btn').onclick = () => {
+    // 將任務移到「其它」
+    tasks.forEach(t => { if (t.section === id) t.section = '其它'; });
+    completedTasks.forEach(t => { if (t.section === id) t.section = '其它'; });
+
+    // 移除分類
     category.remove();
+
+    // 更新下拉選單
+    updateSectionOptions();
+
+    // 儲存到 Firebase
+    saveTasksToFirebase();
+
+    // 刷新畫面
+    if (statusFilter === 'done') {
+      renderCompletedTasks();
+    } else {
+      showOngoing();
+    }
+
     confirmBox.remove();
   };
   confirmBox.querySelector('.cancel-btn').onclick = () => {
@@ -1081,6 +1101,7 @@ function confirmDeleteCategory(id) {
   };
 
   document.body.appendChild(confirmBox);
+}
 
 // ✅ 同步從所有 select 中移除這個分類選項
 const selects = [document.getElementById('taskSection'), document.getElementById('detailSection')];
@@ -1122,7 +1143,11 @@ document.getElementById('exitEditBtn').onclick = exitEditMode;
 new Sortable(document.getElementById('section-container'), {
   animation: 150,
   handle: '.drag-handle', // 只允許拖拉圖示 ☰ 拖動
-  ghostClass: 'dragging'
+  ghostClass: 'dragging',
+  onEnd: () => {
+    // 拖拉結束後儲存新的分類順序
+    saveTasksToFirebase();
+  }
 });
 
 function openRenameModal(sectionId) {
@@ -1144,30 +1169,14 @@ function confirmRename() {
   section.id = newName;
   section.querySelector('.section-title').childNodes[1].textContent = newName;
 
-  // 儲存分類名稱到 Firebase
-// 儲存分類名稱到 Firebase - 修正版
-const categoriesRef = db.ref(`${roomPath}/categories`);
-categoriesRef.once('value').then(snapshot => {
-  const categories = snapshot.val() || [];
-  const updatedCategories = categories.filter(c => c !== oldId);  // 刪除舊名稱
-  updatedCategories.push(newName); // 加入新名稱
-  categoriesRef.set(updatedCategories); // 儲存新的分類名稱列表
-  
-  // 修正：也要更新 tasks 的儲存，確保任務的 section 欄位改名生效
-  saveTasksToFirebase();
-  closeModal('renameModal');
-});
-
-  // 進行中任務：改 section
+  // 更新任務中的 section
   tasks.forEach(t => { if (t.section === oldId) t.section = newName; });
-
-  // 已完成任務：也要改 section
   completedTasks.forEach(t => { if (t.section === oldId) t.section = newName; });
 
-  // 下拉選單統一用你的工具函式更新
+  // 更新下拉選單
   updateSectionOptions();
 
-  // 存回雲端
+  // 儲存到 Firebase
   saveTasksToFirebase();
 
   // 依目前頁籤刷新畫面
@@ -1180,7 +1189,6 @@ categoriesRef.once('value').then(snapshot => {
   closeModal('renameModal');
   pendingRenameId = null;
 }
-
 
 
 
@@ -1634,13 +1642,40 @@ window.addEventListener('pageshow', autoLogin);
 function loadTasksFromFirebase() {
   if (!roomPath || !auth.currentUser) return;
 
-  // 先取消舊監聽，避免重複綁
   if (tasksRef) tasksRef.off();
   if (completedRef) completedRef.off();
 
   tasksRef = db.ref(`${roomPath}/tasks`);
   completedRef = db.ref(`${roomPath}/completedTasks`);
   const categoriesRef = db.ref(`${roomPath}/categories`);
+
+  categoriesRef.on('value', (snap) => {
+    let categories = snap.val() || ['照顧服務', '專業服務', '交通接送', '喘息服務', '輔具申請', '其它'];
+    
+    // 確保「其它」分類始終存在
+    if (!categories.includes('其它')) {
+      categories.push('其它');
+    }
+
+    const sectionContainer = document.getElementById('section-container');
+    sectionContainer.innerHTML = '';
+
+    categories.forEach(category => {
+      const section = document.createElement('div');
+      section.className = 'section';
+      section.id = category;
+      section.innerHTML = `
+        <div class="section-title">${category}</div>
+      `;
+      sectionContainer.appendChild(section);
+    });
+
+    updateSectionOptions();
+    if (document.getElementById('exitEditBtn').style.display === 'block') {
+      enterEditMode();
+    }
+    showOngoing();
+  });
 
   tasksRef.on('value', (snap) => {
     const data = snap.val() || {};
@@ -1653,6 +1688,7 @@ function loadTasksFromFirebase() {
     completedTasks = Object.values(data);
     if (statusFilter === 'done') renderCompletedTasks();
   });
+}
 
   // 載入分類名稱
   categoriesRef.on('value', (snap) => {
