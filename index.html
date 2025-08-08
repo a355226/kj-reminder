@@ -1351,9 +1351,9 @@ function buildDoneMonthMenu() {
   if (!menu) return;
   menu.innerHTML = '';
 
-  // 置頂：近15日
+  // 置頂：近5日
   const recentBtn = document.createElement('button');
-  recentBtn.textContent = '近15日';
+  recentBtn.textContent = '近5日';
   recentBtn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;font-weight:600;';
   recentBtn.onclick = () => {
     completedMonthFilter = 'recent15';
@@ -1413,7 +1413,7 @@ function renderCompletedTasks() {
 if (completedMonthFilter === 'recent15') {
   const completedDate = new Date(t.completedAt);  // ← 用實際完成日期
   const diff = Math.floor((Date.now() - completedDate.getTime()) / 86400000);
-  return diff <= 15;  // 只顯示最近 15 天完成的任務
+  return diff <= 5;  // 只顯示最近 5 天完成的任務
 } else {
   return rocYM === completedMonthFilter;  // 月份歸類用預定完成日期
 }
@@ -1530,12 +1530,19 @@ function setLoginBusy(busy){
 
 auth.onAuthStateChanged(user => {
   try {
-    hydrateRoomPath(); // ← 現在有這個了
+    hydrateRoomPath();
     if (user) {
-      document.getElementById('loginPage').style.display = 'none';
-      document.querySelector('.container').style.display = 'block';
-      if (roomPath) loadTasksFromFirebase();
-      updateSectionOptions();
+      // 只有確實有 roomPath 才進入主頁面
+      if (roomPath) {
+        document.getElementById('loginPage').style.display = 'none';
+        document.querySelector('.container').style.display = 'block';
+        loadTasksFromFirebase();
+        updateSectionOptions();
+      } else {
+        // 沒有 roomPath 就登出並回到登入頁
+        auth.signOut();
+        return;
+      }
     } else {
       document.querySelector('.container').style.display = 'none';
       document.getElementById('loginPage').style.display = 'flex';
@@ -1543,6 +1550,8 @@ auth.onAuthStateChanged(user => {
   } catch (e) {
     console.error('onAuthStateChanged 錯誤：', e);
     alert('畫面初始化失敗：' + e.message);
+    // 發生錯誤時也要登出
+    auth.signOut();
   } finally {
     setLoginBusy(false);
     loggingIn = false;
@@ -1585,7 +1594,9 @@ document.getElementById('login-btn').addEventListener('click', async function(){
   }
 });
 
-
+  if (auth.currentUser) {
+    await auth.signOut();
+  }
   // 從雲端載資料
   loadTasksFromFirebase();
 
@@ -1593,7 +1604,13 @@ document.getElementById('login-btn').addEventListener('click', async function(){
 // ✅ 最簡單的「一定會自動登入」版本
 function autoLogin(){
   const saved = localStorage.getItem('todo_room_info');
-  if (!saved) return;
+  if (!saved) {
+    // 沒有儲存資料，確保回到登入頁面
+    if (auth.currentUser) {
+      auth.signOut();
+    }
+    return;
+  }
 
   const {username, password} = JSON.parse(saved);
   roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
