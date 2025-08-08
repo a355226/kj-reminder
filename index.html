@@ -1178,6 +1178,7 @@ function confirmRename() {
 
 
 
+
 //新增分類
 function updateSectionOptions() {
   const sections = document.querySelectorAll('.section');
@@ -1598,14 +1599,16 @@ document.addEventListener('DOMContentLoaded', autoLogin);
 // 從背景/別頁回來也會再跑一次（iPhone/Safari 最常用這個）
 window.addEventListener('pageshow', autoLogin);
 // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
-function loadTasksFromFirebase(){
-  if (!roomPath || !auth.currentUser) return; 
+function loadTasksFromFirebase() {
+  if (!roomPath || !auth.currentUser) return;
+
   // 先取消舊監聽，避免重複綁
   if (tasksRef) tasksRef.off();
   if (completedRef) completedRef.off();
 
   tasksRef = db.ref(`${roomPath}/tasks`);
   completedRef = db.ref(`${roomPath}/completedTasks`);
+  const categoriesRef = db.ref(`${roomPath}/categories`);
 
   tasksRef.on('value', (snap) => {
     const data = snap.val() || {};
@@ -1618,6 +1621,16 @@ function loadTasksFromFirebase(){
     completedTasks = Object.values(data);
     if (statusFilter === 'done') renderCompletedTasks();
   });
+
+  // 載入分類名稱
+  categoriesRef.on('value', (snap) => {
+    const categories = snap.val() || [];
+    categories.forEach(category => {
+      // 如果分類名稱存在，則顯示對應的區塊
+      const section = document.getElementById(category);
+      if (section) section.style.display = 'block';
+    });
+  });
 }
 
 
@@ -1629,10 +1642,13 @@ function saveTasksToFirebase() {
   const doneObj = {};
   completedTasks.forEach(t => doneObj[t.id] = t);
 
-  // 一次寫回兩個節點
+  // 儲存任務資料
   db.ref(`${roomPath}/tasks`).set(obj);
   db.ref(`${roomPath}/completedTasks`).set(doneObj);
-  db.ref(`${roomPath}/categories`).set([...new Set(tasks.map(t => t.section))]); // 儲存最新的分類
+
+  // 儲存分類資料
+  const categories = [...new Set(tasks.map(t => t.section))];  // 確保分類不重複
+  db.ref(`${roomPath}/categories`).set(categories);
 }
 
 //登出
