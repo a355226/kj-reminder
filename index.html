@@ -1155,7 +1155,7 @@ categoriesRef.once('value').then(snapshot => {
   
   // 修正：也要更新 tasks 的儲存，確保任務的 section 欄位改名生效
   saveTasksToFirebase();
-  closeModal('taskModal');
+  closeModal('renameModal');
 });
 
   // 進行中任務：改 section
