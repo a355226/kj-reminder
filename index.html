@@ -449,6 +449,10 @@ font-size:15px;
 
 /* 白色卡片：這裡控制寬度、圓角、陰影、內距 */
 #loginCard{
+  position: absolute !important; /* 無視前面設定 */
+  top: 60px;                      /* 往上 20px，你可以改 */
+  left: 50%;
+  transform: translateX(-50%);    /* 水平置中 */
   background:var(--white);
   border-radius:12px;          /* ← 卡片圓角 */
   box-shadow:0 2px 6px rgba(0,0,0,0.08); /* ← 卡片陰影 */
