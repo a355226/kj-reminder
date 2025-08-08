@@ -1145,13 +1145,17 @@ function confirmRename() {
   section.querySelector('.section-title').childNodes[1].textContent = newName;
 
   // 儲存分類名稱到 Firebase
-  const categoriesRef = db.ref(`${roomPath}/categories`);
-  categoriesRef.once('value').then(snapshot => {
-    const categories = snapshot.val() || [];
-    const updatedCategories = categories.filter(c => c !== oldId);  // 刪除舊名稱
-    updatedCategories.push(newName); // 加入新名稱
-    categoriesRef.set(updatedCategories); // 儲存新的分類名稱列表
-  });
+// 儲存分類名稱到 Firebase - 修正版
+const categoriesRef = db.ref(`${roomPath}/categories`);
+categoriesRef.once('value').then(snapshot => {
+  const categories = snapshot.val() || [];
+  const updatedCategories = categories.filter(c => c !== oldId);  // 刪除舊名稱
+  updatedCategories.push(newName); // 加入新名稱
+  categoriesRef.set(updatedCategories); // 儲存新的分類名稱列表
+  
+  // 修正：也要更新 tasks 的儲存，確保任務的 section 欄位改名生效
+  saveTasksToFirebase();
+});
 
   // 進行中任務：改 section
   tasks.forEach(t => { if (t.section === oldId) t.section = newName; });
@@ -1360,7 +1364,7 @@ function buildDoneMonthMenu() {
   const monthSet = new Set();
   
   completedTasks.forEach(t => {
-    const d = new Date(t.completedAt);
+    const d = new Date(t.date);  // ← 改用預定完成日期
     const rocYM = toRocYM(d);
     console.log('Adding month:', rocYM);  // 調試，檢查每個任務的年月是否正確
     monthSet.add(rocYM);
@@ -1400,17 +1404,18 @@ function renderCompletedTasks() {
 
   const now = new Date();
   const list = completedTasks.filter(t => {
-    const d = new Date(t.completedAt);
+    const d = new Date(t.date);  // ← 改用預定完成日期
     const rocYM = toRocYM(d);  // 轉換為 ROC 年月
 
     console.log('Task completedAt:', t.completedAt, 'Converted to ROC YM:', rocYM); // 調試，確認每個任務的時間戳與轉換結果
 
-    if (completedMonthFilter === 'recent15') {
-      const diff = Math.floor((Date.now() - d.getTime()) / 86400000); // 計算今天與完成日之間的天數
-      return diff <= 15;  // 只顯示最近 15 天的任務
-    } else {
-      return rocYM === completedMonthFilter;  // 只顯示指定月份的任務
-    }
+if (completedMonthFilter === 'recent15') {
+  const completedDate = new Date(t.completedAt);  // ← 用實際完成日期
+  const diff = Math.floor((Date.now() - completedDate.getTime()) / 86400000);
+  return diff <= 15;  // 只顯示最近 15 天完成的任務
+} else {
+  return rocYM === completedMonthFilter;  // 月份歸類用預定完成日期
+}
   });
 
   list.forEach(t => {
