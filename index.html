@@ -1334,8 +1334,11 @@ function showOngoing() {
 function toRocYM(d) {
   const yy = d.getFullYear() - 1911; // 計算 ROC 年（減去 1911）
   const mm = (d.getMonth() + 1).toString().padStart(2, '0'); // 確保月份為 2 位數
-  return `${yy}${mm}`;
+  const result = `${yy}${mm}`;
+  console.log('toRocYM result:', result); // 調試
+  return result;
 }
+
 
 
 
@@ -1345,10 +1348,8 @@ function buildDoneMonthMenu() {
   if (!menu) return;
   menu.innerHTML = '';
 
-  // 置頂：近15日
   const recentBtn = document.createElement('button');
   recentBtn.textContent = '近15日';
-  recentBtn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;font-weight:600;';
   recentBtn.onclick = () => {
     completedMonthFilter = 'recent15';
     menu.style.display = 'none';
@@ -1356,31 +1357,25 @@ function buildDoneMonthMenu() {
   };
   menu.appendChild(recentBtn);
 
-  // 以下才是月份（僅列出 >15 天的月份）
-  const now = new Date();
   const monthSet = new Set();
   
-  // 遍歷已完成任務，根據 completedAt 計算每個任務的年月
   completedTasks.forEach(t => {
-    const diff = Math.floor((now - new Date(t.completedAt)) / 86400000);  // 計算完成時間與今天的天數差
-    if (diff > 15) {
-      monthSet.add(toRocYM(new Date(t.completedAt))); // 根據年月加入到集合中
-    }
+    const d = new Date(t.completedAt);
+    const rocYM = toRocYM(d);
+    console.log('Adding month:', rocYM);  // 調試
+    monthSet.add(rocYM);
   });
 
   if (monthSet.size === 0) {
     const empty = document.createElement('div');
-    empty.style.cssText = 'padding:4px 8px; color:#888;';
     empty.textContent = '無更多月份';
     menu.appendChild(empty);
     return;
   }
 
-  // 將月份按字母排序並生成按鈕
   Array.from(monthSet).sort((a, b) => b.localeCompare(a)).forEach(ym => {
     const btn = document.createElement('button');
     btn.textContent = ym;
-    btn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;';
     btn.onclick = () => {
       completedMonthFilter = ym;
       menu.style.display = 'none';
@@ -1389,6 +1384,7 @@ function buildDoneMonthMenu() {
     menu.appendChild(btn);
   });
 }
+
 
 
 
@@ -1405,37 +1401,34 @@ function renderCompletedTasks() {
 
   const now = new Date();
   const list = completedTasks.filter(t => {
-    const d = new Date(typeof t.completedAt === 'number' ? t.completedAt : Date.parse(t.completedAt || Date.now()));
-    
+    const d = new Date(t.completedAt);
+    console.log('Task completedAt:', t.completedAt, 'Converted to ROC:', toRocYM(d)); // 調試
+
     if (completedMonthFilter === 'recent15') {
       const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
       return diff <= 15;
     } else {
-      // 根據年月篩選，格式為 ROC 年月（如：11407 代表 2025 年 7 月）
-      return toRocYM(d) === completedMonthFilter;
+      return toRocYM(d) === completedMonthFilter;  // 過濾已完成任務
     }
   });
 
-  // 渲染已完成的任務，顯示在對應分類中
   list.forEach(t => {
     const el = document.createElement('div');
     el.className = 'task';
     el.dataset.id = t.id;
     el.style.backgroundColor = 'var(--green-light)'; // 完成用淡綠
-
     el.innerHTML = `
       <div class="task-content">
         <div class="task-title">✅ ${t.important ? '❗ ' : ''}${t.title}</div>
       </div>
       <div class="task-days">完</div>
     `;
-    
     el.onclick = () => openCompletedDetail(t.id);
-    // 已完成的卡片點了不開細節（如需可加）
     const sec = document.getElementById(t.section);
     if (sec) sec.appendChild(el);
   });
 }
+
 
 
 //已完成視窗細節
