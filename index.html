@@ -1495,9 +1495,11 @@ function setLoginBusy(busy){
 }
 
 auth.onAuthStateChanged(user => {
+  hydrateRoomPath();
   if (user) {
     document.getElementById('loginPage').style.display = 'none';
     document.querySelector('.container').style.display = 'block';
+    if (roomPath) loadTasksFromFirebase();
     updateSectionOptions();
   } else {
     document.querySelector('.container').style.display = 'none';
@@ -1572,6 +1574,7 @@ document.addEventListener('DOMContentLoaded', autoLogin);
 window.addEventListener('pageshow', autoLogin);
 // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
 function loadTasksFromFirebase(){
+  if (!roomPath || !auth.currentUser) return; 
   // 先取消舊監聽，避免重複綁
   if (tasksRef) tasksRef.off();
   if (completedRef) completedRef.off();
