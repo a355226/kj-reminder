@@ -1549,24 +1549,28 @@ document.getElementById('login-btn').addEventListener('click', async function(){
   loadTasksFromFirebase();
 
 // === 自動登入（有記錄房間就直接進） ===
-window.addEventListener('load', async function(){
+// ✅ 最簡單的「一定會自動登入」版本
+function autoLogin(){
   const saved = localStorage.getItem('todo_room_info');
-  if(saved){
-    const {username, password} = JSON.parse(saved);
-    roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-    if (!auth.currentUser && !loggingIn) {
-      loggingIn = true;
-      setLoginBusy(true);
-      try {
-        await auth.signInAnonymously();
-      } catch (e) {
-        console.error(e);
-        loggingIn = false;
-        setLoginBusy(false);
-      }
-    }
+  if (!saved) return;
+
+  const {username, password} = JSON.parse(saved);
+  roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+
+  if (!auth.currentUser && !loggingIn) {
+    loggingIn = true;
+    setLoginBusy(true);
+    auth.signInAnonymously()
+      .catch(console.warn)
+      .finally(() => { loggingIn = false; setLoginBusy(false); });
   }
-});
+}
+
+// 進到頁面就跑一次
+document.addEventListener('DOMContentLoaded', autoLogin);
+
+// 從背景/別頁回來也會再跑一次（iPhone/Safari 最常用這個）
+window.addEventListener('pageshow', autoLogin);
 // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
 function loadTasksFromFirebase(){
   // 先取消舊監聽，避免重複綁
