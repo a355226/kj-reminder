@@ -1,3 +1,11 @@
+const CACHE_NAME = 'cms-quota-v1';  // ← 可改版號以觸發更新
+const URLS_TO_CACHE = [
+  '/',
+  '/index.html',
+  '/reminder.png',
+  '/manifest.json'
+];
+
 self.addEventListener('install', event => {
   self.skipWaiting(); // 安裝後立即啟用
 });
