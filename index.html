@@ -1144,6 +1144,15 @@ function confirmRename() {
   section.id = newName;
   section.querySelector('.section-title').childNodes[1].textContent = newName;
 
+  // 儲存分類名稱到 Firebase
+  const categoriesRef = db.ref(`${roomPath}/categories`);
+  categoriesRef.once('value').then(snapshot => {
+    const categories = snapshot.val() || [];
+    const updatedCategories = categories.filter(c => c !== oldId);  // 刪除舊名稱
+    updatedCategories.push(newName); // 加入新名稱
+    categoriesRef.set(updatedCategories); // 儲存新的分類名稱列表
+  });
+
   // 進行中任務：改 section
   tasks.forEach(t => { if (t.section === oldId) t.section = newName; });
 
@@ -1266,7 +1275,7 @@ function completeTask() {
 
   completedTasks.push(finished);
 
-  // ✅ 一律存檔（不要放在 if 裡）
+  // 存回雲端
   saveTasksToFirebase();
 
   // 動畫
@@ -1386,15 +1395,15 @@ function renderCompletedTasks() {
   clearAllSections();
 
   const now = new Date();
-const list = completedTasks.filter(t => {
-  const d = new Date(typeof t.completedAt === 'number' ? t.completedAt : Date.parse(t.completedAt || Date.now()));
-  if (completedMonthFilter === 'recent15') {
-    const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
-    return diff <= 15;
-  } else {
-    return toRocYM(d) === completedMonthFilter;
-  }
-});
+  const list = completedTasks.filter(t => {
+    const d = new Date(typeof t.completedAt === 'number' ? t.completedAt : Date.parse(t.completedAt || Date.now()));
+    if (completedMonthFilter === 'recent15') {
+      const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
+      return diff <= 15;
+    } else {
+      return toRocYM(d) === completedMonthFilter;
+    }
+  });
 
   // 渲染到對應分類
   list.forEach(t => {
@@ -1405,18 +1414,16 @@ const list = completedTasks.filter(t => {
     el.innerHTML = `
       <div class="task-content">
         <div class="task-title">✅ ${t.important ? '❗ ' : ''}${t.title}</div>
-
-
       </div>
       <div class="task-days">完</div>
     `;
-el.onclick = () => openCompletedDetail(t.id);
-
+    el.onclick = () => openCompletedDetail(t.id);
     // 已完成的卡片點了不開細節（如需可加）
     const sec = document.getElementById(t.section);
     if (sec) sec.appendChild(el);
   });
 }
+
 //已完成視窗細節
 function setDetailReadonly(ro) {
   ['detailSection','detailTitle','detailContent','detailDate','detailNote']
@@ -1615,7 +1622,7 @@ function loadTasksFromFirebase(){
 
 
 // === 寫回雲端（先寫 tasks；completed 之後再接）===
-function saveTasksToFirebase(){
+function saveTasksToFirebase() {
   const obj = {};
   tasks.forEach(t => obj[t.id] = t);
 
@@ -1625,6 +1632,7 @@ function saveTasksToFirebase(){
   // 一次寫回兩個節點
   db.ref(`${roomPath}/tasks`).set(obj);
   db.ref(`${roomPath}/completedTasks`).set(doneObj);
+  db.ref(`${roomPath}/categories`).set([...new Set(tasks.map(t => t.section))]); // 儲存最新的分類
 }
 
 //登出
