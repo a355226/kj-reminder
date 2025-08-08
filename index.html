@@ -1499,6 +1499,7 @@ auth.onAuthStateChanged(user => {
     document.getElementById('loginPage').style.display = 'none';
     document.querySelector('.container').style.display = 'block';
     loadTasksFromFirebase();
+    updateSectionOptions();
   } else {
     document.querySelector('.container').style.display = 'none';
     document.getElementById('loginPage').style.display = 'flex';
