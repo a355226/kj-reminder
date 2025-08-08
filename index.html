@@ -1579,7 +1579,11 @@ document.getElementById('login-btn').addEventListener('click', async function(){
   loggingIn = true;
   setLoginBusy(true);
 
-  try {
+ try {
+  // 先登出舊的匿名使用者（加在這裡！）
+  if (auth.currentUser) {
+    await auth.signOut();
+  }
     // 設一個 8 秒的保護時間，避免卡死
     const loginPromise = auth.signInAnonymously();
     await Promise.race([
@@ -1594,9 +1598,6 @@ document.getElementById('login-btn').addEventListener('click', async function(){
   }
 });
 
-  if (auth.currentUser) {
-    await auth.signOut();
-  }
   // 從雲端載資料
   loadTasksFromFirebase();
 
