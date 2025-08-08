@@ -1103,14 +1103,6 @@ function confirmDeleteCategory(id) {
   document.body.appendChild(confirmBox);
 }
 
-// ✅ 同步從所有 select 中移除這個分類選項
-const selects = [document.getElementById('taskSection'), document.getElementById('detailSection')];
-selects.forEach(select => {
-  const option = select.querySelector(`option[value="${id}"]`);
-  if (option) option.remove();
-});
-}
-
 
 
 
@@ -1189,6 +1181,7 @@ function confirmRename() {
   closeModal('renameModal');
   pendingRenameId = null;
 }
+
 
 
 
@@ -1642,6 +1635,7 @@ window.addEventListener('pageshow', autoLogin);
 function loadTasksFromFirebase() {
   if (!roomPath || !auth.currentUser) return;
 
+  // 先取消舊監聽，避免重複綁
   if (tasksRef) tasksRef.off();
   if (completedRef) completedRef.off();
 
@@ -1649,17 +1643,15 @@ function loadTasksFromFirebase() {
   completedRef = db.ref(`${roomPath}/completedTasks`);
   const categoriesRef = db.ref(`${roomPath}/categories`);
 
+  // 載入分類並重建 DOM
   categoriesRef.on('value', (snap) => {
-    let categories = snap.val() || ['照顧服務', '專業服務', '交通接送', '喘息服務', '輔具申請', '其它'];
-    
-    // 確保「其它」分類始終存在
-    if (!categories.includes('其它')) {
-      categories.push('其它');
-    }
-
+    const categories = snap.val() || ['照顧服務', '專業服務', '交通接送', '喘息服務', '輔具申請', '其它']; // 預設分類
     const sectionContainer = document.getElementById('section-container');
+    
+    // 清空現有分類區塊
     sectionContainer.innerHTML = '';
 
+    // 動態重建分類區塊
     categories.forEach(category => {
       const section = document.createElement('div');
       section.className = 'section';
@@ -1670,10 +1662,15 @@ function loadTasksFromFirebase() {
       sectionContainer.appendChild(section);
     });
 
+    // 更新下拉選單
     updateSectionOptions();
+
+    // 如果在編輯模式，重新套用編輯樣式
     if (document.getElementById('exitEditBtn').style.display === 'block') {
       enterEditMode();
     }
+
+    // 重新渲染任務
     showOngoing();
   });
 
@@ -1690,17 +1687,6 @@ function loadTasksFromFirebase() {
   });
 }
 
-  // 載入分類名稱
-  categoriesRef.on('value', (snap) => {
-    const categories = snap.val() || [];
-    categories.forEach(category => {
-      // 如果分類名稱存在，則顯示對應的區塊
-      const section = document.getElementById(category);
-      if (section) section.style.display = 'block';
-    });
-  });
-}
-
 
 // === 寫回雲端（先寫 tasks；completed 之後再接）===
 function saveTasksToFirebase() {
@@ -1710,15 +1696,18 @@ function saveTasksToFirebase() {
   const doneObj = {};
   completedTasks.forEach(t => doneObj[t.id] = t);
 
-  // 儲存任務資料
+  // 儲存分類順序
+  const sections = Array.from(document.querySelectorAll('.section')).map(sec => sec.id);
+  const categories = sections.filter(id => {
+    // 確保只儲存有任務或明確存在的分類
+    return tasks.some(t => t.section === id) || completedTasks.some(t => t.section === id) || document.getElementById(id);
+  });
+
+  // 儲存到 Firebase
   db.ref(`${roomPath}/tasks`).set(obj);
   db.ref(`${roomPath}/completedTasks`).set(doneObj);
-
-  // 儲存分類資料
-  const categories = [...new Set(tasks.map(t => t.section))];  // 確保分類不重複
   db.ref(`${roomPath}/categories`).set(categories);
 }
-
 //登出
 
 function openLogoutModal(){
