@@ -1543,13 +1543,9 @@ document.getElementById('login-btn').addEventListener('click', async function(){
   }
 });
 
-  // 顯示主畫面
-  document.getElementById('loginPage').style.display = 'none';
-  document.querySelector('.container').style.display = 'block';
 
   // 從雲端載資料
   loadTasksFromFirebase();
-});
 
 // === 自動登入（有記錄房間就直接進） ===
 window.addEventListener('load', async function(){
