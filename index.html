@@ -748,6 +748,18 @@ let dayMode = 'work'; // 'work' 工作天(預設) / 'calendar' 日曆天
     let tasks = [];
     let selectedTaskId = null;
 
+function hydrateRoomPath(){
+  // 從 localStorage 裡把房間資訊還原回 roomPath（如果有）
+  try {
+    const saved = localStorage.getItem('todo_room_info');
+    if (!saved) return;
+    const { username, password } = JSON.parse(saved);
+    roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+  } catch (e) {
+    console.warn('hydrateRoomPath 失敗：', e);
+  }
+}
+
     function toggleMenu() {
       const menu = document.getElementById('menu');
       menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
@@ -1495,18 +1507,24 @@ function setLoginBusy(busy){
 }
 
 auth.onAuthStateChanged(user => {
-  hydrateRoomPath();
-  if (user) {
-    document.getElementById('loginPage').style.display = 'none';
-    document.querySelector('.container').style.display = 'block';
-    if (roomPath) loadTasksFromFirebase();
-    updateSectionOptions();
-  } else {
-    document.querySelector('.container').style.display = 'none';
-    document.getElementById('loginPage').style.display = 'flex';
+  try {
+    hydrateRoomPath(); // ← 現在有這個了
+    if (user) {
+      document.getElementById('loginPage').style.display = 'none';
+      document.querySelector('.container').style.display = 'block';
+      if (roomPath) loadTasksFromFirebase();
+      updateSectionOptions();
+    } else {
+      document.querySelector('.container').style.display = 'none';
+      document.getElementById('loginPage').style.display = 'flex';
+    }
+  } catch (e) {
+    console.error('onAuthStateChanged 錯誤：', e);
+    alert('畫面初始化失敗：' + e.message);
+  } finally {
+    setLoginBusy(false);
+    loggingIn = false;
   }
-  setLoginBusy(false);
-  loggingIn = false;
 });
 
 document.getElementById('login-btn').addEventListener('click', async function(){
