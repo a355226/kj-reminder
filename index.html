@@ -1276,7 +1276,7 @@ function completeTask() {
 
   completedTasks.push(finished);
 
-  // 存回雲端
+  // 儲存已完成任務到 Firebase
   saveTasksToFirebase();
 
   // 動畫
@@ -1331,11 +1331,13 @@ function showOngoing() {
 }
 
 // 轉民國年月（回傳如 "11407"）
+// 將日期轉換為 ROC 年月格式
 function toRocYM(d) {
-  const yy = d.getFullYear() - 1911;
-  const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+  const yy = d.getFullYear() - 1911; // 計算 ROC 年（減去 1911）
+  const mm = (d.getMonth() + 1).toString().padStart(2, '0'); // 確保月份為 2 位數
   return `${yy}${mm}`;
 }
+
 
 // 生成月份清單（僅列出 >15 天的月份，且有資料的）
 function buildDoneMonthMenu() {
@@ -1357,9 +1359,13 @@ function buildDoneMonthMenu() {
   // 以下才是月份（僅列出 >15 天的月份）
   const now = new Date();
   const monthSet = new Set();
+  
+  // 遍歷已完成任務，根據 completedAt 計算每個任務的年月
   completedTasks.forEach(t => {
-    const diff = Math.floor((now - new Date(t.completedAt)) / 86400000);
-    if (diff > 15) monthSet.add(toRocYM(new Date(t.completedAt)));
+    const diff = Math.floor((now - new Date(t.completedAt)) / 86400000);  // 計算完成時間與今天的天數差
+    if (diff > 15) {
+      monthSet.add(toRocYM(new Date(t.completedAt))); // 根據年月加入到集合中
+    }
   });
 
   if (monthSet.size === 0) {
@@ -1370,7 +1376,8 @@ function buildDoneMonthMenu() {
     return;
   }
 
-  Array.from(monthSet).sort((a,b)=> b.localeCompare(a)).forEach(ym => {
+  // 將月份按字母排序並生成按鈕
+  Array.from(monthSet).sort((a, b) => b.localeCompare(a)).forEach(ym => {
     const btn = document.createElement('button');
     btn.textContent = ym;
     btn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;';
@@ -1382,6 +1389,7 @@ function buildDoneMonthMenu() {
     menu.appendChild(btn);
   });
 }
+
 
 
 // 點「更多…」展開月份清單
@@ -1398,26 +1406,30 @@ function renderCompletedTasks() {
   const now = new Date();
   const list = completedTasks.filter(t => {
     const d = new Date(typeof t.completedAt === 'number' ? t.completedAt : Date.parse(t.completedAt || Date.now()));
+    
     if (completedMonthFilter === 'recent15') {
       const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
       return diff <= 15;
     } else {
+      // 根據年月篩選，格式為 ROC 年月（如：11407 代表 2025 年 7 月）
       return toRocYM(d) === completedMonthFilter;
     }
   });
 
-  // 渲染到對應分類
+  // 渲染已完成的任務，顯示在對應分類中
   list.forEach(t => {
     const el = document.createElement('div');
     el.className = 'task';
     el.dataset.id = t.id;
     el.style.backgroundColor = 'var(--green-light)'; // 完成用淡綠
+
     el.innerHTML = `
       <div class="task-content">
         <div class="task-title">✅ ${t.important ? '❗ ' : ''}${t.title}</div>
       </div>
       <div class="task-days">完</div>
     `;
+    
     el.onclick = () => openCompletedDetail(t.id);
     // 已完成的卡片點了不開細節（如需可加）
     const sec = document.getElementById(t.section);
