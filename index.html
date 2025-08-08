@@ -525,6 +525,28 @@ margin-top:0.8rem;
   #loginCard{ padding:1.25rem; }
 }
 
+/* 區塊分類 + 重要 勾選 同行排版 */
+.inline-row {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-top: .25rem;     /* 與上方 label 的距離 */
+}
+
+/* 下拉選單縮到一半寬、靠左 */
+.inline-row .half {
+  width: 50%;
+  min-width: 160px;       /* 視需要可調或拿掉 */
+}
+
+/* 勾選的外觀 */
+.important-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  white-space: nowrap;
+  font-size: 0.95rem;
+}
 
 
   </style>
@@ -572,15 +594,25 @@ margin-top:0.8rem;
   <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
 </div>
 
-    <div class="section" id="居家服務">
-      <div class="section-title">居家服務</div>
-    </div>
-    <div class="section" id="喘息服務">
-      <div class="section-title">喘息服務</div>
+    <div class="section" id="照顧服務">
+      <div class="section-title">照顧服務</div>
     </div>
     <div class="section" id="專業服務">
       <div class="section-title">專業服務</div>
     </div>
+    <div class="section" id="交通接送">
+      <div class="section-title">交通接送</div>
+    </div>
+    <div class="section" id="喘息服務">
+      <div class="section-title">喘息服務</div>
+    </div>
+    <div class="section" id="輔具申請">
+      <div class="section-title">輔具申請</div>
+    </div>
+    <div class="section" id="其它">
+      <div class="section-title">其它</div>
+    </div>
+
   </div>
 
   <div class="fab" onclick="toggleMenu()">＋</div>
@@ -617,12 +649,22 @@ margin-top:0.8rem;
     <div class="modal-content">
       <button class="close-btn" onclick="closeModal('taskModal')">✕</button>
       <h3>新增任務</h3>
-      <label>區塊分類</label>
-      <select id="taskSection">
+    <label>區塊分類</label>
+    <div class="inline-row">
+      <!-- 這裡要用 taskSection（不是 detailSection）-->
+      <select id="taskSection" class="half">
         <option value="居家服務">居家服務</option>
         <option value="喘息服務">喘息服務</option>
         <option value="專業服務">專業服務</option>
       </select>
+
+      <!-- 這裡要用 taskImportant（不是 detailImportant）-->
+      <label class="important-flag">
+        <input type="checkbox" id="taskImportant">
+        重要
+      </label>
+    </div>
+
       <label>任務標題(必填)</label>
       <input type="text" id="taskTitle">
       <label>任務內容</label>
@@ -640,12 +682,20 @@ margin-top:0.8rem;
     <div class="modal-content">
       <button class="close-btn" onclick="closeModal('detailModal')">✕</button>
       <h3>任務內容</h3>
-      <label>區塊分類</label>
-      <select id="detailSection">
-        <option value="居家服務">居家服務</option>
-        <option value="喘息服務">喘息服務</option>
-        <option value="專業服務">專業服務</option>
-      </select>
+<label>區塊分類</label>
+<div class="inline-row">
+  <select id="detailSection" class="half">
+    <option value="居家服務">居家服務</option>
+    <option value="喘息服務">喘息服務</option>
+    <option value="專業服務">專業服務</option>
+  </select>
+
+  <label class="important-flag">
+    <input type="checkbox" id="detailImportant">
+    重要
+  </label>
+</div>
+
       <label>任務標題</label>
       <input type="text" id="detailTitle">
       <label>任務內容</label>
@@ -698,11 +748,12 @@ let dayMode = 'work'; // 'work' 工作天(預設) / 'calendar' 日曆天
       const menu = document.getElementById('menu');
       menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
     }
+function openModal() {
+  updateSectionOptions();                 // ★ 每次打開先同步
+  document.getElementById('taskModal').style.display = 'flex';
+  document.getElementById('menu').style.display = 'none';
+}
 
-    function openModal() {
-      document.getElementById('taskModal').style.display = 'flex';
-      document.getElementById('menu').style.display = 'none';
-    }
 
     function closeModal(id) {
       document.getElementById(id).style.display = 'none';
@@ -748,47 +799,55 @@ function getRemainingDays(dateStr) {
     }
 
     function addTask() {
-      const section = document.getElementById('taskSection').value;
-      const title = document.getElementById('taskTitle').value;
-      const content = document.getElementById('taskContent').value;
-      const date = document.getElementById('taskDate').value;
-      const note = document.getElementById('taskNote').value;
+  const section = document.getElementById('taskSection').value;
+  const title   = document.getElementById('taskTitle').value;
+  const content = document.getElementById('taskContent').value;
+  const date    = document.getElementById('taskDate').value;
+  const note    = document.getElementById('taskNote').value;
 
-      if (!title) return;
+  if (!title) return;
 
-      const id = `task-${Date.now()}`;
-      const task = { id, section, title, content, date, note };
-      tasks.push(task);
+  // 讀「重要」勾選（沒有這個欄位就先設 false）
+  const importantEl = document.getElementById('taskImportant');
+  const important   = importantEl ? importantEl.checked : false;
 
-      const days = getRemainingDays(date);
-      const bg = getColorByDays(days);
-      const displayDays = (days == null) ? '無' : days;
+  const id = `task-${Date.now()}`;
+  const task = { id, section, title, content, date, note, important };
+  tasks.push(task);
 
-      const el = document.createElement('div');
-      el.className = 'task';
-      el.dataset.id = id;
-      el.style.backgroundColor = bg;
-      el.innerHTML = `
-        <div class="task-content">
-          <div class="task-title">${title}</div>
-          ${date ? '' : ''}
-        </div>
-        <div class="task-days">${displayDays}</div>
-      `;
-      el.onclick = () => openDetail(id);
+  const days = getRemainingDays(date);
+  const bg = getColorByDays(days);
+  const displayDays = (days == null) ? '無' : days;
 
-      document.getElementById(section).appendChild(el);
-sortTasks(section);
-      closeModal('taskModal');
-      document.getElementById('taskTitle').value = '';
-      document.getElementById('taskContent').value = '';
-      document.getElementById('taskDate').value = '';
-      document.getElementById('taskNote').value = '';
-applyDayFilter();
-saveTasksToFirebase();   // ← 新增這行
+  const el = document.createElement('div');
+  el.className = 'task';
+  el.dataset.id = id;
+  el.style.backgroundColor = bg;
+  el.innerHTML = `
+    <div class="task-content">
+      <div class="task-title">${getTitleWithFlag(task)}</div>
+    </div>
+    <div class="task-days">${displayDays}</div>
+  `;
+  el.onclick = () => openDetail(id);
 
+  document.getElementById(section).appendChild(el);
+  sortTasks(section);
 
-    }
+// 關閉視窗（加回這行）
+closeModal('taskModal');
+
+  // 清空表單
+  document.getElementById('taskTitle').value = '';
+  document.getElementById('taskContent').value = '';
+  document.getElementById('taskDate').value = '';
+  document.getElementById('taskNote').value = '';
+  if (importantEl) importantEl.checked = false;   // ← 把「重要」勾選清掉
+
+  applyDayFilter();
+  saveTasksToFirebase();
+}
+
 
 //排序邏輯用
 function sortTasks(section) {
@@ -827,6 +886,8 @@ function sortTasks(section) {
 
       document.getElementById('detailModal').style.display = 'flex';
 setDetailReadonly(false);   // 加在 openDetail() 填值後
+document.getElementById('detailImportant').checked = !!task.important;
+
 
     }
 
@@ -843,6 +904,7 @@ function saveTask() {
   task.content = document.getElementById('detailContent').value;
   task.date = document.getElementById('detailDate').value;
   task.note = document.getElementById('detailNote').value;
+task.important = document.getElementById('detailImportant').checked;   // ★新增
 
   const oldEl = document.querySelector(`[data-id='${task.id}']`);
   if (oldEl) oldEl.remove();
@@ -855,12 +917,13 @@ function saveTask() {
   el.className = 'task';
   el.dataset.id = task.id;
   el.style.backgroundColor = bg;
-  el.innerHTML = `
-    <div class="task-content">
-      <div class="task-title">${task.title}</div>
-    </div>
-    <div class="task-days">${displayDays}</div>
-  `;
+el.innerHTML = `
+  <div class="task-content">
+    <div class="task-title">${getTitleWithFlag(task)}</div>
+  </div>
+  <div class="task-days">${displayDays}</div>
+`;
+
   el.onclick = () => openDetail(task.id);
 
   document.getElementById(task.section).appendChild(el);
@@ -901,34 +964,18 @@ function openCategoryModal() {
 function addCategory() {
   const name = document.getElementById('newCategoryName').value.trim();
   if (!name) return;
-
-  // 檢查是否已存在同名 ID（避免重複）
-  if (document.getElementById(name)) {
-    alert("此分類已存在！");
-    return;
-  }
+  if (document.getElementById(name)) { alert("此分類已存在！"); return; }
 
   const section = document.createElement('div');
   section.className = 'section';
   section.id = name;
-
-  section.innerHTML = `
-    <div class="section-title">${name}</div>
-  `;
-
+  section.innerHTML = `<div class="section-title">${name}</div>`;
   document.getElementById('section-container').appendChild(section);
 
-
-// ✅ 更新下拉選單
-const selects = [document.getElementById('taskSection'), document.getElementById('detailSection')];
-selects.forEach(select => {
-  const option = document.createElement('option');
-  option.value = name;
-  option.textContent = name;
-  select.appendChild(option);
-});
+  updateSectionOptions();    // ★ 用統一方法重建
   closeModal('categoryModal');
 }
+
 
 
 //防雙擊
@@ -1081,19 +1128,29 @@ function confirmRename() {
   section.id = newName;
   section.querySelector('.section-title').childNodes[1].textContent = newName;
 
-  // 更新任務資料
+  // 進行中任務：改 section
   tasks.forEach(t => { if (t.section === oldId) t.section = newName; });
 
-  // 更新下拉選單
-  [document.getElementById('taskSection'), document.getElementById('detailSection')]
-    .forEach(sel => {
-      const opt = sel.querySelector(`option[value="${oldId}"]`);
-      if (opt) { opt.value = newName; opt.textContent = newName; }
-    });
+  // 已完成任務：也要改 section
+  completedTasks.forEach(t => { if (t.section === oldId) t.section = newName; });
+
+  // 下拉選單統一用你的工具函式更新
+  updateSectionOptions();
+
+  // 存回雲端
+  saveTasksToFirebase();
+
+  // 依目前頁籤刷新畫面
+  if (statusFilter === 'done') {
+    renderCompletedTasks();
+  } else {
+    showOngoing();
+  }
 
   closeModal('renameModal');
   pendingRenameId = null;
 }
+
 
 
 //新增分類
@@ -1230,7 +1287,7 @@ function showOngoing() {
     el.style.backgroundColor = bg;
     el.innerHTML = `
       <div class="task-content">
-        <div class="task-title">${t.title}</div>
+        <div class="task-title">${getTitleWithFlag(t)}</div>
       </div>
       <div class="task-days">${displayDays}</div>
     `;
@@ -1331,7 +1388,9 @@ const list = completedTasks.filter(t => {
     el.style.backgroundColor = 'var(--green-light)'; // 完成用淡綠
     el.innerHTML = `
       <div class="task-content">
-        <div class="task-title">✅ ${t.title}</div>
+        <div class="task-title">✅ ${t.important ? '❗ ' : ''}${t.title}</div>
+
+
       </div>
       <div class="task-days">完</div>
     `;
@@ -1352,6 +1411,7 @@ function setDetailReadonly(ro) {
   const completeBtn = Array.from(document.querySelectorAll('#detailModal button'))
     .find(b => b.textContent.includes('已完成'));
 
+
   if (ro) {
     if (saveBtn) { saveBtn.textContent = '我了解了！'; saveBtn.onclick = () => closeModal('detailModal'); }
     if (delBtn)  { delBtn.onclick = confirmDeleteCompleted; } // ← 改叫「確認刪除(完成)」
@@ -1362,6 +1422,11 @@ function setDetailReadonly(ro) {
     if (delBtn)  { delBtn.onclick = confirmDelete; }
     if (completeBtn) completeBtn.style.display = '';
   }
+
+  // ★ 新增：鎖住/解鎖「重要」checkbox
+  const importantEl = document.getElementById('detailImportant');
+  if (importantEl) importantEl.disabled = ro;
+
 }
 
 let selectedCompletedId = null;
@@ -1560,6 +1625,9 @@ if ('serviceWorker' in navigator) {
     .catch(err => console.log('SW 註冊失敗', err));
 }
 
+function getTitleWithFlag(t){
+  return (t.important ? '❗ ' : '') + (t.title || '');
+}
 
   </script>
 
@@ -1647,4 +1715,3 @@ if ('serviceWorker' in navigator) {
 
 </body>
 </html>
-
