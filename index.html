@@ -1485,7 +1485,30 @@ function deleteCompletedConfirmed() {
 }
 //登入
 
+let loggingIn = false;
+
+function setLoginBusy(busy){
+  const btn = document.getElementById('login-btn');
+  if (!btn) return;
+  btn.disabled = busy;
+  btn.textContent = busy ? '登入中…' : '登入';
+}
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    document.getElementById('loginPage').style.display = 'none';
+    document.querySelector('.container').style.display = 'block';
+    loadTasksFromFirebase();
+  } else {
+    document.querySelector('.container').style.display = 'none';
+    document.getElementById('loginPage').style.display = 'flex';
+  }
+  setLoginBusy(false);
+  loggingIn = false;
+});
+
 document.getElementById('login-btn').addEventListener('click', async function(){
+  if (loggingIn) return; // 防止重複點
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value.trim();
   const autoLogin = document.getElementById('auto-login').checked;
@@ -1496,21 +1519,29 @@ document.getElementById('login-btn').addEventListener('click', async function(){
   }
 
   roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-
-  // 記住房間（自動登入用）
   if(autoLogin){
     localStorage.setItem('todo_room_info', JSON.stringify({username, password}));
   } else {
     localStorage.removeItem('todo_room_info');
   }
 
-  // 用匿名登入（不需要 Email/Password）
+  loggingIn = true;
+  setLoginBusy(true);
+
   try {
-    await auth.signInAnonymously();
+    // 設一個 8 秒的保護時間，避免卡死
+    const loginPromise = auth.signInAnonymously();
+    await Promise.race([
+      loginPromise,
+      new Promise((_, rej)=>setTimeout(()=>rej(new Error('登入逾時，請重試')), 8000))
+    ]);
+    // 不在這裡切畫面，等 onAuthStateChanged 自動切
   } catch (e) {
-    alert('匿名登入失敗：' + e.code + '\n請到 Authentication > Sign-in method 啟用 Anonymous，或先把 Realtime Database 規則設為全開測試。');
-    return;
+    loggingIn = false;
+    setLoginBusy(false);
+    alert('登入失敗：' + (e && e.message ? e.message : e));
   }
+});
 
   // 顯示主畫面
   document.getElementById('loginPage').style.display = 'none';
@@ -1526,25 +1557,19 @@ window.addEventListener('load', async function(){
   if(saved){
     const {username, password} = JSON.parse(saved);
     roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-
-    try {
-      await auth.signInAnonymously();
-    } catch (e) {
-      console.error(e);
-      document.querySelector('.container').style.display = 'none';
-      document.getElementById('loginPage').style.display = 'flex';
-      return;
+    if (!auth.currentUser && !loggingIn) {
+      loggingIn = true;
+      setLoginBusy(true);
+      try {
+        await auth.signInAnonymously();
+      } catch (e) {
+        console.error(e);
+        loggingIn = false;
+        setLoginBusy(false);
+      }
     }
-
-    document.getElementById('loginPage').style.display = 'none';
-    document.querySelector('.container').style.display = 'block';
-    loadTasksFromFirebase();
-  } else {
-    document.querySelector('.container').style.display = 'none';
-    document.getElementById('loginPage').style.display = 'flex';
   }
 });
-
 // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
 function loadTasksFromFirebase(){
   // 先取消舊監聽，避免重複綁
