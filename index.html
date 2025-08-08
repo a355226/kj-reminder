@@ -737,6 +737,51 @@ let roomPath = ""; // ← 放這裡！全檔只出現一次
 let tasksRef = null;
 let completedRef = null; // 之後你有做 completedTasks 即可用到
 
+// ===== 分類狀態（新增）=====
+let categories = [];       // 只存分類名稱陣列
+let categoriesRef = null;  // Firebase 監聽用
+
+function saveCategories(){
+  if (!roomPath) return;
+  db.ref(`${roomPath}/categories`).set(categories);
+}
+
+function renderSectionsFromCategories(){
+  const wrap = document.getElementById('section-container');
+  wrap.innerHTML = ''; // 清空，用雲端的分類重建
+  categories.forEach(name=>{
+    const sec = document.createElement('div');
+    sec.className = 'section';
+    sec.id = name;
+    sec.innerHTML = `<div class="section-title">${name}</div>`;
+    wrap.appendChild(sec);
+  });
+
+  // 重新啟用手機拖拉
+  new Sortable(document.getElementById('section-container'), {
+    animation: 150,
+    handle: '.drag-handle',
+    ghostClass: 'dragging'
+  });
+}
+
+function loadCategoriesFromFirebase(){
+  if (!roomPath || !auth.currentUser) return;
+  if (categoriesRef) categoriesRef.off();
+
+  categoriesRef = db.ref(`${roomPath}/categories`);
+  categoriesRef.on('value', (snap) => {
+    const data = snap.val();
+    categories = Array.isArray(data) && data.length
+      ? data
+      : ["照顧服務","專業服務","交通接送","喘息服務","輔具申請","其它"]; // 預設
+
+    renderSectionsFromCategories(); // 先畫分類
+    updateSectionOptions();         // 更新下拉
+    loadTasksFromFirebase();        // 再載任務（一定要在分類畫好之後）
+  });
+}
+
 // 小工具：把不合法字元換掉（Firebase 路徑不能有 . # $ [ ] /）
 function sanitizeKey(s){
   return String(s).replace(/[.#$/\[\]\/]/g, '_');
@@ -980,15 +1025,9 @@ function openCategoryModal() {
 function addCategory() {
   const name = document.getElementById('newCategoryName').value.trim();
   if (!name) return;
-  if (document.getElementById(name)) { alert("此分類已存在！"); return; }
-
-  const section = document.createElement('div');
-  section.className = 'section';
-  section.id = name;
-  section.innerHTML = `<div class="section-title">${name}</div>`;
-  document.getElementById('section-container').appendChild(section);
-
-  updateSectionOptions();    // ★ 用統一方法重建
+  if (categories.includes(name)) { alert("此分類已存在！"); return; }
+  categories.push(name);
+  saveCategories();           // 存到雲端，監聽會幫你重畫
   closeModal('categoryModal');
 }
 
@@ -1073,12 +1112,17 @@ function confirmDeleteCategory(id) {
 
   // 綁定按鈕事件
   confirmBox.querySelector('.confirm-btn').onclick = () => {
-    category.remove();
-    confirmBox.remove();
-  };
-  confirmBox.querySelector('.cancel-btn').onclick = () => {
-    confirmBox.remove();
-  };
+  // 1) 刪 categories 陣列裡的名稱
+  categories = categories.filter(c => c !== id);
+
+  // 2) 同步把該分類的任務刪掉（簡單處理）
+  tasks = tasks.filter(t => t.section !== id);
+  completedTasks = completedTasks.filter(t => t.section !== id);
+
+  saveTasksToFirebase();
+  saveCategories(); // 交給雲端回寫並重畫
+  confirmBox.remove();
+};
 
   document.body.appendChild(confirmBox);
 
@@ -1134,34 +1178,21 @@ function openRenameModal(sectionId) {
 function confirmRename() {
   const oldId = pendingRenameId;
   const newName = document.getElementById('renameInput').value.trim();
-  if (!newName || document.getElementById(newName)) {
+  if (!newName || categories.includes(newName)) {
     alert('名稱不可為空或已存在！');
     return;
   }
 
-  // 更新分類區塊
-  const section = document.getElementById(oldId);
-  section.id = newName;
-  section.querySelector('.section-title').childNodes[1].textContent = newName;
+  // 1) 改 categories 陣列
+  categories = categories.map(c => c === oldId ? newName : c);
 
-  // 進行中任務：改 section
+  // 2) 同步改任務裡的 section
   tasks.forEach(t => { if (t.section === oldId) t.section = newName; });
-
-  // 已完成任務：也要改 section
   completedTasks.forEach(t => { if (t.section === oldId) t.section = newName; });
 
-  // 下拉選單統一用你的工具函式更新
-  updateSectionOptions();
-
-  // 存回雲端
+  // 3) 存雲端
   saveTasksToFirebase();
-
-  // 依目前頁籤刷新畫面
-  if (statusFilter === 'done') {
-    renderCompletedTasks();
-  } else {
-    showOngoing();
-  }
+  saveCategories();
 
   closeModal('renameModal');
   pendingRenameId = null;
@@ -1333,7 +1364,7 @@ function buildDoneMonthMenu() {
   if (!menu) return;
   menu.innerHTML = '';
 
-  // 置頂：近15日
+  // 近15日
   const recentBtn = document.createElement('button');
   recentBtn.textContent = '近15日';
   recentBtn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;font-weight:600;';
@@ -1344,12 +1375,13 @@ function buildDoneMonthMenu() {
   };
   menu.appendChild(recentBtn);
 
-  // 以下才是月份（僅列出 >15 天的月份）
-  const now = new Date();
+  // 15 天以前的月份
+  const today0 = atMidnight(Date.now());
   const monthSet = new Set();
   completedTasks.forEach(t => {
-    const diff = Math.floor((now - new Date(t.completedAt)) / 86400000);
-    if (diff > 15) monthSet.add(toRocYM(new Date(t.completedAt)));
+    const done0 = atMidnight(safeDoneTime(t));
+    const diffDays = Math.floor((today0 - done0) / 86400000);
+    if (diffDays > 15) monthSet.add(toRocYM(new Date(done0)));
   });
 
   if (monthSet.size === 0) {
@@ -1373,30 +1405,22 @@ function buildDoneMonthMenu() {
   });
 }
 
-
-// 點「更多…」展開月份清單
-document.getElementById('doneMoreBtn')?.addEventListener('click', () => {
-  const menu = document.getElementById('doneMonthMenu');
-  if (!menu) return;
-  menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'block' : 'none';
-});
-
 // 渲染已完成（預設顯示 15 日內；點月份則顯示該月份）
 function renderCompletedTasks() {
   clearAllSections();
 
-  const now = new Date();
-const list = completedTasks.filter(t => {
-  const d = new Date(typeof t.completedAt === 'number' ? t.completedAt : Date.parse(t.completedAt || Date.now()));
-  if (completedMonthFilter === 'recent15') {
-    const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
-    return diff <= 15;
-  } else {
-    return toRocYM(d) === completedMonthFilter;
-  }
-});
+  const today0 = atMidnight(Date.now());
+  const list = completedTasks.filter(t => {
+    const done0 = atMidnight(safeDoneTime(t));
+    const diffDays = Math.floor((today0 - done0) / 86400000); // 完成到今天幾天
 
-  // 渲染到對應分類
+    if (completedMonthFilter === 'recent15') {
+      return diffDays <= 15; // 0~15 天內
+    } else {
+      return toRocYM(new Date(done0)) === completedMonthFilter; // 指定月份
+    }
+  });
+
   list.forEach(t => {
     const el = document.createElement('div');
     el.className = 'task';
@@ -1405,14 +1429,10 @@ const list = completedTasks.filter(t => {
     el.innerHTML = `
       <div class="task-content">
         <div class="task-title">✅ ${t.important ? '❗ ' : ''}${t.title}</div>
-
-
       </div>
       <div class="task-days">完</div>
     `;
-el.onclick = () => openCompletedDetail(t.id);
-
-    // 已完成的卡片點了不開細節（如需可加）
+    el.onclick = () => openCompletedDetail(t.id);
     const sec = document.getElementById(t.section);
     if (sec) sec.appendChild(el);
   });
@@ -1509,12 +1529,11 @@ function setLoginBusy(busy){
 auth.onAuthStateChanged(user => {
   try {
     hydrateRoomPath(); // ← 現在有這個了
-    if (user) {
-      document.getElementById('loginPage').style.display = 'none';
-      document.querySelector('.container').style.display = 'block';
-      if (roomPath) loadTasksFromFirebase();
-      updateSectionOptions();
-    } else {
+ if (user) {
+  document.getElementById('loginPage').style.display = 'none';
+  document.querySelector('.container').style.display = 'block';
+  if (roomPath) loadCategoriesFromFirebase(); // 先載分類
+} else {
       document.querySelector('.container').style.display = 'none';
       document.getElementById('loginPage').style.display = 'flex';
     }
@@ -1678,7 +1697,22 @@ if ('serviceWorker' in navigator) {
 function getTitleWithFlag(t){
   return (t.important ? '❗ ' : '') + (t.title || '');
 }
+function atMidnight(d) {
+  const x = new Date(d);
+  x.setHours(0,0,0,0);
+  return x.getTime();
+}
 
+function safeDoneTime(t){
+  // 優先用數字，其次可 parse 字串；都沒有就當很久以前
+  if (typeof t.completedAt === 'number') return t.completedAt;
+  if (t.completedAt) {
+    const ms = Date.parse(t.completedAt);
+    if (!isNaN(ms)) return ms;
+  }
+  // 舊資料沒有 completedAt：給很舊的時間，確保不進近15日
+  return Date.now() - 3650*86400000; // 10 年前
+}
   </script>
 
 <div id="check-success">
