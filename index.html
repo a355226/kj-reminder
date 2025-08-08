@@ -1,0 +1,1627 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<!-- Firebase SDK (compat 版，最簡單接) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <title>待辦小幫手</title>
+  <style>
+/* 全域輸入元件字體大小 */
+input, select, textarea, option {
+  font-size: 16px;     /* 推薦手機安全字體大小，避免 iOS 自動放大 */
+  line-height: 1.4;    /* 行高稍微加高一點，閱讀更舒服 */
+}
+button {
+  font-size: 15px;
+}
+
+    :root {
+      --blue-light: #ebf5fc;
+      --green-light: #e6f9f0;
+      --yellow-light: #fffbe6;
+      --white: #ffffff;
+      --gray-text: #444;
+      --urgent-color: #ffeaea;
+    }
+    * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+    body {
+      margin: 0; padding: 1rem; background-color: var(--blue-light);
+      color: var(--gray-text); display: flex; justify-content: center;
+    }
+    .container { width: 100%; max-width: 480px; position: relative; }
+    h1 { text-align: center; margin-bottom: 1rem; }
+    .section {
+      background-color: var(--white); border-radius: 12px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      padding: 1rem; margin-bottom: 1rem;
+    }
+    .section-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 0.5rem; }
+    .task {
+      display: flex; justify-content: space-between; align-items: center;
+      background-color: var(--yellow-light); padding: 0.75rem 1rem;
+      border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer;
+    }
+    .task-content { flex: 1; }
+    .task-title { font-size: 1.2rem;font-weight: 600; margin-bottom: 0.25rem; }
+    .task-due { font-size: 0.85rem; color: #888; }
+    .task-days {
+      background-color: var(--yellow-light); color: brown;
+      border-radius: 50%; padding: 0.4rem 0.6rem; font-size: 0.85rem;
+      font-weight: bold; flex-shrink: 0; text-align: center; margin-left: 1rem;
+    }
+    .fab {
+      position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
+      background-color: #00aaff; color: white; border-radius: 50%; font-size: 32px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); z-index: 10;
+    }
+    .menu {
+      position: fixed; bottom: 90px; right: 24px; background-color: white;
+      border-radius: 10px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      display: none; flex-direction: column; z-index: 9;
+    }
+    .menu button {
+      border: none; background: none; padding: 12px 16px;
+      font-size: 14px; text-align: left; cursor: pointer;
+    }
+
+    .modal {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background-color: rgba(0, 0, 0, 0.3); display: none;
+      justify-content: center; align-items: center; z-index: 20;
+    }
+    .modal-content {
+      background-color: white; padding: 1rem; border-radius: 12px;
+      width: 90%; max-width: 400px; position: relative;
+    }
+    .modal-content label { display: block; margin-top: 0.5rem; font-size: 0.9rem; }
+/* 只給輸入框/下拉/文字區，排除 radio & checkbox */
+.modal-content input:not([type="radio"]):not([type="checkbox"]),
+.modal-content select,
+.modal-content textarea {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+//儲存按鈕
+.save-btn {
+  background-color: #009973;
+  color: white;
+  border: none;
+  padding: 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  width: 100%;
+}
+.save-btn:hover {
+  background-color: #008060;
+}
+
+.modal-content > button {
+  margin-top: 1rem;
+  width: 100%;
+  padding: 0.5rem;
+  background-color: #00aaff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+
+.save-btn-half, .delete-btn-half {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 50%;
+  border: none;
+}
+
+.save-btn-half {
+  background-color: #77d4bc;
+  color: white;
+}
+.save-btn-half:hover {
+  background-color: #008060;
+}
+
+.delete-btn-half {
+  background-color: #fc9a9a;
+  color: white;
+}
+.delete-btn-half:hover {
+  background-color: #cc3333;
+}
+
+.close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: #eee;
+  color: #333;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.modal-content > .close-btn {
+  width: auto;
+}
+
+#check-success {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  width: 100px;
+  height: 100px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#check-success.show {
+  animation: pop-in 1.5s ease forwards;
+}
+
+#check-success svg {
+  width: 100px;
+  height: 100px;
+}
+
+.circle {
+  stroke: #a2f4c5;
+  stroke-width: 4;
+  stroke-dasharray: 157;
+  stroke-dashoffset: 157;
+  animation: draw-circle 0.5s ease-out forwards;
+}
+
+.check {
+  stroke: #2ecc71;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: draw-check 0.3s 0.5s ease-out forwards;
+}
+
+@keyframes draw-circle {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes draw-check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+    filter: blur(4px);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.1);
+    filter: blur(0);
+  }
+  80% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+}
+.confirm-buttons {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.confirm-buttons button {
+  flex: 1;
+  padding: 0.6rem;
+  font-size: 1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.confirm-btn {
+  background-color: #fc9a9a;
+  color: white;
+}
+.confirm-btn:hover {
+  background-color: #cc4444;
+}
+
+.cancel-btn {
+  background-color: #f0f0f0;
+  color: #333;
+}
+.cancel-btn:hover {
+  background-color: #ddd;
+}
+
+//編輯分類用
+.section.edit-mode {
+  position: relative;
+  padding-left: 2.5rem;
+}
+
+.section-title {
+  position: relative; /* 新增這一行讓內部絕對定位生效 */
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.drag-handle {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 1.2rem;
+  cursor: grab;
+  color: #888;
+  vertical-align: middle;
+}
+
+
+.delete-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background-color: transparent;
+  border: none;
+  font-size: 1rem;
+  color: #999;
+  cursor: pointer;
+  display: none;
+}
+.section.edit-mode .delete-btn {
+  display: block;
+}
+
+.section.dragging {
+  opacity: 0.5;
+  background-color: transparent !important;
+}
+
+.dragging {
+  opacity: 0.6;
+  background: #eef8ff;
+}
+
+
+/* 重命名按鈕 */
+/* 讓標題成一行排列：☰、標題文字、✎（刪除鍵依然在右上角絕對定位） */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 鉛筆跟在標題文字後方（不要絕對定位） */
+.rename-btn {
+  position: static;           /* 重要：取消原本的 absolute */
+  display: none;              /* 只有編輯模式才顯示 */
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  color: #999;
+  cursor: pointer;
+  margin-left: 0.8rem;
+transform: translateY(-2.2px); /* ⬆ 往上 2px，可自行調整 */
+  padding: 0;                 /* 取消小方塊外框感 */
+}
+.section.edit-mode .rename-btn { display: inline-flex; }
+
+/* 更多功能（修正後）*/
+/* 右上角 ... 按鈕 */
+.more-btn {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 32px;      /* 縮小寬 */
+  height: 32px;     /* 縮小高 */
+  border-radius: 50%;
+  background: #fff;
+  color: #555;
+  font-size: 18px;  /* 字體也縮小 */
+  font-weight: bold;
+  display: flex;
+  align-items: center;    /* 垂直置中 */
+  justify-content: center;/* 水平置中 */
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  cursor: pointer;
+  z-index: 100;
+  line-height: 1;         /* 確保文字垂直居中 */
+}
+
+
+
+/* 更多功能 Modal */
+#moreModal .modal-content {
+  max-width: 300px;
+}
+.filter-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: -1rem;
+}
+.filter-days label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+/* 歷史紀錄 */
+.filter-status {
+  display: flex;
+  gap: 1rem;    
+  margin-top: -1rem;           /* 兩個選項之間的距離 */
+}
+
+.filter-status label {
+  display: inline-flex;    /* 關鍵：讓○和文字在同一行 */
+  align-items: center;
+  gap: 0.25rem;            /* ○ 和文字距離 */
+  white-space: nowrap;     /* 禁止文字換行 */
+}
+
+/* 天數設定 */
+.filter-mode {
+  display: flex;
+  gap: 1rem;          /* 選項之間距離 */
+  margin-top: -1rem;  /* 跟上方標題的距離可依需求調整 */
+}
+
+.filter-mode label {
+  display: inline-flex;     /* ○ 和文字同一行 */
+  align-items: center;
+  gap: 0.25rem;             /* ○ 和文字距離 */
+  white-space: nowrap;      /* 禁止換行 */
+}
+
+.logout-btn{
+  width:100%;
+font-size:15px;
+  padding:0.6rem;
+  background:#f5f5f5;
+  color:#333;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+}
+.logout-btn:hover{ background:#eee; }
+
+/* 統一把所有 modal 蓋在頁面上 */
+.modal { z-index: 200; }
+
+/* ⋯ 選單的層級稍低一點 */
+#moreModal { z-index: 180; }
+
+/* 登出確認再高一點，確保永遠在最上面 */
+#logoutModal { z-index: 220; }
+
+/* 登入CSS */
+#loginPage{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-height:100vh;
+  background:var(--blue-light);
+}
+
+/* 白色卡片：這裡控制寬度、圓角、陰影、內距 */
+#loginCard{
+  background:var(--white);
+  border-radius:12px;          /* ← 卡片圓角 */
+  box-shadow:0 2px 6px rgba(0,0,0,0.08); /* ← 卡片陰影 */
+  padding:2rem;                /* ← 卡片內距 */
+  width:95%;
+  max-width:450px;
+min-height: 500px; /* 最小高度，內容超過時會自動變高 */
+
+}
+
+/* 標題 */
+.login-title{
+  text-align:center;
+  margin:0 0 1.5rem;
+  font-size:28px;              /* ← 標題大小 */
+  font-weight:800;
+}
+
+/* label 與欄位的間距 */
+.login-label{
+  font-weight:600;
+  margin:0.4rem 0 0.4rem;
+}
+
+/* 輸入框外觀：高度、字體、圓角、邊框 */
+.login-input{
+  width:100%;
+  height:44px;                 /* ← 欄位高度 */
+  padding:0 12px;              /* ← 文字左右內距 */
+  border:1px solid #ccc;
+  border-radius:8px;           /* ← 欄位圓角 */
+  font-size:16px;              /* ← 欄位字體大小 */
+  margin:0 0 1rem;
+margin-top:0.8rem;
+  outline:none;
+}
+.login-input:focus{
+  border-color:#95d3ff;
+  box-shadow:0 0 0 3px rgba(0,170,255,.15);
+}
+
+/* 勾選列（checkbox 與文字在同一行） */
+.login-checkrow{
+  display:flex;
+  align-items:center;
+  gap:.4rem;
+  margin:0 0 1rem;
+}
+
+/* 登入按鈕外觀與互動 */
+.login-btn{
+  width:100%;
+  height:46px;                 /* ← 按鈕高度 */
+  background:#00aaff;          /* ← 按鈕主色 */
+  color:#fff;
+  border:none;
+  border-radius:8px;           /* ← 按鈕圓角 */
+  font-size:16px;
+  cursor:pointer;
+}
+.login-btn:hover{ background:#0791e6; }
+.login-btn:active{ transform:translateY(1px); }
+
+/* 底下紅色提示 */
+.login-tip{
+  margin-top:1rem;
+  color:#cc4444;
+  font-size:0.85rem;           /* ← 提示文字大小 */
+  text-align:center;
+}
+
+/* 可選：小螢幕再縮一點 padding */
+@media (max-width:360px){
+  #loginCard{ padding:1.25rem; }
+}
+
+
+
+  </style>
+</head>
+<body>
+<!-- 登錄頁面 -->
+<div id="loginPage">
+  <div id="loginCard">
+    <h1 class="login-title">待辦小幫手</h1>
+
+    <label class="login-label">自訂帳號</label>
+    <input type="text" id="login-username" class="login-input" placeholder="請輸入帳號">
+
+    <label class="login-label">自訂密碼</label>
+    <input type="password" id="login-password" class="login-input" placeholder="請輸入密碼">
+
+    <label class="login-checkrow">
+      <input type="checkbox" id="auto-login">
+      <span>自動登入</span>
+    </label>
+
+    <button id="login-btn" class="login-btn">登入</button>
+
+    <p class="login-tip">平台免註冊，自訂帳號密碼即可登錄</p>
+  </div>
+</div>
+
+
+
+  <div class="container" style="display:none">
+    <h1>待辦小幫手</h1>
+
+<!-- 右上角 ... 按鈕 -->
+<div class="more-btn" onclick="openModalById('moreModal')">⋯</div>
+<div id="section-container">
+<div id="doneMore" style="display:none; text-align:right; margin:0.25rem 0;">
+  <button id="doneMoreBtn" style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">更多…</button>
+  <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
+</div>
+
+    <div class="section" id="居家服務">
+      <div class="section-title">居家服務</div>
+    </div>
+    <div class="section" id="喘息服務">
+      <div class="section-title">喘息服務</div>
+    </div>
+    <div class="section" id="專業服務">
+      <div class="section-title">專業服務</div>
+    </div>
+  </div>
+
+  <div class="fab" onclick="toggleMenu()">＋</div>
+<div class="menu" id="menu">
+  <button onclick="openModal()">新增任務</button>
+  <button onclick="openCategoryModal()">新增分類</button>
+  <button onclick="enterEditMode()">編輯分類</button>
+</div>
+
+<!-- ✅ 新增的按鈕，讓使用者完成編輯分類 -->
+<button id="exitEditBtn" style="
+  display: none;
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #00aaff;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+">
+  ✔ 完成編輯
+</button>
+
+
+  <!-- 新增任務視窗 -->
+  <div class="modal" id="taskModal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeModal('taskModal')">✕</button>
+      <h3>新增任務</h3>
+      <label>區塊分類</label>
+      <select id="taskSection">
+        <option value="居家服務">居家服務</option>
+        <option value="喘息服務">喘息服務</option>
+        <option value="專業服務">專業服務</option>
+      </select>
+      <label>任務標題(必填)</label>
+      <input type="text" id="taskTitle">
+      <label>任務內容</label>
+      <textarea id="taskContent"></textarea>
+      <label>預定完成日</label>
+      <input type="date" id="taskDate">
+      <label>處理情形</label>
+      <textarea id="taskNote"></textarea>
+      <button onclick="addTask()">新增</button>
+    </div>
+  </div>
+
+  <!-- 任務內容檢視視窗 -->
+  <div class="modal" id="detailModal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeModal('detailModal')">✕</button>
+      <h3>任務內容</h3>
+      <label>區塊分類</label>
+      <select id="detailSection">
+        <option value="居家服務">居家服務</option>
+        <option value="喘息服務">喘息服務</option>
+        <option value="專業服務">專業服務</option>
+      </select>
+      <label>任務標題</label>
+      <input type="text" id="detailTitle">
+      <label>任務內容</label>
+      <textarea id="detailContent"></textarea>
+      <label>預定完成日</label>
+      <input type="date" id="detailDate">
+      <label>處理情形</label>
+      <textarea id="detailNote"></textarea>
+<div style="display: flex; gap: 0.5rem;">
+  <button class="save-btn-half" onclick="saveTask()">💾 儲存</button>
+  <button class="delete-btn-half" onclick="confirmDelete()">🗑️ 移除</button>
+</div>
+<button onclick="completeTask()">已完成</button>
+
+    </div>
+  </div>
+
+  <script>
+// === Firebase 初始化（放在這支 <script> 的最上面）===
+const firebaseConfig = {
+  apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
+  authDomain: "kjreminder-24d74.firebaseapp.com",
+  projectId: "kjreminder-24d74",
+  storageBucket: "kjreminder-24d74.firebasestorage.app",
+  messagingSenderId: "176371952161",
+  appId: "1:176371952161:web:948121be209cd2e4181160",
+  databaseURL: "https://kjreminder-24d74-default-rtdb.asia-southeast1.firebasedatabase.app/"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+let roomPath = ""; // ← 放這裡！全檔只出現一次
+let tasksRef = null;
+let completedRef = null; // 之後你有做 completedTasks 即可用到
+
+// 小工具：把不合法字元換掉（Firebase 路徑不能有 . # $ [ ] /）
+function sanitizeKey(s){
+  return String(s).replace(/[.#$/\[\]\/]/g, '_');
+}
+
+
+// 1) 全域狀態（放在你的全域變數區）
+let dayMode = 'work'; // 'work' 工作天(預設) / 'calendar' 日曆天
+    let tasks = [];
+    let selectedTaskId = null;
+
+    function toggleMenu() {
+      const menu = document.getElementById('menu');
+      menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
+    }
+
+    function openModal() {
+      document.getElementById('taskModal').style.display = 'flex';
+      document.getElementById('menu').style.display = 'none';
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+//剩餘天數邏輯
+// 2) 取代你目前的 getRemainingDays（支援兩種模式）
+function getRemainingDays(dateStr) {
+  if (!dateStr) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(dateStr); target.setHours(0,0,0,0);
+
+  if (dayMode === 'calendar') {
+    // 日曆天：含六日；今天=0、明天=+1、昨天=-1
+    const ms = target.getTime() - today.getTime();
+    return Math.round(ms / 86400000);
+  }
+
+  // 工作天：排除六日；今天=0；未來/過去都以工作天計
+  if (target.getTime() === today.getTime()) return 0;
+  const forward = target > today;
+  let start = new Date(forward ? today : target);
+  let end   = new Date(forward ? target : today);
+
+  let count = 0, cur = new Date(start);
+  while (cur <= end) {
+    const d = cur.getDay();
+    if (d !== 0 && d !== 6) count++;     // 只算週一～週五
+    cur.setDate(cur.getDate() + 1);
+  }
+  count = count - 1;                      // 不含起始日
+  return forward ? count : -count;
+}
+
+
+
+    function getColorByDays(days) {
+      if (days == null) return 'var(--green-light)';
+      if (days >= 7) return 'var(--green-light)';
+      if (days >= 4) return '#ffeaea';
+      if (days >= 1) return '#ffb3b3';
+      return '#ff8080';
+    }
+
+    function addTask() {
+      const section = document.getElementById('taskSection').value;
+      const title = document.getElementById('taskTitle').value;
+      const content = document.getElementById('taskContent').value;
+      const date = document.getElementById('taskDate').value;
+      const note = document.getElementById('taskNote').value;
+
+      if (!title) return;
+
+      const id = `task-${Date.now()}`;
+      const task = { id, section, title, content, date, note };
+      tasks.push(task);
+
+      const days = getRemainingDays(date);
+      const bg = getColorByDays(days);
+      const displayDays = (days == null) ? '無' : days;
+
+      const el = document.createElement('div');
+      el.className = 'task';
+      el.dataset.id = id;
+      el.style.backgroundColor = bg;
+      el.innerHTML = `
+        <div class="task-content">
+          <div class="task-title">${title}</div>
+          ${date ? '' : ''}
+        </div>
+        <div class="task-days">${displayDays}</div>
+      `;
+      el.onclick = () => openDetail(id);
+
+      document.getElementById(section).appendChild(el);
+sortTasks(section);
+      closeModal('taskModal');
+      document.getElementById('taskTitle').value = '';
+      document.getElementById('taskContent').value = '';
+      document.getElementById('taskDate').value = '';
+      document.getElementById('taskNote').value = '';
+applyDayFilter();
+saveTasksToFirebase();   // ← 新增這行
+
+
+    }
+
+//排序邏輯用
+function sortTasks(section) {
+  const container = document.getElementById(section);
+  const tasksInSection = Array.from(container.querySelectorAll('.task'));
+
+  tasksInSection.sort((a, b) => {
+    const taskA = tasks.find(t => t.id === a.dataset.id);
+    const taskB = tasks.find(t => t.id === b.dataset.id);
+
+    const daysA = getRemainingDays(taskA.date);
+    const daysB = getRemainingDays(taskB.date);
+
+    // 空日期視為最大天數（排序到最下面）
+    const safeDaysA = daysA == null ? Infinity : daysA;
+    const safeDaysB = daysB == null ? Infinity : daysB;
+
+    return safeDaysA - safeDaysB;
+  });
+
+  // 清空後依排序結果重新加入
+  tasksInSection.forEach(taskEl => container.appendChild(taskEl));
+}
+
+
+    function openDetail(id) {
+      selectedTaskId = id;
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+
+      document.getElementById('detailSection').value = task.section;
+      document.getElementById('detailTitle').value = task.title;
+      document.getElementById('detailContent').value = task.content;
+      document.getElementById('detailDate').value = task.date;
+      document.getElementById('detailNote').value = task.note;
+
+      document.getElementById('detailModal').style.display = 'flex';
+setDetailReadonly(false);   // 加在 openDetail() 填值後
+
+    }
+
+
+//儲存功能
+function saveTask() {
+  if (!selectedTaskId) return;
+
+  const task = tasks.find(t => t.id === selectedTaskId);
+  if (!task) return;
+
+  task.section = document.getElementById('detailSection').value;
+  task.title = document.getElementById('detailTitle').value;
+  task.content = document.getElementById('detailContent').value;
+  task.date = document.getElementById('detailDate').value;
+  task.note = document.getElementById('detailNote').value;
+
+  const oldEl = document.querySelector(`[data-id='${task.id}']`);
+  if (oldEl) oldEl.remove();
+
+  const days = getRemainingDays(task.date);
+  const bg = getColorByDays(days);
+  const displayDays = (days == null) ? '無' : days;
+
+  const el = document.createElement('div');
+  el.className = 'task';
+  el.dataset.id = task.id;
+  el.style.backgroundColor = bg;
+  el.innerHTML = `
+    <div class="task-content">
+      <div class="task-title">${task.title}</div>
+    </div>
+    <div class="task-days">${displayDays}</div>
+  `;
+  el.onclick = () => openDetail(task.id);
+
+  document.getElementById(task.section).appendChild(el);
+  sortTasks(task.section);
+
+  closeModal('detailModal'); // ✅ 新增這一行
+applyDayFilter();
+saveTasksToFirebase();
+
+
+}
+
+//移除功能
+function confirmDelete() {
+  document.getElementById('confirmModal').style.display = 'flex';
+}
+
+function deleteTask() {
+  if (!selectedTaskId) return;
+
+  const el = document.querySelector(`[data-id='${selectedTaskId}']`);
+  if (el) el.remove();
+
+  tasks = tasks.filter(t => t.id !== selectedTaskId);
+
+  closeModal('confirmModal');
+  closeModal('detailModal');
+saveTasksToFirebase();  // ← 加這行
+
+}
+//新增分類功能
+function openCategoryModal() {
+  document.getElementById('newCategoryName').value = '';
+  document.getElementById('categoryModal').style.display = 'flex';
+  document.getElementById('menu').style.display = 'none'; // ✅ 自動關閉選單
+}
+
+function addCategory() {
+  const name = document.getElementById('newCategoryName').value.trim();
+  if (!name) return;
+
+  // 檢查是否已存在同名 ID（避免重複）
+  if (document.getElementById(name)) {
+    alert("此分類已存在！");
+    return;
+  }
+
+  const section = document.createElement('div');
+  section.className = 'section';
+  section.id = name;
+
+  section.innerHTML = `
+    <div class="section-title">${name}</div>
+  `;
+
+  document.getElementById('section-container').appendChild(section);
+
+
+// ✅ 更新下拉選單
+const selects = [document.getElementById('taskSection'), document.getElementById('detailSection')];
+selects.forEach(select => {
+  const option = document.createElement('option');
+  option.value = name;
+  option.textContent = name;
+  select.appendChild(option);
+});
+  closeModal('categoryModal');
+}
+
+
+//防雙擊
+  let lastTouchTime = 0;
+  document.addEventListener('touchend', function (event) {
+    const now = new Date().getTime();
+    if (now - lastTouchTime <= 300) {
+      event.preventDefault(); // 阻止第二次點擊導致放大
+    }
+    lastTouchTime = now;
+  }, false);
+
+
+//編輯分類功能
+
+let pendingRenameId = null;
+
+function enterEditMode() {
+  const sections = document.querySelectorAll('.section');
+  sections.forEach(section => {
+    section.classList.add('edit-mode');
+    section.setAttribute('draggable', 'true');
+
+    const titleBar = section.querySelector('.section-title');
+    const currentName = section.id;
+
+    // 直接重繪 titleBar，確保有結構化節點可操作
+    titleBar.innerHTML = '';
+    // 拖拉把手
+    const drag = document.createElement('span');
+    drag.className = 'drag-handle';
+    drag.innerHTML = '☰';
+    titleBar.appendChild(drag);
+
+    // 名稱容器
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'section-name';
+    nameSpan.style.marginLeft = '0.5rem';
+    nameSpan.textContent = currentName;
+    titleBar.appendChild(nameSpan);
+
+    // 重命名按鈕（✎）
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'rename-btn';
+    renameBtn.innerHTML = '✎';
+    renameBtn.onclick = () => openRenameModal(section.id);
+    titleBar.appendChild(renameBtn);
+
+    // 刪除按鈕（✕）
+    const delBtn = document.createElement('button');
+    delBtn.className = 'delete-btn';
+    delBtn.innerHTML = '✕';
+    delBtn.onclick = () => confirmDeleteCategory(section.id);
+    titleBar.appendChild(delBtn);
+  });
+
+  document.getElementById('exitEditBtn').style.display = 'block';
+  document.getElementById('menu').style.display = 'none';
+}
+
+// 刪除分類彈窗
+function confirmDeleteCategory(id) {
+  const category = document.getElementById(id);
+  if (!category) return;
+
+  // 建立確認視窗
+  const confirmBox = document.createElement('div');
+  confirmBox.className = 'modal';
+  confirmBox.style.display = 'flex';
+  confirmBox.innerHTML = `
+    <div class="modal-content">
+      <h3 style="text-align: center;">是否確認刪除此分類？</h3>
+      <div class="confirm-buttons">
+        <button class="confirm-btn">確認</button>
+        <button class="cancel-btn">取消</button>
+      </div>
+    </div>
+  `;
+
+  // 綁定按鈕事件
+  confirmBox.querySelector('.confirm-btn').onclick = () => {
+    category.remove();
+    confirmBox.remove();
+  };
+  confirmBox.querySelector('.cancel-btn').onclick = () => {
+    confirmBox.remove();
+  };
+
+  document.body.appendChild(confirmBox);
+
+// ✅ 同步從所有 select 中移除這個分類選項
+const selects = [document.getElementById('taskSection'), document.getElementById('detailSection')];
+selects.forEach(select => {
+  const option = select.querySelector(`option[value="${id}"]`);
+  if (option) option.remove();
+});
+}
+
+
+
+
+//確認完成編輯
+function exitEditMode() {
+  const sections = document.querySelectorAll('.section');
+  sections.forEach(section => {
+    section.classList.remove('edit-mode');
+    section.removeAttribute('draggable');
+    section.ondragstart = null;
+    section.ondragover = null;
+    section.ondrop = null;
+
+    // 選擇 .drag-handle 和 .delete-btn，並移除
+    const titleBar = section.querySelector('.section-title');
+    if (titleBar) {
+      const drag = titleBar.querySelector('.drag-handle');
+      const del = titleBar.querySelector('.delete-btn');
+      if (drag) drag.remove();
+      if (del) del.remove();
+    }
+  });
+
+  // 隱藏「完成編輯」按鈕
+  document.getElementById('exitEditBtn').style.display = 'none';
+}
+document.getElementById('exitEditBtn').onclick = exitEditMode;
+
+//手機拖拉
+new Sortable(document.getElementById('section-container'), {
+  animation: 150,
+  handle: '.drag-handle', // 只允許拖拉圖示 ☰ 拖動
+  ghostClass: 'dragging'
+});
+
+function openRenameModal(sectionId) {
+  pendingRenameId = sectionId;
+  document.getElementById('renameInput').value = sectionId;
+  document.getElementById('renameModal').style.display = 'flex';
+}
+
+function confirmRename() {
+  const oldId = pendingRenameId;
+  const newName = document.getElementById('renameInput').value.trim();
+  if (!newName || document.getElementById(newName)) {
+    alert('名稱不可為空或已存在！');
+    return;
+  }
+
+  // 更新分類區塊
+  const section = document.getElementById(oldId);
+  section.id = newName;
+  section.querySelector('.section-title').childNodes[1].textContent = newName;
+
+  // 更新任務資料
+  tasks.forEach(t => { if (t.section === oldId) t.section = newName; });
+
+  // 更新下拉選單
+  [document.getElementById('taskSection'), document.getElementById('detailSection')]
+    .forEach(sel => {
+      const opt = sel.querySelector(`option[value="${oldId}"]`);
+      if (opt) { opt.value = newName; opt.textContent = newName; }
+    });
+
+  closeModal('renameModal');
+  pendingRenameId = null;
+}
+
+
+//新增分類
+function updateSectionOptions() {
+  const sections = document.querySelectorAll('.section');
+  const options = Array.from(sections).map(section => {
+    const id = section.id;
+    return `<option value="${id}">${id}</option>`;
+  }).join('');
+
+  document.getElementById('taskSection').innerHTML = options;
+  document.getElementById('detailSection').innerHTML = options;
+}
+
+//更多功能-篩選剩餘日
+let filterDay = "all"; // 預設全部
+
+document.addEventListener("change", function(e) {
+  if (e.target.matches('.filter-days input[type="radio"]')) {
+    filterDay = e.target.value;   // 直接切換
+    applyDayFilter();
+  }
+});
+
+function applyDayFilter() {
+  document.querySelectorAll(".task").forEach(taskEl => {
+    const task = tasks.find(t => t.id === taskEl.dataset.id);
+    if (!task) return;
+
+    const days = getRemainingDays(task.date);
+    let show = true;
+
+    if (filterDay !== "all") {
+      const v = parseInt(filterDay, 10);   // 0/1/2/3
+      // 無日期 -> 不顯示；選 0 表示 <=0（含負數），其餘 N 表示 <=N
+      show = (days !== null) && (days <= v);
+    }
+
+    taskEl.style.display = show ? "" : "none";
+  });
+}
+
+
+
+function openModalById(id) {
+  document.getElementById(id).style.display = 'flex';
+}
+
+//歷史紀錄
+// ====== 新增的全域狀態 ======
+let completedTasks = [];          // 歸檔的完成任務
+let statusFilter = "ongoing";     // 進行中 / 已完成
+let completedMonthFilter = "recent15"; // recent15 或 '11407' 這種月份
+
+// 單選：任務狀態（即時切換）
+document.addEventListener("change", function(e){
+  if (e.target.matches('.filter-status input[type="radio"]')) {
+    statusFilter = e.target.value;              // 'ongoing' or 'done'
+    if (statusFilter === 'done') {
+      completedMonthFilter = "recent15";
+      buildDoneMonthMenu();                    // 生成月份清單
+      document.getElementById('doneMore').style.display = 'block';
+      renderCompletedTasks();
+    } else {
+      document.getElementById('doneMore').style.display = 'none';
+      showOngoing();                           // 回到進行中
+    }
+  }
+});
+// 3) 監聽「天數設定」切換（在你的 document.addEventListener 區塊加這段）
+document.addEventListener("change", function(e){
+  if (e.target.matches('.filter-mode input[type="radio"]')) {
+    dayMode = e.target.value;                 // 'work' or 'calendar'
+    if (statusFilter === 'done') {
+      renderCompletedTasks();                 // 完成視圖不吃天數，但保持一致刷新
+    } else {
+      showOngoing();                          // 重新計算天數/顏色/排序並套用篩選
+    }
+  }
+});
+
+
+// 完成按鈕：改為歸檔（覆蓋你的 completeTask）
+function completeTask() {
+  if (!selectedTaskId) return;
+
+  const idx = tasks.findIndex(t => t.id === selectedTaskId);
+  if (idx === -1) return;
+
+  // 用 timestamp（number）存到雲端最穩
+  const finished = { ...tasks[idx], completedAt: Date.now() };
+
+  tasks.splice(idx, 1);
+  const el = document.querySelector(`[data-id='${selectedTaskId}']`);
+  if (el) el.remove();
+  closeModal('detailModal');
+
+  completedTasks.push(finished);
+
+  // ✅ 一律存檔（不要放在 if 裡）
+  saveTasksToFirebase();
+
+  // 動畫
+  const checkmark = document.getElementById('check-success');
+  checkmark.classList.add('show');
+  setTimeout(() => checkmark.classList.remove('show'), 1500);
+
+  if (statusFilter === 'done') {
+    buildDoneMonthMenu();
+    renderCompletedTasks();
+  }
+}
+
+
+// ====== 渲染邏輯 ======
+function clearAllSections() {
+  document.querySelectorAll('.section').forEach(sec => {
+    // 保留 section-title，清掉任務卡
+    Array.from(sec.querySelectorAll('.task')).forEach(t => t.remove());
+  });
+}
+
+function showOngoing() {
+  clearAllSections();
+  // 重新把進行中 tasks 依 section 渲染
+  tasks.forEach(t => {
+    const days = getRemainingDays(t.date);
+    const bg = getColorByDays(days);
+    const displayDays = (days == null) ? '無' : days;
+
+    const el = document.createElement('div');
+    el.className = 'task';
+    el.dataset.id = t.id;
+    el.style.backgroundColor = bg;
+    el.innerHTML = `
+      <div class="task-content">
+        <div class="task-title">${t.title}</div>
+      </div>
+      <div class="task-days">${displayDays}</div>
+    `;
+    el.onclick = () => openDetail(t.id);
+    const sec = document.getElementById(t.section);
+    if (sec) sec.appendChild(el);
+  });
+
+  // 依你原本邏輯排序
+  const sections = new Set(tasks.map(t => t.section));
+  sections.forEach(sortTasks);
+
+  // 進行中也要套用你目前的「剩餘天數」篩選
+  applyDayFilter();
+}
+
+// 轉民國年月（回傳如 "11407"）
+function toRocYM(d) {
+  const yy = d.getFullYear() - 1911;
+  const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+  return `${yy}${mm}`;
+}
+
+// 生成月份清單（僅列出 >15 天的月份，且有資料的）
+function buildDoneMonthMenu() {
+  const menu = document.getElementById('doneMonthMenu');
+  if (!menu) return;
+  menu.innerHTML = '';
+
+  // 置頂：近15日
+  const recentBtn = document.createElement('button');
+  recentBtn.textContent = '近15日';
+  recentBtn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;font-weight:600;';
+  recentBtn.onclick = () => {
+    completedMonthFilter = 'recent15';
+    menu.style.display = 'none';
+    renderCompletedTasks();
+  };
+  menu.appendChild(recentBtn);
+
+  // 以下才是月份（僅列出 >15 天的月份）
+  const now = new Date();
+  const monthSet = new Set();
+  completedTasks.forEach(t => {
+    const diff = Math.floor((now - new Date(t.completedAt)) / 86400000);
+    if (diff > 15) monthSet.add(toRocYM(new Date(t.completedAt)));
+  });
+
+  if (monthSet.size === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding:4px 8px; color:#888;';
+    empty.textContent = '無更多月份';
+    menu.appendChild(empty);
+    return;
+  }
+
+  Array.from(monthSet).sort((a,b)=> b.localeCompare(a)).forEach(ym => {
+    const btn = document.createElement('button');
+    btn.textContent = ym;
+    btn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;';
+    btn.onclick = () => {
+      completedMonthFilter = ym;
+      menu.style.display = 'none';
+      renderCompletedTasks();
+    };
+    menu.appendChild(btn);
+  });
+}
+
+
+// 點「更多…」展開月份清單
+document.getElementById('doneMoreBtn')?.addEventListener('click', () => {
+  const menu = document.getElementById('doneMonthMenu');
+  if (!menu) return;
+  menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'block' : 'none';
+});
+
+// 渲染已完成（預設顯示 15 日內；點月份則顯示該月份）
+function renderCompletedTasks() {
+  clearAllSections();
+
+  const now = new Date();
+const list = completedTasks.filter(t => {
+  const d = new Date(typeof t.completedAt === 'number' ? t.completedAt : Date.parse(t.completedAt || Date.now()));
+  if (completedMonthFilter === 'recent15') {
+    const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
+    return diff <= 15;
+  } else {
+    return toRocYM(d) === completedMonthFilter;
+  }
+});
+
+  // 渲染到對應分類
+  list.forEach(t => {
+    const el = document.createElement('div');
+    el.className = 'task';
+    el.dataset.id = t.id;
+    el.style.backgroundColor = 'var(--green-light)'; // 完成用淡綠
+    el.innerHTML = `
+      <div class="task-content">
+        <div class="task-title">✅ ${t.title}</div>
+      </div>
+      <div class="task-days">完</div>
+    `;
+el.onclick = () => openCompletedDetail(t.id);
+
+    // 已完成的卡片點了不開細節（如需可加）
+    const sec = document.getElementById(t.section);
+    if (sec) sec.appendChild(el);
+  });
+}
+//已完成視窗細節
+function setDetailReadonly(ro) {
+  ['detailSection','detailTitle','detailContent','detailDate','detailNote']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = ro; });
+
+  const saveBtn = document.querySelector('#detailModal .save-btn-half');
+  const delBtn  = document.querySelector('#detailModal .delete-btn-half');
+  const completeBtn = Array.from(document.querySelectorAll('#detailModal button'))
+    .find(b => b.textContent.includes('已完成'));
+
+  if (ro) {
+    if (saveBtn) { saveBtn.textContent = '我了解了！'; saveBtn.onclick = () => closeModal('detailModal'); }
+    if (delBtn)  { delBtn.onclick = confirmDeleteCompleted; } // ← 改叫「確認刪除(完成)」
+
+    if (completeBtn) completeBtn.style.display = 'none';
+  } else {
+    if (saveBtn) { saveBtn.textContent = '💾 儲存'; saveBtn.onclick = saveTask; }
+    if (delBtn)  { delBtn.onclick = confirmDelete; }
+    if (completeBtn) completeBtn.style.display = '';
+  }
+}
+
+let selectedCompletedId = null;
+function openCompletedDetail(id) {
+  selectedCompletedId = id;
+  const t = completedTasks.find(x => x.id === id);
+  if (!t) return;
+
+  // 填值
+  document.getElementById('detailSection').value = t.section;
+  document.getElementById('detailTitle').value   = t.title;
+  document.getElementById('detailContent').value = t.content || '';
+  document.getElementById('detailDate').value    = t.date || '';
+  document.getElementById('detailNote').value    = t.note || '';
+
+  setDetailReadonly(true);
+  document.getElementById('detailModal').style.display = 'flex';
+}
+
+function deleteCompleted() {
+  if (!selectedCompletedId) return;
+  const idx = completedTasks.findIndex(x => x.id === selectedCompletedId);
+  if (idx >= 0) completedTasks.splice(idx, 1);
+  closeModal('detailModal');
+  renderCompletedTasks();
+}
+
+function confirmDeleteCompleted() {
+  const modal = document.getElementById('confirmModal');
+  const confirmBtn = modal.querySelector('.confirm-btn');
+
+  const oldHandler = confirmBtn.onclick;     // 暫存原本（進行中刪除）的 handler
+  confirmBtn.onclick = () => {                // 暫時改成刪「已完成」
+    deleteCompletedConfirmed();
+    confirmBtn.onclick = oldHandler;          // 刪完還原
+  };
+
+  modal.style.display = 'flex';
+}
+
+function deleteCompletedConfirmed() {
+  if (!selectedCompletedId) return;
+  const idx = completedTasks.findIndex(x => x.id === selectedCompletedId);
+  if (idx >= 0) completedTasks.splice(idx, 1);
+
+  // ✅ 這行一定要
+  saveTasksToFirebase();
+
+  closeModal('confirmModal');
+  closeModal('detailModal');
+  renderCompletedTasks();
+}
+//登入
+
+document.getElementById('login-btn').addEventListener('click', async function(){
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value.trim();
+  const autoLogin = document.getElementById('auto-login').checked;
+
+  if(!username || !password){
+    alert('請輸入帳號與密碼');
+    return;
+  }
+
+  roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+
+  // 記住房間（自動登入用）
+  if(autoLogin){
+    localStorage.setItem('todo_room_info', JSON.stringify({username, password}));
+  } else {
+    localStorage.removeItem('todo_room_info');
+  }
+
+  // 用匿名登入（不需要 Email/Password）
+  try {
+    await auth.signInAnonymously();
+  } catch (e) {
+    alert('匿名登入失敗：' + e.code + '\n請到 Authentication > Sign-in method 啟用 Anonymous，或先把 Realtime Database 規則設為全開測試。');
+    return;
+  }
+
+  // 顯示主畫面
+  document.getElementById('loginPage').style.display = 'none';
+  document.querySelector('.container').style.display = 'block';
+
+  // 從雲端載資料
+  loadTasksFromFirebase();
+});
+
+// === 自動登入（有記錄房間就直接進） ===
+window.addEventListener('load', async function(){
+  const saved = localStorage.getItem('todo_room_info');
+  if(saved){
+    const {username, password} = JSON.parse(saved);
+    roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+
+    try {
+      await auth.signInAnonymously();
+    } catch (e) {
+      console.error(e);
+      document.querySelector('.container').style.display = 'none';
+      document.getElementById('loginPage').style.display = 'flex';
+      return;
+    }
+
+    document.getElementById('loginPage').style.display = 'none';
+    document.querySelector('.container').style.display = 'block';
+    loadTasksFromFirebase();
+  } else {
+    document.querySelector('.container').style.display = 'none';
+    document.getElementById('loginPage').style.display = 'flex';
+  }
+});
+
+// === 從雲端載入（先做進行中 tasks；completed 之後再接）===
+function loadTasksFromFirebase(){
+  // 先取消舊監聽，避免重複綁
+  if (tasksRef) tasksRef.off();
+  if (completedRef) completedRef.off();
+
+  tasksRef = db.ref(`${roomPath}/tasks`);
+  completedRef = db.ref(`${roomPath}/completedTasks`);
+
+  tasksRef.on('value', (snap) => {
+    const data = snap.val() || {};
+    tasks = Object.values(data);
+    showOngoing();
+  });
+
+  completedRef.on('value', (snap) => {
+    const data = snap.val() || {};
+    completedTasks = Object.values(data);
+    if (statusFilter === 'done') renderCompletedTasks();
+  });
+}
+
+
+// === 寫回雲端（先寫 tasks；completed 之後再接）===
+function saveTasksToFirebase(){
+  const obj = {};
+  tasks.forEach(t => obj[t.id] = t);
+
+  const doneObj = {};
+  completedTasks.forEach(t => doneObj[t.id] = t);
+
+  // 一次寫回兩個節點
+  db.ref(`${roomPath}/tasks`).set(obj);
+  db.ref(`${roomPath}/completedTasks`).set(doneObj);
+}
+
+//登出
+
+function openLogoutModal(){
+  document.getElementById('logoutModal').style.display = 'flex';
+}
+
+async function doLogout(){
+  // 關閉 DB 監聽
+  try {
+    if (tasksRef) { tasksRef.off(); tasksRef = null; }
+    if (completedRef) { completedRef.off(); completedRef = null; }
+  } catch(e){ console.warn(e); }
+
+  // 清空本機資料
+  tasks = [];
+  completedTasks = [];
+  selectedTaskId = null;
+  clearAllSections();
+
+  // 清掉自動登入與房間
+  localStorage.removeItem('todo_room_info');
+  roomPath = "";
+
+  // 嘗試登出（若沒開 Auth 也沒關係）
+  try { if (firebase.auth) await auth.signOut(); } catch(e){ /* 忽略 */ }
+
+  // 切回登入頁
+  document.querySelector('.container').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+
+  closeModal('logoutModal');
+  closeModal('moreModal'); // 關掉「⋯」選單
+}
+
+
+
+  </script>
+
+<div id="check-success">
+  <svg viewBox="0 0 52 52">
+    <circle class="circle" cx="26" cy="26" r="18" fill="none"/>
+    <path class="check" fill="none" d="M14 27l7 7 16-16"/>
+  </svg>
+</div>
+
+<div class="modal" id="confirmModal">
+  <div class="modal-content">
+    <h3 style="text-align: center;">是否確認移除此任務？</h3>
+    <div class="confirm-buttons">
+      <button class="confirm-btn" onclick="deleteTask()">🗑️ 確認</button>
+      <button class="cancel-btn" onclick="closeModal('confirmModal')">返回</button>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ 登出確認 modal 要和上面同一層，千萬不要放在 confirmModal 裡 -->
+<div class="modal" id="logoutModal">
+  <div class="modal-content">
+    <h3 style="text-align:center;">是否確認登出？</h3>
+    <div class="confirm-buttons">
+      <button class="confirm-btn" onclick="doLogout()">確認</button>
+      <button class="cancel-btn" onclick="closeModal('logoutModal')">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="categoryModal">
+  <div class="modal-content">
+<h3 style="text-align: center;">新增分類</h3>
+<input type="text" id="newCategoryName" placeholder="請輸入分類名稱">
+    <div class="confirm-buttons">
+      <button class="confirm-btn" onclick="addCategory()">確認</button>
+      <button class="cancel-btn" onclick="closeModal('categoryModal')">取消</button>
+    </div>
+  </div>
+</div>
+<!-- 重命名分類 Modal -->
+<div class="modal" id="renameModal">
+  <div class="modal-content">
+    <button class="close-btn" onclick="closeModal('renameModal')">✕</button>
+    <h3 style="text-align:center;">重新命名分類</h3>
+    <input type="text" id="renameInput" placeholder="請輸入新的分類名稱" />
+    <div class="confirm-buttons">
+      <button class="confirm-btn" onclick="confirmRename()">確認</button>
+      <button class="cancel-btn" onclick="closeModal('renameModal')">取消</button>
+    </div>
+  </div>
+</div>
+
+
+
+
+<!-- 更多功能 Modal -->
+<div class="modal" id="moreModal">
+  <div class="modal-content">
+    <button class="close-btn" onclick="closeModal('moreModal')">✕</button>
+    <h3>篩選剩餘天數</h3>
+<div class="filter-days">
+  <label><input type="radio" name="daysFilter" value="0"> 0</label>
+  <label><input type="radio" name="daysFilter" value="1"> 1</label>
+  <label><input type="radio" name="daysFilter" value="2"> 2</label>
+  <label><input type="radio" name="daysFilter" value="3"> 3</label>
+  <label><input type="radio" name="daysFilter" value="all" checked>無</label>
+</div>
+<h3>任務狀態</h3>
+<div class="filter-status">
+  <label><input type="radio" name="statusFilter" value="ongoing" checked> 進行中</label>
+  <label><input type="radio" name="statusFilter" value="done"> 已完成</label>
+</div>
+<h3>天數設定</h3>
+<div class="filter-mode">
+  <label><input type="radio" name="dayMode" value="work" checked> 工作天</label>
+  <label><input type="radio" name="dayMode" value="calendar"> 日曆天</label>
+</div>
+<hr style="margin:1rem 0;border:none;border-top:1px solid #eee;">
+<button class="logout-btn" onclick="openLogoutModal()">登出</button>
+
+  </div>
+</div>
+
+</body>
+</html>
+
