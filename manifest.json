@@ -1,6 +1,6 @@
 {
-  "name": "待辦小幫手",
-  "short_name": "待辦小幫手",
+  "name": "MyTask",
+  "short_name": "Mytask",
   "icons": [
     {
       "src": "reminder.png",
