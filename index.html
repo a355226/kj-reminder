@@ -668,6 +668,86 @@ margin-top:0.8rem;
   color: #176d59;
 }
 .save-btn:hover { background:#e8faf3; }
+
+/* FAB：開合時旋轉、陰影更柔和 */
+.fab{
+  position: fixed; bottom: 24px; right: 24px;
+  width: 48px; height: 48px; border-radius: 50%;
+  display:flex; align-items:center; justify-content:center;
+  background:#00aaff; color:#fff; font-size:28px; font-weight:700;
+  box-shadow: 0 10px 22px rgba(0,0,0,.18);
+  cursor:pointer; z-index: 110;
+  transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
+}
+.fab:active{ transform: scale(.98); }
+.fab.open{ transform: rotate(45deg); }   /* 打開時變成 × 的感覺 */
+
+/* 新：極簡玻璃卡片浮層 */
+.menu{
+  position: fixed; bottom: 88px; right: 24px;
+  min-width: 100px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(180, 210, 255, .35);
+  box-shadow: 0 12px 28px rgba(0, 60, 130, .12);
+  display: block;               /* 用透明控制顯示 */
+  opacity: 0; transform: translateY(8px) scale(.98);
+  pointer-events: none;
+  z-index: 105;
+}
+
+/* 打開狀態 */
+.menu.show{
+  opacity: 1; transform: translateY(0) scale(1);
+  pointer-events: auto;
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+/* 小圓角分隔 + 品牌色系按鈕 */
+.menu button{
+  display:flex; align-items:center; gap:.5rem;
+  width:100%;
+  background: transparent;
+  border: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 15px; font-weight: 600;
+  color: #176dff;                 /* 淺藍系主色，與主視覺協調 */
+  letter-spacing:.2px;
+  cursor:pointer;
+}
+
+/* hover / active 的輕微回饋（手機也好點） */
+.menu button:hover{
+  background: linear-gradient(0deg,#eef6ff,#f7fbff);
+}
+.menu button:active{
+  transform: translateY(1px);
+}
+
+/* 項目之間加一點間距 */
+.menu button + button{ margin-top: 4px; }
+
+/* 指向 FAB 的小尾巴 */
+.menu::after{
+  content:"";
+  position:absolute;
+  right: 12px; bottom: -6px;
+  width: 12px; height:12px;
+  background: rgba(255,255,255,.72);
+  border: 1px solid rgba(180,210,255,.35);
+  border-top: none; border-left: none;
+  transform: rotate(45deg);
+  box-shadow: 4px 4px 10px rgba(0,60,130,.06);
+}
+
+/* 在「已完成」時禁用（你前面已做 pointer-events/opactiy，也可沿用） */
+.fab[aria-disabled="true"]{
+  pointer-events: none; opacity:.5; box-shadow: none;
+}
   </style>
 </head>
 <body>
@@ -911,7 +991,7 @@ function hydrateRoomPath(){
 function openModal() {
   updateSectionOptions();                 // ★ 每次打開先同步
   document.getElementById('taskModal').style.display = 'flex';
-  document.getElementById('menu').style.display = 'none';
+  closeFabMenu();
 }
 
 
@@ -1117,7 +1197,7 @@ saveTasksToFirebase();  // ← 加這行
 function openCategoryModal() {
   document.getElementById('newCategoryName').value = '';
   document.getElementById('categoryModal').style.display = 'flex';
-  document.getElementById('menu').style.display = 'none'; // ✅ 自動關閉選單
+  closeFabMenu(); // ✅ 自動關閉選單
 }
 
 function addCategory() {
@@ -1153,7 +1233,7 @@ let pendingRenameId = null;
 function enterEditMode() {
   isEditing = true;
   decorateSectionsForEdit();
-  document.getElementById('menu').style.display = 'none';
+  closeFabMenu();
 }
 
 function exitEditMode() {
@@ -2122,19 +2202,25 @@ function decorateSectionsForEdit() {
 
 function closeFabMenu(){
   const m = document.getElementById('menu');
-  if (m) m.style.display = 'none';
+  const fab = document.querySelector('.fab');
+  if (!m) return;
+  m.classList.remove('show');
+  if (fab) fab.classList.remove('open');
 }
 
-// 既有的 toggleMenu 可改用上面工具（可選）
-function toggleMenu() {
-  const menu = document.getElementById('menu');
-  menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
+function toggleMenu(){
+  const m = document.getElementById('menu');
+  const fab = document.querySelector('.fab');
+  if (!m || !fab) return;
+  const willOpen = !m.classList.contains('show');
+  m.classList.toggle('show', willOpen);
+  fab.classList.toggle('open', willOpen);
 }
 
 // 🔻 全域點擊：點到 menu 以外，就自動關
 document.addEventListener('click', function(e){
   const menu = document.getElementById('menu');
-  if (!menu || menu.style.display !== 'flex') return;
+if (!menu || !menu.classList.contains('show')) return;
 
   const fab = document.querySelector('.fab');
   const clickInsideMenu = menu.contains(e.target);
