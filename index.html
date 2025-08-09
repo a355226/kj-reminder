@@ -1645,6 +1645,12 @@ function applyDayFilter() {
 
     taskEl.style.display = show ? "" : "none";
   });
+ // ⬇️ 只有啟用篩選時才隱藏沒命中的分類；「全部」時全部顯示
+  if (filterDay === 'all') {
+    document.querySelectorAll('#section-container .section').forEach(sec => sec.style.display = '');
+  } else {
+    hideEmptySectionsAfterFilter();
+  }
 }
 
 
@@ -2463,6 +2469,16 @@ document.addEventListener('keydown', function(e){
     if (getComputedStyle(m).display !== 'none') closeModal(m.id);
   });
 });
+
+function hideEmptySectionsAfterFilter(){
+  const sections = document.querySelectorAll('#section-container .section');
+  sections.forEach(sec => {
+    // 只算「仍然可見」的任務卡
+    const hasVisibleTask = Array.from(sec.querySelectorAll('.task'))
+      .some(el => getComputedStyle(el).display !== 'none');
+    sec.style.display = hasVisibleTask ? '' : 'none';
+  });
+}
   </script>
 
 <div id="check-success">
