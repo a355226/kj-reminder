@@ -1187,10 +1187,9 @@ function initSectionSortable(){
       categories = Array.from(document.querySelectorAll('#section-container .section'))
         .map(sec => sec.id);
       saveCategoriesToFirebase();
-    }===喔請殺手
+    }
   });
-}=(
-
+}
 function openRenameModal(sectionId) {
   pendingRenameId = sectionId;
   document.getElementById('renameInput').value = sectionId;
