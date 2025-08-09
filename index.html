@@ -2507,17 +2507,33 @@ function hideEmptySectionsAfterFilter(){
 }
 
 let __autoLoginShownAt = 0;
+
 function showAutoLoginOverlay(){
   const el = document.getElementById('autologin-overlay');
-  __autoLoginShownAt = performance.now();
-  if (el){ el.classList.add('show'); el.setAttribute('aria-hidden','false'); }
+  if (!el) return;
+
+  // 等兩個 frame，確保瀏覽器真的先把 overlay 畫出來
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      __autoLoginShownAt = performance.now();
+      el.classList.add('show');
+      el.setAttribute('aria-hidden','false');
+
+      // 強制一次 reflow，避免同幀被合併
+      // （有些瀏覽器在極快切換時需要）
+      void el.offsetHeight;
+    });
+  });
 }
+
 function hideAutoLoginOverlay(){
   const el = document.getElementById('autologin-overlay');
   if (!el) return;
-  const stay = 300; // 最短顯示 300ms
+
+  const minStay = 600; // 至少顯示 600ms，比 300ms 再明顯一些
   const elapsed = performance.now() - __autoLoginShownAt;
-  const delay = Math.max(0, stay - elapsed);
+  const delay = Math.max(0, minStay - elapsed);
+
   setTimeout(()=>{
     el.classList.remove('show');
     el.setAttribute('aria-hidden','true');
