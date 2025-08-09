@@ -1161,6 +1161,7 @@ showAutoLoginOverlay();
       document.querySelector('.container').style.display = 'block';
       loadTasksFromFirebase();
       updateSectionOptions();
+hideAutoLoginOverlay();
       return;
     }
 
@@ -2505,13 +2506,22 @@ function hideEmptySectionsAfterFilter(){
   });
 }
 
+let __autoLoginShownAt = 0;
 function showAutoLoginOverlay(){
   const el = document.getElementById('autologin-overlay');
+  __autoLoginShownAt = performance.now();
   if (el){ el.classList.add('show'); el.setAttribute('aria-hidden','false'); }
 }
 function hideAutoLoginOverlay(){
   const el = document.getElementById('autologin-overlay');
-  if (el){ el.classList.remove('show'); el.setAttribute('aria-hidden','true'); }
+  if (!el) return;
+  const stay = 300; // 最短顯示 300ms
+  const elapsed = performance.now() - __autoLoginShownAt;
+  const delay = Math.max(0, stay - elapsed);
+  setTimeout(()=>{
+    el.classList.remove('show');
+    el.setAttribute('aria-hidden','true');
+  }, delay);
 }
   </script>
 
