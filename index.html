@@ -915,22 +915,22 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 </div>
 
 <!-- ✅ 新增的按鈕，讓使用者完成編輯分類 -->
-<button id="exitEditBtn" style="
+<button id="exitEditBtn" onclick="exitEditMode()" style="
   display: none;
   position: fixed;
-  bottom: 20px;               /* ⬇ 往下 */
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   background: #e3ffe8;
   color: white;
   border: none;
-  border-radius: 8px;         /* ⬇ 圓角小一點 */
-  padding: 6px 14px;          /* ⬇ 縮小內距 */
-  font-size: 13px;            /* ⬇ 字小一點 */
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
   font-weight: bold;
   cursor: pointer;
   z-index: 10;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15); /* ⬇ 陰影淡一點 */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 ">✅</button>
 
 
@@ -1491,6 +1491,8 @@ function enterEditMode() {
   isEditing = true;
   decorateSectionsForEdit();
   closeFabMenu();
+  const exitBtn = document.getElementById('exitEditBtn');
+if (exitBtn) exitBtn.style.display = 'block';
 }
 // 刪除分類彈窗
 function confirmDeleteCategory(id) {
