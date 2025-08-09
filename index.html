@@ -902,8 +902,7 @@ function getRemainingDays(dateStr) {
     const d = cur.getDay();
     if (d !== 0 && d !== 6) count++;     // 只算週一～週五
     cur.setDate(cur.getDate() + 1);
-  }
-  count = count - 1;                      // 不含起始日
+  }                      // 不含起始日
   return forward ? count : -count;
 }
 
