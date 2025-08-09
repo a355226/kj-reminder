@@ -1,6 +1,6 @@
 {
   "name": "MyTask",
-  "short_name": "Mytask",
+  "short_name": "MyTask",
   "icons": [
     {
       "src": "reminder.png",
