@@ -1109,9 +1109,13 @@ async function ensureSignedIn() {
   if (!saved) {
     authBusy = false;
     setLoginBusy(false);
-    document.querySelector('.container').style.display = 'none';
-    document.getElementById('loginPage').style.display = 'flex';
+    // 顯示登入頁
+document.documentElement.classList.remove('show-app');
+document.documentElement.classList.add('show-login');
 
+// 顯示主畫面
+document.documentElement.classList.remove('show-login');
+document.documentElement.classList.add('show-app');
     // 為了保險：若瀏覽器還留著舊的匿名使用者，登出一次，避免之後 onAuthStateChanged 亂切畫面
     try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
     return;
@@ -1999,7 +2003,14 @@ auth.onAuthStateChanged(async (user) => {
 
     if (user && roomPath) {
       // 顯示主畫面（用 class）
-      document.documentElement.classList.add('show-app');
+    // 顯示主畫面（用 class）
+document.documentElement.classList.add('show-app');
+
+// 🔧 重要：把舊的 inline 顯示值清掉，避免重疊
+const lp  = document.getElementById('loginPage');
+const app = document.querySelector('.container');
+if (lp)  lp.style.display  = '';   // 清除 "display:flex"
+if (app) app.style.display = '';   // 清除任何 inline display
 
       // 初始化資料
       loadTasksFromFirebase();
