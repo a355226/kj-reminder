@@ -816,9 +816,28 @@ margin-top:0.8rem;
 
   <div class="fab" onclick="toggleMenu()">＋</div>
 <div class="menu" id="menu">
-  <button onclick="openModal()">新增任務</button>
-  <button onclick="openCategoryModal()">新增分類</button>
-  <button onclick="enterEditMode()">編輯分類</button>
+<button onclick="openModal()" 
+        style="background:#e6f6fc; color:#0091cc; font-weight:600; 
+               padding:8px 16px; border:none; border-radius:8px; 
+               box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer; 
+               margin-bottom:12px;">
+  新增任務
+</button>
+
+<button onclick="openCategoryModal()" 
+        style="background:#e9f9f1; color:#1fa87a; font-weight:600; 
+               padding:8px 16px; border:none; border-radius:8px; 
+               box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer; 
+               margin-bottom:12px;">
+  新增分類
+</button>
+
+<button onclick="enterEditMode()" 
+        style="background:#fff6e6; color:#d98a00; font-weight:600; 
+               padding:8px 16px; border:none; border-radius:8px; 
+               box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer;">
+  編輯分類
+</button>
 </div>
 
 <!-- ✅ 新增的按鈕，讓使用者完成編輯分類 -->
@@ -2249,6 +2268,30 @@ document.addEventListener('touchstart', function(e){
 document.addEventListener('keydown', function(e){
   if (e.key === 'Escape') closeFabMenu();
 });
+
+// ✅ 事件委派：點到任何開著的 modal 的「背景區」就關閉
+document.addEventListener('click', function(e){
+  // 只處理點在 .modal 範圍內的事件
+  const modal = e.target.closest('.modal');
+  if (!modal) return;
+
+  // 只關「有開著」的 modal（display !== 'none'）
+  if (getComputedStyle(modal).display === 'none') return;
+
+  const content = modal.querySelector('.modal-content');
+  // 點到內容框外（=背景遮罩）才關
+  if (!content || !content.contains(e.target)) {
+    closeModal(modal.id);
+  }
+}, { passive: true });
+
+// （可選）按 Esc 關掉目前所有開著的 modal
+document.addEventListener('keydown', function(e){
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.modal').forEach(m=>{
+    if (getComputedStyle(m).display !== 'none') closeModal(m.id);
+  });
+});
   </script>
 
 <div id="check-success">
@@ -2328,7 +2371,7 @@ document.addEventListener('keydown', function(e){
   <label><input type="radio" name="dayMode" value="calendar"> 日曆天</label>
 </div>
 <hr style="margin:1rem 0;border:none;border-top:1px solid #eee;">
-<button class="logout-btn" onclick="openLogoutModal()">登出</button>
+<button class="logout-btn" style="font-weight:bold;" onclick="openLogoutModal()">登出</button>
 
   </div>
 </div>
