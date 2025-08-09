@@ -722,7 +722,7 @@ margin-top:0.8rem;
   <script>
   // ✅ 分類在這裡維護（有順序）
 let categories = [];
-
+let sectionSortable = null;  // 存住 Sortable 實例
 // ✅ 重新畫出所有分類區塊（依照 categories 順序）
 function renderSections(list){
   const wrap = document.getElementById('section-container');
@@ -1041,7 +1041,6 @@ function enterEditMode() {
   const sections = document.querySelectorAll('.section');
   sections.forEach(section => {
     section.classList.add('edit-mode');
-    section.setAttribute('draggable', 'true');
 
     const titleBar = section.querySelector('.section-title');
     const currentName = section.id;
@@ -1078,6 +1077,7 @@ function enterEditMode() {
 
   document.getElementById('exitEditBtn').style.display = 'block';
   document.getElementById('menu').style.display = 'none';
+  initSectionSortable();   // 進編輯模式後重新啟用拖曳
 }
 
 // 刪除分類彈窗
@@ -1164,26 +1164,32 @@ function initSectionSortable(){
   const el = document.getElementById('section-container');
   if (!el) return;
 
-  new Sortable(el, {
+  // 先銷毀舊的，避免多次初始化衝突
+  if (sectionSortable && sectionSortable.destroy) {
+    sectionSortable.destroy();
+  }
+
+  sectionSortable = new Sortable(el, {
     animation: 150,
     handle: '.drag-handle',
-    draggable: '.section',     // 只讓 .section 可拖，不拖到 #doneMore
+    draggable: '.section',     // 只讓 .section 能拖，不會拖到 #doneMore
     ghostClass: 'dragging',
 
-    // ⭐ 手機重點在這裡
-    forceFallback: true,       // iOS 必備：改用模擬拖曳
+    // ⭐ 手機重點：強制走模擬拖曳＋長按延遲
+    forceFallback: true,
     fallbackOnBody: true,
-    delayOnTouchOnly: true,    // 只在觸控裝置加延遲
-    delay: 120,                // 長按 120ms 再開始拖
-    touchStartThreshold: 5,    // 手指移動 5px 才算開始拖
+    delayOnTouchOnly: true,
+    delay: 200,                // 長按 200ms 再開始拖（更穩）
+    touchStartThreshold: 8,    // 手指移動 8px 才算拖，避免誤觸
 
     onEnd: () => {
+      // 放手後讀新順序並存雲
       categories = Array.from(document.querySelectorAll('#section-container .section'))
         .map(sec => sec.id);
       saveCategoriesToFirebase();
-    }
+    }===喔請殺手
   });
-}
+}=(
 
 function openRenameModal(sectionId) {
   pendingRenameId = sectionId;
