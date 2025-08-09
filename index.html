@@ -974,6 +974,53 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.database();
 
+
+// 建議：明確指定持久性（iOS/Safari 比較不會怪）
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+
+// ===== 共用的「確保登入」流程（有重試/超時保護）=====
+const AUTH_TIMEOUT_MS = 6000;
+let authBusy = false;
+let authTimer = null;
+
+async function ensureSignedIn() {
+  if (authBusy) return;
+  authBusy = true;
+  setLoginBusy(true);
+
+  // 1) 先把 roomPath 從 localStorage 還原（一定要先做）
+  hydrateRoomPath();
+
+  try {
+    // 2) 情況 A：已經有使用者 & 有 roomPath → 直接進主畫面（不用等事件）
+    if (auth.currentUser && roomPath) {
+      document.getElementById('loginPage').style.display = 'none';
+      document.querySelector('.container').style.display = 'block';
+      loadTasksFromFirebase();
+      updateSectionOptions();
+      return;
+    }
+
+    // 3) 情況 B：沒有使用者 → 匿名登入（先確保乾淨狀態）
+    if (auth.currentUser) await auth.signOut();
+
+    // 6 秒沒成功就當作 timeout，做一次「重登」
+    authTimer = setTimeout(async () => {
+      try {
+        if (auth.currentUser) await auth.signOut();
+        await auth.signInAnonymously();
+      } catch(e) { /* 忽略 */ }
+    }, AUTH_TIMEOUT_MS);
+
+    await auth.signInAnonymously();
+  } catch (e) {
+    alert('自動登入失敗：' + (e?.message || e));
+  } finally {
+    // 記得等 onAuthStateChanged 做最後收尾
+    authBusy = false;
+  }
+}
+
 let roomPath = ""; // ← 放這裡！全檔只出現一次
 let tasksRef = null;
 let completedRef = null; // 之後你有做 completedTasks 即可用到
@@ -1814,6 +1861,8 @@ function setLoginBusy(busy){
 
 auth.onAuthStateChanged(user => {
   try {
+    if (authTimer) { clearTimeout(authTimer); authTimer = null; }
+
     hydrateRoomPath();
     if (user) {
       // 只有確實有 roomPath 才進入主頁面
@@ -1887,33 +1936,11 @@ document.getElementById('login-btn').addEventListener('click', async function(){
 
 // === 自動登入（有記錄房間就直接進） ===
 // ✅ 最簡單的「一定會自動登入」版本
-function autoLogin(){
-  const saved = localStorage.getItem('todo_room_info');
-  if (!saved) {
-    // 沒有儲存資料，確保回到登入頁面
-    if (auth.currentUser) {
-      auth.signOut();
-    }
-    return;
-  }
 
-  const {username, password} = JSON.parse(saved);
-  roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
 
-  if (!auth.currentUser && !loggingIn) {
-    loggingIn = true;
-    setLoginBusy(true);
-    auth.signInAnonymously()
-      .catch(console.warn)
-      .finally(() => { loggingIn = false; setLoginBusy(false); });
-  }
-}
-
-// 進到頁面就跑一次
-document.addEventListener('DOMContentLoaded', autoLogin);
-
-// 從背景/別頁回來也會再跑一次（iPhone/Safari 最常用這個）
-window.addEventListener('pageshow', autoLogin);
+// === 自動登入（統一走 ensureSignedIn） ===
+document.addEventListener('DOMContentLoaded', ensureSignedIn);
+window.addEventListener('pageshow', ensureSignedIn);
 // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
 function loadTasksFromFirebase() {
   if (!roomPath || !auth.currentUser) return;
