@@ -2607,6 +2607,73 @@ async function runAutoLoginRescue(){
     alert('自動登入逾時，請手動登入一次（已自動重設連線）。');
   }
 }
+
+// ===== Section 空白處長按新增 =====
+(function enableLongPressNewTask(){
+  const PRESS_MS = 1000;           // 長按 1 秒
+  const MOVE_TOLERANCE = 10;       // 移動超過 10px 視為滑動，取消
+  const container = document.getElementById('section-container');
+  if (!container) return;
+
+  let timer = null;
+  let startX = 0, startY = 0;
+  let moved = false;
+
+  function isEligibleTarget(e){
+    if (isEditing) return false;                 // 編輯分類時不觸發
+    if (statusFilter === 'done') return false;   // 已完成檢視不觸發
+    const sec = e.target.closest('.section');
+    if (!sec) return false;                      // 不在 section 裡
+    if (e.target.closest('.task')) return false; // 點到任務卡就不觸發
+    return true;                                 // 剩下都是 section 的空白區域
+  }
+
+  function clearTimer(){
+    if (timer){ clearTimeout(timer); timer = null; }
+  }
+
+  function pointerDown(e){
+    if (!isEligibleTarget(e)) return;
+
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX; startY = p.clientY; moved = false;
+
+    clearTimer();
+    timer = setTimeout(()=>{
+      // 再次確認仍然符合條件（避免中途切換編輯/頁籤）
+      if (!isEditing && statusFilter !== 'done') {
+        try { closeFabMenu(); } catch(_) {}
+        openModal();  // 你現有的開「新增任務」視窗函式
+      }
+      clearTimer();
+    }, PRESS_MS);
+  }
+
+  function pointerMove(e){
+    if (!timer) return;
+    const p = e.touches ? e.touches[0] : e;
+    const dx = Math.abs(p.clientX - startX);
+    const dy = Math.abs(p.clientY - startY);
+    if (dx > MOVE_TOLERANCE || dy > MOVE_TOLERANCE){
+      moved = true;
+      clearTimer();         // 視為拖/滑動，取消長按
+    }
+  }
+
+  function pointerUpOrCancel(){
+    clearTimer();           // 放開或被取消都清掉
+  }
+
+  // 綁定（滑鼠 + 觸控）
+  container.addEventListener('mousedown', pointerDown);
+  container.addEventListener('mousemove', pointerMove);
+  document.addEventListener('mouseup', pointerUpOrCancel);
+
+  container.addEventListener('touchstart', pointerDown, {passive:false});
+  container.addEventListener('touchmove',  pointerMove, {passive:false});
+  container.addEventListener('touchend',   pointerUpOrCancel);
+  container.addEventListener('touchcancel',pointerUpOrCancel);
+})();
   </script>
 
 <div id="check-success">
