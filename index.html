@@ -60,7 +60,7 @@ button {
       font-weight: bold; flex-shrink: 0; text-align: center; margin-left: 1rem;
     }
     .fab {
-      position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
+      position: fixed; bottom: 24px; right: 24px; width: 40px; height: 40px;
       background-color: #00aaff; color: white; border-radius: 50%; font-size: 32px;
       display: flex; align-items: center; justify-content: center;
       cursor: pointer; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); z-index: 10;
@@ -638,22 +638,20 @@ margin-top:0.8rem;
 <button id="exitEditBtn" style="
   display: none;
   position: fixed;
-  bottom: 80px;
+  bottom: 20px;               /* ⬇ 往下 */
   left: 50%;
   transform: translateX(-50%);
-  background: #00aaff;
+  background: #e3ffe8;
   color: white;
   border: none;
-  border-radius: 12px;
-  padding: 10px 20px;
-  font-size: 15px;
+  border-radius: 8px;         /* ⬇ 圓角小一點 */
+  padding: 6px 14px;          /* ⬇ 縮小內距 */
+  font-size: 13px;            /* ⬇ 字小一點 */
   font-weight: bold;
   cursor: pointer;
   z-index: 10;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-">
-  ✔ 完成編輯
-</button>
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15); /* ⬇ 陰影淡一點 */
+">✅</button>
 
 
   <!-- 新增任務視窗 -->
@@ -720,6 +718,7 @@ margin-top:0.8rem;
   </div>
 
   <script>
+let isEditing = false;   // 目前是否在編輯分類模式
   // ✅ 分類在這裡維護（有順序）
 let categoriesLoaded = false;  // 分類是否已從雲端載入
 let categories = [];
@@ -1039,48 +1038,31 @@ function addCategory() {
 let pendingRenameId = null;
 
 function enterEditMode() {
-  const sections = document.querySelectorAll('.section');
-  sections.forEach(section => {
-    section.classList.add('edit-mode');
-
-    const titleBar = section.querySelector('.section-title');
-    const currentName = section.id;
-
-    // 直接重繪 titleBar，確保有結構化節點可操作
-    titleBar.innerHTML = '';
-    // 拖拉把手
-    const drag = document.createElement('span');
-    drag.className = 'drag-handle';
-    drag.innerHTML = '☰';
-    titleBar.appendChild(drag);
-
-    // 名稱容器
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'section-name';
-    nameSpan.style.marginLeft = '0.5rem';
-    nameSpan.textContent = currentName;
-    titleBar.appendChild(nameSpan);
-
-    // 重命名按鈕（✎）
-    const renameBtn = document.createElement('button');
-    renameBtn.className = 'rename-btn';
-    renameBtn.innerHTML = '✎';
-    renameBtn.onclick = () => openRenameModal(section.id);
-    titleBar.appendChild(renameBtn);
-
-    // 刪除按鈕（✕）
-    const delBtn = document.createElement('button');
-    delBtn.className = 'delete-btn';
-    delBtn.innerHTML = '✕';
-    delBtn.onclick = () => confirmDeleteCategory(section.id);
-    titleBar.appendChild(delBtn);
-  });
-
-  document.getElementById('exitEditBtn').style.display = 'block';
+  isEditing = true;
+  decorateSectionsForEdit();
   document.getElementById('menu').style.display = 'none';
-  initSectionSortable();   // 進編輯模式後重新啟用拖曳
 }
 
+function exitEditMode() {
+  isEditing = false;
+
+  // 清掉編輯配件
+  document.querySelectorAll('.section').forEach(section => {
+    section.classList.remove('edit-mode');
+    const titleBar = section.querySelector('.section-title');
+    if (!titleBar) return;
+    // 還原只顯示名稱
+    const name = section.id;
+    titleBar.innerHTML = name;
+  });
+
+  const exitBtn = document.getElementById('exitEditBtn');
+  if (exitBtn) exitBtn.style.display = 'none';
+
+  // 可選：更新一次下拉
+  updateSectionOptions();
+}
+document.getElementById('exitEditBtn').onclick = exitEditMode;
 // 刪除分類彈窗
 function confirmDeleteCategory(id) {
   const category = document.getElementById(id);
@@ -1170,26 +1152,25 @@ function initSectionSortable(){
     sectionSortable.destroy();
   }
 
-  sectionSortable = new Sortable(el, {
-    animation: 150,
-    handle: '.drag-handle',
-    draggable: '.section',     // 只讓 .section 能拖，不會拖到 #doneMore
-    ghostClass: 'dragging',
+sectionSortable = new Sortable(el, {
+  animation: 150,
+  handle: '.drag-handle',
+  draggable: '.section',
+  ghostClass: 'dragging',
 
-    // ⭐ 手機重點：強制走模擬拖曳＋長按延遲
-    forceFallback: true,
-    fallbackOnBody: true,
-    delayOnTouchOnly: true,
-    delay: 200,                // 長按 200ms 再開始拖（更穩）
-    touchStartThreshold: 8,    // 手指移動 8px 才算拖，避免誤觸
+  // ⬇️ 立刻拖：取消長按延遲與門檻
+  forceFallback: true,
+  fallbackOnBody: true,
+  delay: 0,                 // 立刻開始
+  delayOnTouchOnly: false,  // 不需要長按邏輯
+  touchStartThreshold: 0,   // 觸碰就拖
 
-    onEnd: () => {
-      // 放手後讀新順序並存雲
-      categories = Array.from(document.querySelectorAll('#section-container .section'))
-        .map(sec => sec.id);
-      saveCategoriesToFirebase();
-    }
-  });
+  onEnd: () => {
+    categories = Array.from(document.querySelectorAll('#section-container .section'))
+      .map(sec => sec.id);
+    saveCategoriesToFirebase();
+  }
+});
 }
 function openRenameModal(sectionId) {
   pendingRenameId = sectionId;
@@ -1846,6 +1827,58 @@ function renderSections(list){
     const menu = document.getElementById('doneMonthMenu');
     if (menu) menu.style.display = (menu.style.display === 'block' ? 'none' : 'block');
   };
+
+  // ✅ 如果還在編輯模式，重畫後馬上套回編輯配件
+  if (isEditing) {
+    decorateSectionsForEdit();
+  }
+}
+
+function decorateSectionsForEdit() {
+  const sections = document.querySelectorAll('.section');
+  sections.forEach(section => {
+    section.classList.add('edit-mode');
+
+    const titleBar = section.querySelector('.section-title');
+    const currentName = section.id;
+
+    // 先清乾淨避免重複疊
+    titleBar.innerHTML = '';
+
+    // 拖拉把手
+    const drag = document.createElement('span');
+    drag.className = 'drag-handle';
+    drag.innerHTML = '☰';
+    titleBar.appendChild(drag);
+
+    // 名稱
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'section-name';
+    nameSpan.style.marginLeft = '0.5rem';
+    nameSpan.textContent = currentName;
+    titleBar.appendChild(nameSpan);
+
+    // 重命名（✎）
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'rename-btn';
+    renameBtn.innerHTML = '✎';
+    renameBtn.onclick = () => openRenameModal(section.id);
+    titleBar.appendChild(renameBtn);
+
+    // 刪除（✕）
+    const delBtn = document.createElement('button');
+    delBtn.className = 'delete-btn';
+    delBtn.innerHTML = '✕';
+    delBtn.onclick = () => confirmDeleteCategory(section.id);
+    titleBar.appendChild(delBtn);
+  });
+
+  // 重新掛拖拉
+  initSectionSortable();
+
+  // 顯示底部「完成編輯」按鈕
+  const exitBtn = document.getElementById('exitEditBtn');
+  if (exitBtn) exitBtn.style.display = 'block';
 }
 
   </script>
