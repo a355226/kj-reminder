@@ -1381,15 +1381,29 @@ let completedMonthFilter = "recent15"; // recent15 或 '11407' 這種月份
 document.addEventListener("change", function(e){
   if (e.target.matches('.filter-status input[type="radio"]')) {
     statusFilter = e.target.value;              // 'ongoing' or 'done'
-    if (statusFilter === 'done') {
-      completedMonthFilter = "recent15";
-      buildDoneMonthMenu();                    // 生成月份清單
-      document.getElementById('doneMore').style.display = 'block';
-      renderCompletedTasks();
-    } else {
-      document.getElementById('doneMore').style.display = 'none';
-      showOngoing();                           // 回到進行中
-    }
+ if (statusFilter === 'done') {
+  // 禁用右下＋按鈕
+  const fab = document.querySelector('.fab');
+  if (fab) {
+    fab.style.pointerEvents = 'none';   // 不可點
+    fab.style.opacity = '0.5';          // 變淡
+  }
+
+  completedMonthFilter = "recent15";
+  buildDoneMonthMenu();                    
+  document.getElementById('doneMore').style.display = 'block';
+  renderCompletedTasks();
+} else {
+  // 恢復右下＋按鈕
+  const fab = document.querySelector('.fab');
+  if (fab) {
+    fab.style.pointerEvents = 'auto';   // 可點
+    fab.style.opacity = '1';            // 還原
+  }
+
+  document.getElementById('doneMore').style.display = 'none';
+  showOngoing();                           
+}
   }
 });
 // 3) 監聽「天數設定」切換（在你的 document.addEventListener 區塊加這段）
