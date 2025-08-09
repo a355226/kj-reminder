@@ -748,6 +748,14 @@ margin-top:0.8rem;
 .fab[aria-disabled="true"]{
   pointer-events: none; opacity:.5; box-shadow: none;
 }
+/* 預設都不顯示，避免閃爍 */
+#loginPage { display: none; }
+.container { display: none !important; }
+
+/* 只在確定要顯示時，才打開對應區塊 */
+html.show-login #loginPage { display: flex; }      /* 顯示登入頁 */
+html.show-app   .container { display: block !important; } /* 顯示主畫面 */
+
   </style>
 </head>
 <body>
