@@ -1045,27 +1045,62 @@ async function bootAuth() {
   bootAuth.__busy = true;
   setLoginBusy(true);
 
-  // 先把顯示狀態清掉，避免閃爍
+  // 只用 class 切畫面，先清乾淨
   document.documentElement.classList.remove('show-login', 'show-app');
 
-  // PWA 先熱身（網路/儲存就緒 & 設定持久性）
+  // PWA warmup（保留你的）
   if (isStandalone) {
     await pwaAuthWarmup();
   } else {
     try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(_) {}
   }
 
-  // 讀 sessionStorage 或 localStorage，算出 roomPath
   hydrateRoomPath();
 
+  // ➤ 已經有 user 且有 roomPath：不要再 signOut/ signIn！
+  if (auth.currentUser && roomPath) {
+    document.documentElement.classList.add('show-app');
+    // 清掉可能殘留的 inline display
+    const lp  = document.getElementById('loginPage');
+    const app = document.querySelector('.container');
+    if (lp)  lp.style.display  = '';
+    if (app) app.style.display = '';
+
+    // 確保資料監聽就緒（若已綁會被 on('value') 覆蓋）
+    loadTasksFromFirebase();
+    updateSectionOptions();
+    setLoginBusy(false);
+    bootAuth.__busy = false;
+    return;
+  }
+
+  // ➤ 沒 roomPath：留在登入頁，不要 signOut 以免閃爍
   if (!roomPath) {
-    // 沒憑證：停在登入頁，並確保沒有殘留登入狀態
-    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
     document.documentElement.classList.add('show-login');
     setLoginBusy(false);
     bootAuth.__busy = false;
     return;
   }
+
+  // ➤ 需要建立匿名 session 才登入（此時才做乾淨登入）
+  try {
+    if (auth.currentUser) await auth.signOut();
+
+    const timeout = new Promise((_, rej) =>
+      setTimeout(() => rej(new Error('timeout')), 7000)
+    );
+    await Promise.race([auth.signInAnonymously(), timeout]);
+
+    document.documentElement.classList.add('show-app');
+    loadTasksFromFirebase();
+    updateSectionOptions();
+  } catch (e) {
+    document.documentElement.classList.add('show-login');
+  } finally {
+    setLoginBusy(false);
+    bootAuth.__busy = false;
+  }
+}
 
   // 有憑證：乾淨登入 + 超時備援
   try {
