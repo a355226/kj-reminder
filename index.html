@@ -10,7 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<link rel="icon type="image/png" sizes="32x32" href="reminder.png">
+<link rel="icon" type="image/png" sizes="32x32" href="reminder.png">
 <link rel="apple-touch-icon" sizes="180x180" href="reminder.png">
 <link rel="manifest" href="manifest.json">
 
@@ -945,22 +945,6 @@ let categoriesLoaded = false;  // 分類是否已從雲端載入
 let categories = [];
 let sectionSortable = null;  // 存住 Sortable 實例
 // ✅ 重新畫出所有分類區塊（依照 categories 順序）
-function renderSections(list){
-  const wrap = document.getElementById('section-container');
-  wrap.innerHTML = ''; // 清空
-
-  list.forEach(name => {
-    const sec = document.createElement('div');
-    sec.className = 'section';
-    sec.id = name;
-    sec.innerHTML = `<div class="section-title">${name}</div>`;
-    wrap.appendChild(sec);
-  });
-
-  updateSectionOptions();   // 重建兩個下拉
-  // 重新掛上拖拉（因為剛剛重建了 DOM）
-  initSectionSortable();
-}
 function refreshCurrentView(){
   if (statusFilter === 'done') {
     buildDoneMonthMenu();
@@ -1091,7 +1075,6 @@ async function bootAuth() {
 }
 
 // 事件：開頁、回前景、聚焦時都補呼叫一次
-document.addEventListener('DOMContentLoaded', bootAuth);
 
 
 // ===== 共用的「確保登入」流程（有重試/超時保護）=====
@@ -1116,9 +1099,6 @@ async function ensureSignedIn() {
 document.documentElement.classList.remove('show-app');
 document.documentElement.classList.add('show-login');
 
-// 顯示主畫面
-document.documentElement.classList.remove('show-login');
-document.documentElement.classList.add('show-app');
     // 為了保險：若瀏覽器還留著舊的匿名使用者，登出一次，避免之後 onAuthStateChanged 亂切畫面
     try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
     return;
@@ -1186,10 +1166,6 @@ function hydrateRoomPath(){
   }
 }
 
-    function toggleMenu() {
-      const menu = document.getElementById('menu');
-      menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
-    }
 function openModal() {
   updateSectionOptions();                 // ★ 每次打開先同步
   document.getElementById('taskModal').style.display = 'flex';
