@@ -2547,7 +2547,7 @@ let autoLoginWD = null;
 
 function startAutoLoginWatchdog(){
   stopAutoLoginWatchdog();
-  autoLoginWD = setTimeout(runAutoLoginRescue, 8000); // 8 秒還沒好就救援
+  autoLoginWD = setTimeout(runAutoLoginRescue, 3000); // 8 秒還沒好就救援
 }
 
 function stopAutoLoginWatchdog(){
