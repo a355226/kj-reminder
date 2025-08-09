@@ -1492,27 +1492,6 @@ function enterEditMode() {
   decorateSectionsForEdit();
   closeFabMenu();
 }
-
-function exitEditMode() {
-  isEditing = false;
-
-  // 清掉編輯配件
-  document.querySelectorAll('.section').forEach(section => {
-    section.classList.remove('edit-mode');
-    const titleBar = section.querySelector('.section-title');
-    if (!titleBar) return;
-    // 還原只顯示名稱
-    const name = section.id;
-    titleBar.innerHTML = name;
-  });
-
-  const exitBtn = document.getElementById('exitEditBtn');
-  if (exitBtn) exitBtn.style.display = 'none';
-
-  // 可選：更新一次下拉
-  updateSectionOptions();
-}
-document.getElementById('exitEditBtn').onclick = exitEditMode;
 // 刪除分類彈窗
 function confirmDeleteCategory(id) {
   const category = document.getElementById(id);
@@ -1569,28 +1548,35 @@ selects.forEach(select => {
 
 //確認完成編輯
 function exitEditMode() {
-  const sections = document.querySelectorAll('.section');
-  sections.forEach(section => {
-    section.classList.remove('edit-mode');
-    section.removeAttribute('draggable');
-    section.ondragstart = null;
-    section.ondragover = null;
-    section.ondrop = null;
+  // 關閉編輯狀態
+  isEditing = false;
 
-    // 選擇 .drag-handle 和 .delete-btn，並移除
+  // 清掉編輯配件與樣式
+  document.querySelectorAll('.section').forEach(section => {
+    section.classList.remove('edit-mode');
+
     const titleBar = section.querySelector('.section-title');
     if (titleBar) {
-      const drag = titleBar.querySelector('.drag-handle');
-      const del = titleBar.querySelector('.delete-btn');
-      if (drag) drag.remove();
-      if (del) del.remove();
+      // 還原只顯示名稱
+      titleBar.innerHTML = section.id;
     }
   });
 
-  // 隱藏「完成編輯」按鈕
-  document.getElementById('exitEditBtn').style.display = 'none';
+  // 隱藏底部「完成編輯」鈕
+  const exitBtn = document.getElementById('exitEditBtn');
+  if (exitBtn) exitBtn.style.display = 'none';
+
+  // （可選）確保拖拉實例乾淨
+  if (sectionSortable && sectionSortable.destroy) {
+    sectionSortable.destroy();
+    sectionSortable = null;
+  }
+  // 重新初始化拖拉（非編輯模式下有把手就能拖，沒把手就不會動）
+  initSectionSortable();
+
+  // 編輯結束後，更新下拉選單
+  updateSectionOptions();
 }
-document.getElementById('exitEditBtn').onclick = exitEditMode;
 
 //手機拖拉
 function initSectionSortable(){
