@@ -627,6 +627,47 @@ margin-top:0.8rem;
 
 /* 只在編輯狀態顯示滑桿；完成檢視(readonly)隱藏 */
 #detailModal.readonly .slide-complete { display: none; }
+
+/* 淺色版：儲存 & 移除 */
+.save-btn-half,
+.delete-btn-half {
+  border: 1px solid transparent;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
+}
+
+/* 儲存：薄薄綠藍 */
+.save-btn-half {
+  background: linear-gradient(0deg, #eefbf6, #f6fdf9);
+  border-color: #ccefe2;
+  color: #176d59;           /* 深一點，易讀 */
+}
+.save-btn-half:hover {
+  background: #e8faf3;
+  box-shadow: 0 2px 6px rgba(0,0,0,.08);
+}
+.save-btn-half:active { transform: translateY(1px); }
+
+/* 移除：薄薄珊瑚粉 */
+.delete-btn-half {
+  background: linear-gradient(0deg, #fff3f3, #fff7f7);
+  border-color: #ffd8d8;
+  color: #b23b3b;           /* 深一點，易讀 */
+}
+.delete-btn-half:hover {
+  background: #ffeef0;
+  box-shadow: 0 2px 6px rgba(0,0,0,.08);
+}
+.delete-btn-half:active { transform: translateY(1px); }
+
+/* 全幅儲存（若你也想同步變淺） */
+.save-btn {
+  background: linear-gradient(0deg, #eefbf6, #f6fdf9);
+  border: 1px solid #ccefe2;
+  color: #176d59;
+}
+.save-btn:hover { background:#e8faf3; }
   </style>
 </head>
 <body>
