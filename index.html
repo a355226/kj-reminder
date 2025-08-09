@@ -721,6 +721,7 @@ margin-top:0.8rem;
 
   <script>
   // ✅ 分類在這裡維護（有順序）
+let categoriesLoaded = false;  // 分類是否已從雲端載入
 let categories = [];
 let sectionSortable = null;  // 存住 Sortable 實例
 // ✅ 重新畫出所有分類區塊（依照 categories 順序）
@@ -1353,12 +1354,16 @@ function clearAllSections() {
 function showOngoing() {
   clearAllSections();
 // 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
+// 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
 const needed = Array.from(new Set(tasks.map(t => t.section).filter(Boolean)));
-const union = Array.from(new Set([...(categories || []), ...needed]));
-if (union.length !== (categories || []).length) {
-  categories = union;
-  saveCategoriesToFirebase();
-  renderSections(categories); // 先把分類畫好，下面才渲染任務
+const merged = Array.from(new Set([...(categories || []), ...needed]));
+
+if (merged.length !== (categories || []).length) {
+  categories = merged;
+  if (categoriesLoaded) {          // ★★★ 分類載好後才允許存雲端
+    saveCategoriesToFirebase();
+  }
+  renderSections(categories);       // 重畫分類
 }
   // 重新把進行中 tasks 依 section 渲染
   tasks.forEach(t => {
@@ -1457,11 +1462,15 @@ document.getElementById('doneMoreBtn')?.addEventListener('click', () => {
 function renderCompletedTasks() {
   clearAllSections();
 // 把已完成任務用到的分類也補回 categories
+// 把已完成任務用到的分類也補回 categories
 const needFromDone = Array.from(new Set(completedTasks.map(t => t.section).filter(Boolean)));
-const union2 = Array.from(new Set([...(categories || []), ...needFromDone]));
-if (union2.length !== (categories || []).length) {
-  categories = union2;
-  saveCategoriesToFirebase();
+const merged2 = Array.from(new Set([...(categories || []), ...needFromDone]));
+
+if (merged2.length !== (categories || []).length) {
+  categories = merged2;
+  if (categoriesLoaded) {          // ★★★ 分類載好後才允許存雲端
+    saveCategoriesToFirebase();
+  }
   renderSections(categories);
 }
 
@@ -1728,6 +1737,8 @@ categoriesRef.on('value', (snap) => {
     categories = DEFAULT_CATEGORIES.slice();
     saveCategoriesToFirebase(); // 存回雲端
   }
+
+categoriesLoaded = true;
 
   // 先畫分類，再畫任務
   renderSections(categories);
