@@ -756,6 +756,51 @@ margin-top:0.8rem;
 html.show-login #loginPage { display: flex; }      /* 顯示登入頁 */
 html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 
+/* ===== 自動登入載入層 ===== */
+#autologin-overlay{
+  position: fixed; inset: 0;
+  display: none;                  /* 預設不顯示 */
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 260;                   /* 高於 modal(200) 但不擋你登出確認(220) 的話可調高到 260 */
+}
+#autologin-overlay.show{ display:flex; }
+
+.autologin-box{
+  display:flex; flex-direction:column; align-items:center; gap:.75rem;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.9);
+  border: 1px solid rgba(180,210,255,.35);
+  box-shadow: 0 12px 28px rgba(0,60,130,.12);
+  transform: translateY(6px);
+  animation: al-pop .2s ease-out forwards;
+}
+
+.autologin-loader{
+  width: 42px; height: 42px; border-radius: 50%;
+  border: 3px solid #e6f4ff;
+  border-top-color: #00aaff;     /* 跟主色一致 */
+  animation: al-spin .8s linear infinite;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.04);
+}
+
+.autologin-text{
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: #176dff;                 /* 淺藍系字色 */
+  font-size: 14px;
+}
+
+@keyframes al-spin { to { transform: rotate(360deg); } }
+@keyframes al-pop {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
   </style>
 </head>
 <body>
@@ -1107,6 +1152,8 @@ document.documentElement.classList.add('show-login');
   // ✅ 情況 2：有儲存帳密 → 正常自動登入流程
   hydrateRoomPath(); // 組好 roomPath
 
+showAutoLoginOverlay();
+
   try {
     // A. 若已經有 user 且有 roomPath，直接進主畫面
     if (auth.currentUser && roomPath) {
@@ -1131,6 +1178,7 @@ document.documentElement.classList.add('show-login');
     await auth.signInAnonymously();
   } catch (e) {
     alert('自動登入失敗：' + (e?.message || e));
+hideAutoLoginOverlay();
   } finally {
     authBusy = false;
     // 其餘切畫面由 onAuthStateChanged 統一處理
@@ -2012,7 +2060,8 @@ if (app) app.style.display = '';   // 清除任何 inline display
     document.documentElement.classList.remove('show-app');
     document.documentElement.classList.add('show-login');
   } finally {
-    setLoginBusy(false);
+hideAutoLoginOverlay();
+setLoginBusy(false);
     loggingIn = false;
   }
 });
@@ -2455,6 +2504,15 @@ function hideEmptySectionsAfterFilter(){
     sec.style.display = hasVisibleTask ? '' : 'none';
   });
 }
+
+function showAutoLoginOverlay(){
+  const el = document.getElementById('autologin-overlay');
+  if (el){ el.classList.add('show'); el.setAttribute('aria-hidden','false'); }
+}
+function hideAutoLoginOverlay(){
+  const el = document.getElementById('autologin-overlay');
+  if (el){ el.classList.remove('show'); el.setAttribute('aria-hidden','true'); }
+}
   </script>
 
 <div id="check-success">
@@ -2536,6 +2594,14 @@ function hideEmptySectionsAfterFilter(){
 <hr style="margin:1rem 0;border:none;border-top:1px solid #eee;">
 <button class="logout-btn" style="font-weight:bold;" onclick="openLogoutModal()">登出</button>
 
+  </div>
+</div>
+
+<!-- 自動登入載入中 -->
+<div id="autologin-overlay" aria-hidden="true">
+  <div class="autologin-box">
+    <div class="autologin-loader"></div>
+    <div class="autologin-text">自動登入中…</div>
   </div>
 </div>
 
