@@ -1237,8 +1237,16 @@ function hydrateRoomPath(){
   }
 }
 
-function openModal() {
-  updateSectionOptions();                 // ★ 每次打開先同步
+function openModal(prefSectionId) {
+  updateSectionOptions();                 // ★ 先同步選項
+  if (prefSectionId) {
+    const sel = document.getElementById('taskSection');
+    if (sel) {
+      // 有對應選項就預選；沒有就維持原狀
+      const opt = sel.querySelector(`option[value="${prefSectionId}"]`);
+      if (opt) sel.value = prefSectionId;
+    }
+  }
   document.getElementById('taskModal').style.display = 'flex';
   closeFabMenu();
 }
@@ -2688,7 +2696,7 @@ async function runAutoLoginRescue(){
       clearTimers();
       if (!isEditing && statusFilter !== 'done') {
         try { closeFabMenu(); } catch(_){}
-        openModal(); // 開「新增任務」
+        openModal(pressSection?.id); // ★ 把被長按的 section 預選進去
       }
     }, PRESS_MS);
   }
