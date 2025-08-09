@@ -718,6 +718,32 @@ margin-top:0.8rem;
   </div>
 
   <script>
+  // ✅ 分類在這裡維護（有順序）
+let categories = [];
+
+// ✅ 重新畫出所有分類區塊（依照 categories 順序）
+function renderSections(list){
+  const wrap = document.getElementById('section-container');
+  wrap.innerHTML = ''; // 清空
+
+  list.forEach(name => {
+    const sec = document.createElement('div');
+    sec.className = 'section';
+    sec.id = name;
+    sec.innerHTML = `<div class="section-title">${name}</div>`;
+    wrap.appendChild(sec);
+  });
+
+  updateSectionOptions();   // 重建兩個下拉
+  // 重新掛上拖拉（因為剛剛重建了 DOM）
+  initSectionSortable();
+}
+
+// ✅ 只存分類（不要再從 tasks 推回去）
+function saveCategoriesToFirebase(){
+  if(!roomPath) return;
+  db.ref(`${roomPath}/categories`).set(categories);
+}
 // === Firebase 初始化（放在這支 <script> 的最上面）===
 const firebaseConfig = {
   apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
@@ -980,15 +1006,13 @@ function openCategoryModal() {
 function addCategory() {
   const name = document.getElementById('newCategoryName').value.trim();
   if (!name) return;
-  if (document.getElementById(name)) { alert("此分類已存在！"); return; }
+  if (categories.includes(name)) { alert("此分類已存在！"); return; }
 
-  const section = document.createElement('div');
-  section.className = 'section';
-  section.id = name;
-  section.innerHTML = `<div class="section-title">${name}</div>`;
-  document.getElementById('section-container').appendChild(section);
+  // ✅ 更新陣列、存雲、重畫
+  categories.push(name);
+  saveCategoriesToFirebase();
+  renderSections(categories);
 
-  updateSectionOptions();    // ★ 用統一方法重建
   closeModal('categoryModal');
 }
 
@@ -1072,10 +1096,23 @@ function confirmDeleteCategory(id) {
   `;
 
   // 綁定按鈕事件
-  confirmBox.querySelector('.confirm-btn').onclick = () => {
-    category.remove();
-    confirmBox.remove();
-  };
+confirmBox.querySelector('.confirm-btn').onclick = () => {
+  // ✅ 先處理任務：把在這個分類的任務，移去一個安全分類
+  const fallback = categories.find(c => c !== id) || '其它';
+  tasks.forEach(t => { if (t.section === id) t.section = fallback; });
+  completedTasks.forEach(t => { if (t.section === id) t.section = fallback; });
+  saveTasksToFirebase(); // 任務有動到就存一下
+
+  // ✅ 更新分類陣列
+  categories = categories.filter(c => c !== id);
+  saveCategoriesToFirebase();
+
+  // ✅ 重畫分類與任務
+  renderSections(categories);
+  if (statusFilter === 'done') renderCompletedTasks(); else showOngoing();
+
+  confirmBox.remove();
+};
   confirmBox.querySelector('.cancel-btn').onclick = () => {
     confirmBox.remove();
   };
@@ -1119,11 +1156,22 @@ function exitEditMode() {
 document.getElementById('exitEditBtn').onclick = exitEditMode;
 
 //手機拖拉
-new Sortable(document.getElementById('section-container'), {
-  animation: 150,
-  handle: '.drag-handle', // 只允許拖拉圖示 ☰ 拖動
-  ghostClass: 'dragging'
-});
+function initSectionSortable(){
+  const el = document.getElementById('section-container');
+  if (!el) return;
+  // 先銷毀舊的（Sortable 沒有簡單的銷毀就重新 new 覆蓋一次即可）
+  new Sortable(el, {
+    animation: 150,
+    handle: '.drag-handle',
+    ghostClass: 'dragging',
+    onEnd: () => {
+      // ✅ 讀取新順序並存
+      categories = Array.from(document.querySelectorAll('#section-container .section'))
+        .map(sec => sec.id);
+      saveCategoriesToFirebase();
+    }
+  });
+}
 
 function openRenameModal(sectionId) {
   pendingRenameId = sectionId;
@@ -1139,38 +1187,19 @@ function confirmRename() {
     return;
   }
 
-  // 更新分類區塊
-  const section = document.getElementById(oldId);
-  section.id = newName;
-  section.querySelector('.section-title').childNodes[1].textContent = newName;
-
-  // 儲存分類名稱到 Firebase
-// 儲存分類名稱到 Firebase - 修正版
-const categoriesRef = db.ref(`${roomPath}/categories`);
-categoriesRef.once('value').then(snapshot => {
-  const categories = snapshot.val() || [];
-  const updatedCategories = categories.filter(c => c !== oldId);  // 刪除舊名稱
-  updatedCategories.push(newName); // 加入新名稱
-  categoriesRef.set(updatedCategories); // 儲存新的分類名稱列表
-  
-  // 修正：也要更新 tasks 的儲存，確保任務的 section 欄位改名生效
-  saveTasksToFirebase();
-  closeModal('renameModal');
-});
-
   // 進行中任務：改 section
   tasks.forEach(t => { if (t.section === oldId) t.section = newName; });
 
   // 已完成任務：也要改 section
   completedTasks.forEach(t => { if (t.section === oldId) t.section = newName; });
 
-  // 下拉選單統一用你的工具函式更新
-  updateSectionOptions();
+  // ✅ 把 categories 陣列裡的舊名換新名
+  categories = categories.map(c => c === oldId ? newName : c);
+  saveCategoriesToFirebase();   // 存分類
+  saveTasksToFirebase();        // 存任務
 
-  // 存回雲端
-  saveTasksToFirebase();
-
-  // 依目前頁籤刷新畫面
+  // ✅ 重畫 + 依當前頁籤刷新
+  renderSections(categories);
   if (statusFilter === 'done') {
     renderCompletedTasks();
   } else {
@@ -1656,13 +1685,26 @@ function loadTasksFromFirebase() {
 
   // 載入分類名稱
   categoriesRef.on('value', (snap) => {
-    const categories = snap.val() || [];
-    categories.forEach(category => {
-      // 如果分類名稱存在，則顯示對應的區塊
-      const section = document.getElementById(category);
-      if (section) section.style.display = 'block';
-    });
-  });
+  const cloud = snap.val() || [];
+
+  if (cloud.length === 0) {
+    // 第一次沒有資料：把現在畫面上（如果有）當預設，存上去
+    const domNames = Array.from(document.querySelectorAll('#section-container .section'))
+      .map(sec => sec.id);
+    categories = domNames.length ? domNames : ['居家服務','喘息服務','專業服務'];
+    saveCategoriesToFirebase();       // 初始化上雲
+  } else {
+    categories = cloud.slice();       // 用雲端的順序
+  }
+
+  renderSections(categories);         // ← 由我們函式重畫分類區塊
+  // 畫面有了分類後，再把任務塞進去
+  if (statusFilter === 'done') {
+    renderCompletedTasks();
+  } else {
+    showOngoing();
+  }
+});
 }
 
 
@@ -1679,8 +1721,6 @@ function saveTasksToFirebase() {
   db.ref(`${roomPath}/completedTasks`).set(doneObj);
 
   // 儲存分類資料
-  const categories = [...new Set(tasks.map(t => t.section))];  // 確保分類不重複
-  db.ref(`${roomPath}/categories`).set(categories);
 }
 
 //登出
@@ -1733,6 +1773,36 @@ if ('serviceWorker' in navigator) {
 
 function getTitleWithFlag(t){
   return (t.important ? '❗ ' : '') + (t.title || '');
+}
+
+function renderSections(list){
+  const wrap = document.getElementById('section-container');
+  // 先重建 doneMore（固定在最上面）
+  wrap.innerHTML = `
+    <div id="doneMore" style="display:none; text-align:right; margin:0.25rem 0;">
+      <button id="doneMoreBtn" style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">更多…</button>
+      <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
+    </div>
+  `;
+
+  // 依 categories 畫出各分類
+  list.forEach(name => {
+    const sec = document.createElement('div');
+    sec.className = 'section';
+    sec.id = name;
+    sec.innerHTML = `<div class="section-title">${name}</div>`;
+    wrap.appendChild(sec);
+  });
+
+  updateSectionOptions();
+  initSectionSortable();      // 你已有的函式
+
+  // 重新掛「更多…」按鈕的事件（因為 innerHTML 會清掉舊的事件）
+  const btn = document.getElementById('doneMoreBtn');
+  if (btn) btn.onclick = () => {
+    const menu = document.getElementById('doneMonthMenu');
+    if (menu) menu.style.display = (menu.style.display === 'block' ? 'none' : 'block');
+  };
 }
 
   </script>
