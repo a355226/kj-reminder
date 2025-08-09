@@ -551,7 +551,15 @@ margin-top:0.8rem;
   white-space: nowrap;
   font-size: 0.95rem;
 }
-
+.drag-handle{
+  cursor: grab;
+  touch-action: none;          /* 重點：阻止預設捲動 */
+  -webkit-user-select: none;   /* iOS 不要選字 */
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* 可選：內容區仍可上下捲動 */
+.section { touch-action: pan-y; }
 
   </style>
 </head>
@@ -1155,13 +1163,21 @@ document.getElementById('exitEditBtn').onclick = exitEditMode;
 function initSectionSortable(){
   const el = document.getElementById('section-container');
   if (!el) return;
-  // 先銷毀舊的（Sortable 沒有簡單的銷毀就重新 new 覆蓋一次即可）
+
   new Sortable(el, {
     animation: 150,
     handle: '.drag-handle',
+    draggable: '.section',     // 只讓 .section 可拖，不拖到 #doneMore
     ghostClass: 'dragging',
+
+    // ⭐ 手機重點在這裡
+    forceFallback: true,       // iOS 必備：改用模擬拖曳
+    fallbackOnBody: true,
+    delayOnTouchOnly: true,    // 只在觸控裝置加延遲
+    delay: 120,                // 長按 120ms 再開始拖
+    touchStartThreshold: 5,    // 手指移動 5px 才算開始拖
+
     onEnd: () => {
-      // ✅ 讀取新順序並存
       categories = Array.from(document.querySelectorAll('#section-container .section'))
         .map(sec => sec.id);
       saveCategoriesToFirebase();
