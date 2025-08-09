@@ -1489,13 +1489,16 @@ if (merged.length !== (categories || []).length) {
 }
 
 // 轉民國年月（回傳如 "11407"）
-// 確保完整地處理時間戳
-function toRocYM(d) {
-  const yy = d.getFullYear() - 1911; // 計算 ROC 年（減去 1911）
-  const mm = (d.getMonth() + 1).toString().padStart(2, '0'); // 確保月份為 2 位數
-  const result = `${yy}${mm}`;
-  console.log('toRocYM result:', result); // 調試，確認轉換是否正確
-  return result;
+function toRocYM(input) {
+  // 允許傳進來是字串或 Date
+  const d = (input instanceof Date) ? input : new Date(input);
+
+  // 沒填日期 or 無效日期 → 直接歸到「無」
+  if (!input || isNaN(d.getTime())) return '無';
+
+  const yy = d.getFullYear() - 1911;
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${yy}${mm}`;
 }
 
 // 生成月份清單（僅列出 >15 天的月份，且有資料的）
