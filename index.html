@@ -800,7 +800,26 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
   from { opacity: 0; transform: translateY(10px) scale(.98); }
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
+/* Section 區：關閉文字選取、iOS 長按呼叫菜單、點擊高亮 */
+#section-container {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+#section-container .section {
+  -webkit-tap-highlight-color: transparent;
+  will-change: transform;
+  transition: transform 120ms ease;
+}
 
+/* 點擊/按壓的視覺回饋 */
+.section.__pressed { transform: scale(0.985); }
+@keyframes __bump {
+  0% { transform: scale(1); }
+  50%{ transform: scale(0.985); }
+  100%{ transform: scale(1); }
+}
+.section.__bump { animation: __bump .18s ease; }
   </style>
 </head>
 <body>
@@ -2608,43 +2627,54 @@ async function runAutoLoginRescue(){
   }
 }
 
-// ===== Section 空白處長按新增 =====
-(function enableLongPressNewTask(){
-  const PRESS_MS = 1000;           // 長按 1 秒
-  const MOVE_TOLERANCE = 10;       // 移動超過 10px 視為滑動，取消
+// ===== Section 空白處：長按新增（無反白/無選單）＋ 點擊彈跳回饋 =====
+(function enableCleanLongPressNewTask(){
+  const PRESS_MS = 1000;      // 長按 1 秒
+  const MOVE_TOL = 10;        // 移動超過 10px 視為滑動
   const container = document.getElementById('section-container');
   if (!container) return;
 
-  let timer = null;
-  let startX = 0, startY = 0;
-  let moved = false;
+  let timer = null, startX = 0, startY = 0, moved = false, pressSection = null, longPressed = false;
 
+  // 避免在輸入元件、task 卡片、編輯模式、已完成頁觸發
   function isEligibleTarget(e){
-    if (isEditing) return false;                 // 編輯分類時不觸發
-    if (statusFilter === 'done') return false;   // 已完成檢視不觸發
+    if (isEditing) return false;
+    if (statusFilter === 'done') return false;
     const sec = e.target.closest('.section');
-    if (!sec) return false;                      // 不在 section 裡
-    if (e.target.closest('.task')) return false; // 點到任務卡就不觸發
-    return true;                                 // 剩下都是 section 的空白區域
+    if (!sec) return false;
+    if (e.target.closest('.task')) return false;
+    if (e.target.closest('.drag-handle')) return false;
+    return sec;
   }
 
-  function clearTimer(){
-    if (timer){ clearTimeout(timer); timer = null; }
-  }
+  function clearTimer(){ if (timer){ clearTimeout(timer); timer = null; } }
 
   function pointerDown(e){
-    if (!isEligibleTarget(e)) return;
+    const sec = isEligibleTarget(e);
+    if (!sec) return;
+
+    // 阻止預設（避免選取、高亮、iOS 觸控呼叫菜單）
+    if (e.cancelable) e.preventDefault();
+
+    pressSection = sec;
+    pressSection.classList.add('__pressed');
+    longPressed = false;
+    moved = false;
 
     const p = e.touches ? e.touches[0] : e;
-    startX = p.clientX; startY = p.clientY; moved = false;
+    startX = p.clientX; startY = p.clientY;
 
+    // 啟動長按計時
     clearTimer();
     timer = setTimeout(()=>{
-      // 再次確認仍然符合條件（避免中途切換編輯/頁籤）
+      longPressed = true;
+      // 再次確認狀態
       if (!isEditing && statusFilter !== 'done') {
         try { closeFabMenu(); } catch(_) {}
-        openModal();  // 你現有的開「新增任務」視窗函式
+        openModal(); // 你現有的新增任務視窗
       }
+      // 收尾
+      pressSection && pressSection.classList.remove('__pressed');
       clearTimer();
     }, PRESS_MS);
   }
@@ -2654,15 +2684,41 @@ async function runAutoLoginRescue(){
     const p = e.touches ? e.touches[0] : e;
     const dx = Math.abs(p.clientX - startX);
     const dy = Math.abs(p.clientY - startY);
-    if (dx > MOVE_TOLERANCE || dy > MOVE_TOLERANCE){
+    if (dx > MOVE_TOL || dy > MOVE_TOL){
       moved = true;
-      clearTimer();         // 視為拖/滑動，取消長按
+      clearTimer();
+      pressSection && pressSection.classList.remove('__pressed');
     }
   }
 
-  function pointerUpOrCancel(){
-    clearTimer();           // 放開或被取消都清掉
+  function pointerUpOrCancel(e){
+    const wasLong = longPressed;
+    clearTimer();
+
+    // 移除按壓狀態
+    if (pressSection){
+      pressSection.classList.remove('__pressed');
+
+      // 若是「短按且沒滑動」、同時仍符合條件 → 做一次小彈跳回饋
+      if (!wasLong && !moved) {
+        const stillOk = isEligibleTarget(e) === pressSection;
+        if (stillOk) {
+          pressSection.classList.add('__bump');
+          // 動畫結束移除 class
+          setTimeout(()=> pressSection && pressSection.classList.remove('__bump'), 200);
+        }
+      }
+    }
+
+    pressSection = null;
+    moved = false;
+    longPressed = false;
   }
+
+  // 阻止 iOS 長按呼叫菜單（保險）
+  container.addEventListener('contextmenu', function(e){
+    if (isEligibleTarget(e)) { e.preventDefault(); }
+  });
 
   // 綁定（滑鼠 + 觸控）
   container.addEventListener('mousedown', pointerDown);
