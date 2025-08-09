@@ -2119,6 +2119,50 @@ function decorateSectionsForEdit() {
   document.addEventListener('touchmove', pointerMove, {passive:false});
   document.addEventListener('touchend', pointerUp);
 })();
+
+function closeFabMenu(){
+  const m = document.getElementById('menu');
+  if (m) m.style.display = 'none';
+}
+
+// 既有的 toggleMenu 可改用上面工具（可選）
+function toggleMenu() {
+  const menu = document.getElementById('menu');
+  menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
+}
+
+// 🔻 全域點擊：點到 menu 以外，就自動關
+document.addEventListener('click', function(e){
+  const menu = document.getElementById('menu');
+  if (!menu || menu.style.display !== 'flex') return;
+
+  const fab = document.querySelector('.fab');
+  const clickInsideMenu = menu.contains(e.target);
+  const clickOnFab = fab && fab.contains(e.target);
+
+  if (!clickInsideMenu && !clickOnFab) {
+    closeFabMenu();
+  }
+});
+
+// （可選但推薦）觸控更靈敏：手機先關
+document.addEventListener('touchstart', function(e){
+  const menu = document.getElementById('menu');
+  if (!menu || menu.style.display !== 'flex') return;
+
+  const fab = document.querySelector('.fab');
+  const touchInsideMenu = menu.contains(e.target);
+  const touchOnFab = fab && fab.contains(e.target);
+
+  if (!touchInsideMenu && !touchOnFab) {
+    closeFabMenu();
+  }
+}, {passive:true});
+
+// （可選）按 ESC 關
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') closeFabMenu();
+});
   </script>
 
 <div id="check-success">
