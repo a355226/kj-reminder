@@ -1988,32 +1988,33 @@ function setLoginBusy(busy){
   btn.textContent = busy ? '登入中…' : '登入';
 }
 
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async (user) => {
   try {
     if (authTimer) { clearTimeout(authTimer); authTimer = null; }
 
     hydrateRoomPath();
-    if (user) {
-      // 只有確實有 roomPath 才進入主頁面
-      if (roomPath) {
-        document.getElementById('loginPage').style.display = 'none';
-        document.querySelector('.container').style.display = 'block';
-        loadTasksFromFirebase();
-        updateSectionOptions();
-      } else {
-        // 沒有 roomPath 就登出並回到登入頁
-        auth.signOut();
-        return;
-      }
+
+    // 先清乾淨
+    document.documentElement.classList.remove('show-login', 'show-app');
+
+    if (user && roomPath) {
+      // 顯示主畫面（用 class）
+      document.documentElement.classList.add('show-app');
+
+      // 初始化資料
+      loadTasksFromFirebase();
+      updateSectionOptions();
     } else {
-      document.querySelector('.container').style.display = 'none';
-      document.getElementById('loginPage').style.display = 'flex';
+      // 沒登入或沒 roomPath -> 回登入頁
+      try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
+      document.documentElement.classList.add('show-login');
     }
   } catch (e) {
     console.error('onAuthStateChanged 錯誤：', e);
-    alert('畫面初始化失敗：' + e.message);
-    // 發生錯誤時也要登出
-    auth.signOut();
+    alert('畫面初始化失敗：' + (e?.message || e));
+    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
+    document.documentElement.classList.remove('show-app');
+    document.documentElement.classList.add('show-login');
   } finally {
     setLoginBusy(false);
     loggingIn = false;
