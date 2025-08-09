@@ -1518,10 +1518,19 @@ function buildDoneMonthMenu() {
   const monthSet = new Set();
   
   completedTasks.forEach(t => {
-    const d = new Date(t.date);  // ← 改用預定完成日期
-    const rocYM = toRocYM(d);
-    console.log('Adding month:', rocYM);  // 調試，檢查每個任務的年月是否正確
-    monthSet.add(rocYM);
+let rocYM;
+if (!t.date) {
+  rocYM = '無';
+} else {
+let rocYM;
+if (!t.date) {
+  rocYM = '無';
+} else {
+  const d = new Date(t.date);
+  rocYM = toRocYM(d);
+}
+}
+monthSet.add(rocYM);
   });
 
   if (monthSet.size === 0) {
