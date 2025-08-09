@@ -763,6 +763,8 @@ let roomPath = ""; // ← 放這裡！全檔只出現一次
 let tasksRef = null;
 let completedRef = null; // 之後你有做 completedTasks 即可用到
 
+const DEFAULT_CATEGORIES = ['照顧服務','專業服務','交通接送','喘息服務','輔具申請','其它','居家服務'];
+
 // 小工具：把不合法字元換掉（Firebase 路徑不能有 . # $ [ ] /）
 function sanitizeKey(s){
   return String(s).replace(/[.#$/\[\]\/]/g, '_');
@@ -1335,6 +1337,14 @@ function clearAllSections() {
 
 function showOngoing() {
   clearAllSections();
+// 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
+const needed = Array.from(new Set(tasks.map(t => t.section).filter(Boolean)));
+const union = Array.from(new Set([...(categories || []), ...needed]));
+if (union.length !== (categories || []).length) {
+  categories = union;
+  saveCategoriesToFirebase();
+  renderSections(categories); // 先把分類畫好，下面才渲染任務
+}
   // 重新把進行中 tasks 依 section 渲染
   tasks.forEach(t => {
     const days = getRemainingDays(t.date);
@@ -1431,6 +1441,14 @@ document.getElementById('doneMoreBtn')?.addEventListener('click', () => {
 // 渲染已完成（預設顯示 15 日內；點月份則顯示該月份）
 function renderCompletedTasks() {
   clearAllSections();
+// 把已完成任務用到的分類也補回 categories
+const needFromDone = Array.from(new Set(completedTasks.map(t => t.section).filter(Boolean)));
+const union2 = Array.from(new Set([...(categories || []), ...needFromDone]));
+if (union2.length !== (categories || []).length) {
+  categories = union2;
+  saveCategoriesToFirebase();
+  renderSections(categories);
+}
 
   const now = new Date();
   const list = completedTasks.filter(t => {
@@ -1684,21 +1702,20 @@ function loadTasksFromFirebase() {
   });
 
   // 載入分類名稱
-  categoriesRef.on('value', (snap) => {
-  const cloud = snap.val() || [];
+categoriesRef.on('value', (snap) => {
+  const cloud = snap.val();
 
-  if (cloud.length === 0) {
-    // 第一次沒有資料：把現在畫面上（如果有）當預設，存上去
-    const domNames = Array.from(document.querySelectorAll('#section-container .section'))
-      .map(sec => sec.id);
-    categories = domNames.length ? domNames : ['居家服務','喘息服務','專業服務'];
-    saveCategoriesToFirebase();       // 初始化上雲
+  if (Array.isArray(cloud) && cloud.length > 0) {
+    // 用雲端的
+    categories = cloud.slice();
   } else {
-    categories = cloud.slice();       // 用雲端的順序
+    // 雲端是空的 → 用預設清單補回去
+    categories = DEFAULT_CATEGORIES.slice();
+    saveCategoriesToFirebase(); // 存回雲端
   }
 
-  renderSections(categories);         // ← 由我們函式重畫分類區塊
-  // 畫面有了分類後，再把任務塞進去
+  // 先畫分類，再畫任務
+  renderSections(categories);
   if (statusFilter === 'done') {
     renderCompletedTasks();
   } else {
