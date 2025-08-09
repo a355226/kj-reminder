@@ -977,7 +977,105 @@ const db = firebase.database();
 
 // 建議：明確指定持久性（iOS/Safari 比較不會怪）
 auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+// 檢查是否在主畫面 / PWA 獨立模式
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
+// 等網路起來
+function waitOnline() {
+  if (navigator.onLine) return Promise.resolve();
+  return new Promise(res => window.addEventListener('online', res, { once: true }));
+}
+
+// 測試 IndexedDB 是否可用（iOS PWA 冷啟有時會炸）
+function testIndexedDB() {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('kjreminder-idb-test', 1);
+      req.onsuccess = () => { try { req.result.close(); } catch(_){} resolve(true); };
+      req.onerror   = () => resolve(false);
+      req.onblocked = () => resolve(false);
+    } catch(_) { resolve(false); }
+  });
+}
+
+// PWA 啟動時，稍等一下讓存儲與網路就緒，並選擇安全的持久性
+async function pwaAuthWarmup() {
+  // 先等 DOM 妥當
+  await new Promise(r => setTimeout(r, 120));
+
+  // 等網路
+  await waitOnline();
+
+  // iOS PWA 冷啟：IndexedDB 常常 0.x 秒內不可用，稍等一點再測
+  await new Promise(r => setTimeout(r, 120));
+
+  const idbOK = await testIndexedDB();
+
+  try {
+    if (idbOK) {
+      // 正常用 LOCAL（能記住登入）
+      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    } else {
+      // 退而求其次：不持久（本次開啟有效，避免卡在持久層）
+      await auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+    }
+  } catch(_) {
+    // 就算 setPersistence 失敗也別擋流程
+  }
+}
+
+// 你的一鍵開機（如果你已經做了 bootAuth/ensureSignedIn，就在裡面呼叫 pwaAuthWarmup）
+async function bootAuth() {
+  if (bootAuth.__busy) return; bootAuth.__busy = true;
+  setLoginBusy(true);
+
+  // PWA 先熱身（網路/儲存就緒 & 設定持久性）
+  if (isStandalone) {
+    await pwaAuthWarmup();
+  } else {
+    // 瀏覽器模式也補一下持久性，避免先前設定沒成功
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(_){}
+  }
+
+  // === 以下維持你原本的登入流程（簡版範例，可用你現有的）===
+  // 讀 sessionStorage 或 localStorage，算出 roomPath
+  hydrateRoomPath();
+
+  if (!roomPath) {
+    // 沒有憑證就顯示登入頁，且確保目前無登入狀態
+    try { if (auth.currentUser) await auth.signOut(); } catch(_){}
+    document.querySelector('.container').style.display = 'none';
+    document.getElementById('loginPage').style.display = 'flex';
+    setLoginBusy(false); bootAuth.__busy = false; return;
+  }
+
+  // 乾淨登入 + 超時備援
+  try {
+    try { if (auth.currentUser) await auth.signOut(); } catch(_){}
+    const timeout = new Promise((_, rej)=>setTimeout(()=>rej(new Error('timeout')), 7000));
+    await Promise.race([auth.signInAnonymously(), timeout]);
+
+    // 成功 → 進主畫面
+    document.getElementById('loginPage').style.display = 'none';
+    document.querySelector('.container').style.display = 'block';
+    loadTasksFromFirebase();
+    updateSectionOptions();
+  } catch(e) {
+    // 失敗 → 回登入頁
+    try { if (auth.currentUser) await auth.signOut(); } catch(_){}
+    document.querySelector('.container').style.display = 'none';
+    document.getElementById('loginPage').style.display = 'flex';
+  } finally {
+    setLoginBusy(false);
+    bootAuth.__busy = false;
+  }
+}
+
+// 事件：開頁、回前景、聚焦時都補呼叫一次，PWA 特別重要
+document.addEventListener('DOMContentLoaded', bootAuth);
+window.addEventListener('pageshow', bootAuth);
+document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState === 'visible') bootAuth(); });
+window.addEventListener('focus', bootAuth);
 // ===== 共用的「確保登入」流程（有重試/超時保護）=====
 const AUTH_TIMEOUT_MS = 6000;
 let authBusy = false;
