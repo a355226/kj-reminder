@@ -561,6 +561,72 @@ margin-top:0.8rem;
 /* 可選：內容區仍可上下捲動 */
 .section { touch-action: pan-y; }
 
+
+/* 滑動完成（藍色基底） */
+.slide-complete {
+  margin-top: .75rem;
+}
+
+.slide-track {
+  position: relative;
+  height: 44px;
+  border-radius: 999px;
+  background: linear-gradient(0deg, #e8f4ff, #f4faff);
+  border: 1px solid #d6eaff;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.05);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+.slide-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: linear-gradient(90deg, #77c7ff, #00aaff);
+  opacity: .25;
+  transition: width .25s ease;
+  pointer-events: none;
+}
+
+.slide-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #449ad6;
+  font-weight: 600;
+  letter-spacing: .5px;
+  pointer-events: none;
+}
+
+.slide-handle {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ffffff, #e6f3ff);
+  border: 1px solid #cfe6ff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.15);
+  cursor: grab;
+  transition: transform .2s ease;
+}
+.slide-handle:active { cursor: grabbing; }
+
+.slide-track.done .slide-hint {
+  color: #2f9e44;
+}
+.slide-track.done .slide-fill {
+  background: linear-gradient(90deg, #7ee8b5, #2ecc71);
+  opacity: .35;
+}
+
+/* 只在編輯狀態顯示滑桿；完成檢視(readonly)隱藏 */
+#detailModal.readonly .slide-complete { display: none; }
   </style>
 </head>
 <body>
@@ -712,7 +778,14 @@ margin-top:0.8rem;
   <button class="save-btn-half" onclick="saveTask()">💾 儲存</button>
   <button class="delete-btn-half" onclick="confirmDelete()">🗑️ 移除</button>
 </div>
-<button onclick="completeTask()">已完成</button>
+<!-- 滑動完成 -->
+<div class="slide-complete" id="slideComplete">
+  <div class="slide-track">
+    <div class="slide-hint">➡ 往右拖拉完成</div>
+    <div class="slide-fill" id="slideFill"></div>
+    <div class="slide-handle" id="slideHandle" aria-label="往右拖拉完成"></div>
+  </div>
+</div>
 
     </div>
   </div>
@@ -933,7 +1006,7 @@ function sortTasks(section) {
       document.getElementById('detailModal').style.display = 'flex';
 setDetailReadonly(false);   // 加在 openDetail() 填值後
 document.getElementById('detailImportant').checked = !!task.important;
-
+if (window.__resetSlideComplete) window.__resetSlideComplete();
 
     }
 
@@ -1493,6 +1566,9 @@ if (completedMonthFilter === 'recent15') {
 
 //已完成視窗細節
 function setDetailReadonly(ro) {
+
+const modal = document.getElementById('detailModal');
+if (modal) modal.classList.toggle('readonly', !!ro);
   ['detailSection','detailTitle','detailContent','detailDate','detailNote']
     .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = ro; });
 
@@ -1881,6 +1957,111 @@ function decorateSectionsForEdit() {
   if (exitBtn) exitBtn.style.display = 'block';
 }
 
+// ===== 滑動完成：立即可用 =====
+(function initSlideToComplete(){
+  const track = document.getElementById('slideComplete')?.querySelector('.slide-track') 
+    || (function(){
+      // 如果還沒渲染 detailModal 就先等一下
+      document.addEventListener('DOMContentLoaded', initSlideToComplete);
+      return null;
+    })();
+  if (!track) return;
+
+  const handle = document.getElementById('slideHandle');
+  const fill = document.getElementById('slideFill');
+
+  let dragging = false;
+  let startX = 0;
+  let startLeft = 0;
+
+  function maxLeft() {
+    // 可滑動範圍（容器寬 - 把手寬 - 兩側邊距 3px*2）
+    const W = track.clientWidth;
+    const hw = handle.clientWidth;
+    return Math.max(0, W - hw - 6);
+  }
+
+  function setLeft(px) {
+    const lim = maxLeft();
+    const x = Math.max(0, Math.min(px, lim));
+    handle.style.transform = `translateX(${x}px)`;
+    const percent = Math.round((x / lim) * 100);
+    fill.style.width = `${percent}%`;
+    return percent;
+  }
+
+  function pointerDown(e){
+    dragging = true;
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX;
+    // 解析目前 translateX
+    const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
+    startLeft = cur ? parseFloat(cur[1]) : 0;
+    e.preventDefault();
+  }
+
+  function pointerMove(e){
+    if (!dragging) return;
+    const p = e.touches ? e.touches[0] : e;
+    const dx = p.clientX - startX;
+    setLeft(startLeft + dx);
+    e.preventDefault();
+  }
+
+  function pointerUp(){
+    if (!dragging) return;
+    dragging = false;
+    const lim = maxLeft();
+    // 讀目前 translateX
+    const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
+    const x = cur ? parseFloat(cur[1]) : 0;
+    const percent = lim === 0 ? 0 : (x / lim);
+
+    // 到 90% 以上視為完成
+    if (percent >= 0.9) {
+      track.classList.add('done');
+      setLeft(lim);
+      // 稍等一下讓動畫有感覺
+      setTimeout(() => {
+        // 呼叫你現有的完成流程
+        completeTask();
+        // 重置外觀（下次再打開 modal 時是初始狀態）
+        resetSlider();
+      }, 200);
+    } else {
+      // 回彈
+      handle.style.transition = 'transform .25s ease';
+      fill.style.transition = 'width .25s ease';
+      setLeft(0);
+      setTimeout(() => {
+        handle.style.transition = '';
+        fill.style.transition = 'width .25s ease'; // 保留 fill 的小過渡
+      }, 260);
+    }
+  }
+
+  function resetSlider(){
+    track.classList.remove('done');
+    handle.style.transition = 'transform .2s ease';
+    fill.style.transition = 'width .25s ease';
+    setLeft(0);
+    setTimeout(() => {
+      handle.style.transition = '';
+    }, 220);
+  }
+
+  // 對外暴露，讓 openDetail 時可以重置
+  window.__resetSlideComplete = resetSlider;
+
+  // 綁定事件（滑鼠 + 觸控）
+  handle.addEventListener('mousedown', pointerDown);
+  document.addEventListener('mousemove', pointerMove);
+  document.addEventListener('mouseup', pointerUp);
+
+  handle.addEventListener('touchstart', pointerDown, {passive:false});
+  document.addEventListener('touchmove', pointerMove, {passive:false});
+  document.addEventListener('touchend', pointerUp);
+})();
   </script>
 
 <div id="check-success">
