@@ -2163,8 +2163,8 @@ async function doLogout(){
   try { if (firebase.auth) await auth.signOut(); } catch(e){ /* 忽略 */ }
 
   // 切回登入頁
-  document.querySelector('.container').style.display = 'none';
-  document.getElementById('loginPage').style.display = 'flex';
+document.documentElement.classList.remove('show-app');
+document.documentElement.classList.add('show-login');
 
   closeModal('logoutModal');
   closeModal('moreModal'); // 關掉「⋯」選單
