@@ -1647,13 +1647,15 @@ function confirmRename() {
 //新增分類
 function updateSectionOptions() {
   const sections = document.querySelectorAll('.section');
-  const options = Array.from(sections).map(section => {
-    const id = section.id;
-    return `<option value="${id}">${id}</option>`;
-  }).join('');
+  const ids = Array.from(sections).map(s => s.id);
 
-  document.getElementById('taskSection').innerHTML = options;
-  document.getElementById('detailSection').innerHTML = options;
+  const html = ids.map(id => `<option value="${id}">${id}</option>`).join('');
+
+  const taskSel   = document.getElementById('taskSection');
+  const detailSel = document.getElementById('detailSection');
+
+  if (taskSel)   taskSel.innerHTML   = html;     // 空就空
+  if (detailSel) detailSel.innerHTML = html;
 }
 
 //更多功能-篩選剩餘日
@@ -1788,16 +1790,7 @@ function showOngoing() {
   clearAllSections();
 // 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
 // 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
-const needed = Array.from(new Set(tasks.map(t => t.section).filter(Boolean)));
-const merged = Array.from(new Set([...(categories || []), ...needed]));
 
-if (merged.length !== (categories || []).length) {
-  categories = merged;
-  if (categoriesLoaded) {          // ★★★ 分類載好後才允許存雲端
-    saveCategoriesToFirebase();
-  }
-  renderSections(categories);       // 重畫分類
-}
   // 重新把進行中 tasks 依 section 渲染
   tasks.forEach(t => {
     const days = getRemainingDays(t.date);
@@ -1899,16 +1892,7 @@ function renderCompletedTasks() {
   clearAllSections();
 // 把已完成任務用到的分類也補回 categories
 // 把已完成任務用到的分類也補回 categories
-const needFromDone = Array.from(new Set(completedTasks.map(t => t.section).filter(Boolean)));
-const merged2 = Array.from(new Set([...(categories || []), ...needFromDone]));
 
-if (merged2.length !== (categories || []).length) {
-  categories = merged2;
-  if (categoriesLoaded) {          // ★★★ 分類載好後才允許存雲端
-    saveCategoriesToFirebase();
-  }
-  renderSections(categories);
-}
 
   const now = new Date();
   const list = completedTasks.filter(t => {
@@ -2158,18 +2142,17 @@ function loadTasksFromFirebase() {
 categoriesRef.on('value', (snap) => {
   const cloud = snap.val();
 
-  if (Array.isArray(cloud) && cloud.length > 0) {
-    // 用雲端的
+  if (Array.isArray(cloud)) {
+    // ✅ 就照雲端資料（即使是空陣列 [] 也尊重）
     categories = cloud.slice();
   } else {
-    // 雲端是空的 → 用預設清單補回去
-    categories = DEFAULT_CATEGORIES.slice();
-    saveCategoriesToFirebase(); // 存回雲端
+    // ✅ 雲端尚未建立 → 建成空陣列（不要預設分類）
+    categories = [];
+    db.ref(`${roomPath}/categories`).set(categories);
   }
 
-categoriesLoaded = true;
+  categoriesLoaded = true;
 
-  // 先畫分類，再畫任務
   renderSections(categories);
   if (statusFilter === 'done') {
     renderCompletedTasks();
