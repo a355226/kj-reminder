@@ -16,6 +16,21 @@
 
   <title>MyTask</title>
   <style>
+
+/* 日期輸入欄位：固定高度，iOS/Android/桌機一致 */
+input[type="date"] {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 1rem;
+  -webkit-appearance: none;
+  flex: 1;
+  min-width: 0;
+  
+  /* 固定高度，避免有無日期時跳動 */
+  height: 38px;       /* 你可以依現有表單高度調整，例如 36px 或 40px */
+  line-height: 38px;  /* 跟 height 一樣，確保文字垂直置中 */
+}
 /* 全域輸入元件字體大小 */
 input, select, textarea, option {
   font-size: 16px;     /* 推薦手機安全字體大小，避免 iOS 自動放大 */
