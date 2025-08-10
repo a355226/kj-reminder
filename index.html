@@ -1346,7 +1346,7 @@ function sortTasks(section) {
   });
 
   // 清空後依排序結果重新加入
-
+  tasksInSection.forEach(taskEl => container.appendChild(taskEl));
 }
 
 
@@ -2150,7 +2150,6 @@ categoriesRef.on('value', (snap) => {
     categories = cloud.slice();
   } else {
     // 雲端是空的 → 用預設清單補回去
-    categories = DEFAULT_CATEGORIES.slice();
     saveCategoriesToFirebase(); // 存回雲端
   }
 
