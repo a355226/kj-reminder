@@ -8,423 +8,423 @@
 
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <link rel="icon" type="image/png" sizes="32x32" href="reminder.png">
 <link rel="apple-touch-icon" sizes="180x180" href="reminder.png">
 <link rel="manifest" href="manifest.json">
 
-  <title>MyTask</title>
-  <style>
+  <title>MyTask</title>
+  <style>
 /* 全域輸入元件字體大小 */
 input, select, textarea, option {
-  font-size: 16px;     /* 推薦手機安全字體大小，避免 iOS 自動放大 */
-  line-height: 1.4;    /* 行高稍微加高一點，閱讀更舒服 */
+  font-size: 16px;     /* 推薦手機安全字體大小，避免 iOS 自動放大 */
+  line-height: 1.4;    /* 行高稍微加高一點，閱讀更舒服 */
 }
 button {
-  font-size: 15px;
+  font-size: 15px;
 }
 
-    :root {
-      --blue-light: #ebf5fc;
-      --green-light: #e6f9f0;
-      --yellow-light: #fffbe6;
-      --white: #ffffff;
-      --gray-text: #444;
-      --urgent-color: #ffeaea;
-    }
-    * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-    body {
-      margin: 0; padding: 1rem; background-color: var(--blue-light);
-      color: var(--gray-text); display: flex; justify-content: center;
-    }
-    .container { width: 100%; max-width: 480px; position: relative; }
-    h1 { text-align: center; margin-bottom: 1rem; }
-    .section {
-      background-color: #fcffff; border-radius: 12px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-      padding: 1rem; margin-bottom: 1rem;
-    }
-    .section-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 0.5rem; }
-    .task {
-      display: flex; justify-content: space-between; align-items: center;
-      background-color: var(--yellow-light); padding: 0.75rem 1rem;
-      border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer;
-    }
-    .task-content { flex: 1; }
-    .task-title { font-size: 1.2rem;font-weight: 600; margin-bottom: 0.25rem; }
-    .task-due { font-size: 0.85rem; color: #888; }
-    .task-days {
-      background-color: var(--yellow-light); color: brown;
-      border-radius: 50%; padding: 0.4rem 0.6rem; font-size: 0.85rem;
-      font-weight: bold; flex-shrink: 0; text-align: center; margin-left: 1rem;
-    }
-    .fab {
-      position: fixed; bottom: 24px; right: 24px; width: 40px; height: 40px;
-      background-color: #00aaff; color: white; border-radius: 50%; font-size: 32px;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); z-index: 10;
-    }
-    .menu {
-      position: fixed; bottom: 90px; right: 24px; background-color: white;
-      border-radius: 10px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-      display: none; flex-direction: column; z-index: 9;
-    }
-    .menu button {
-      border: none; background: none; padding: 12px 16px;
-      font-size: 14px; text-align: left; cursor: pointer;
-    }
+    :root {
+      --blue-light: #ebf5fc;
+      --green-light: #e6f9f0;
+      --yellow-light: #fffbe6;
+      --white: #ffffff;
+      --gray-text: #444;
+      --urgent-color: #ffeaea;
+    }
+    * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+    body {
+      margin: 0; padding: 1rem; background-color: var(--blue-light);
+      color: var(--gray-text); display: flex; justify-content: center;
+    }
+    .container { width: 100%; max-width: 480px; position: relative; }
+    h1 { text-align: center; margin-bottom: 1rem; }
+    .section {
+      background-color: #fcffff; border-radius: 12px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      padding: 1rem; margin-bottom: 1rem;
+    }
+    .section-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 0.5rem; }
+    .task {
+      display: flex; justify-content: space-between; align-items: center;
+      background-color: var(--yellow-light); padding: 0.75rem 1rem;
+      border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer;
+    }
+    .task-content { flex: 1; }
+    .task-title { font-size: 1.2rem;font-weight: 600; margin-bottom: 0.25rem; }
+    .task-due { font-size: 0.85rem; color: #888; }
+    .task-days {
+      background-color: var(--yellow-light); color: brown;
+      border-radius: 50%; padding: 0.4rem 0.6rem; font-size: 0.85rem;
+      font-weight: bold; flex-shrink: 0; text-align: center; margin-left: 1rem;
+    }
+    .fab {
+      position: fixed; bottom: 24px; right: 24px; width: 40px; height: 40px;
+      background-color: #00aaff; color: white; border-radius: 50%; font-size: 32px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); z-index: 10;
+    }
+    .menu {
+      position: fixed; bottom: 90px; right: 24px; background-color: white;
+      border-radius: 10px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      display: none; flex-direction: column; z-index: 9;
+    }
+    .menu button {
+      border: none; background: none; padding: 12px 16px;
+      font-size: 14px; text-align: left; cursor: pointer;
+    }
 
-    .modal {
-      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-      background-color: rgba(0, 0, 0, 0.3); display: none;
-      justify-content: center; align-items: center; z-index: 20;
-    }
-    .modal-content {
-      background-color: white; padding: 1rem; border-radius: 12px;
-      width: 90%; max-width: 400px; position: relative;
-    }
-    .modal-content label { display: block; margin-top: 0.5rem; font-size: 0.9rem; }
+    .modal {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background-color: rgba(0, 0, 0, 0.3); display: none;
+      justify-content: center; align-items: center; z-index: 20;
+    }
+    .modal-content {
+      background-color: white; padding: 1rem; border-radius: 12px;
+      width: 90%; max-width: 400px; position: relative;
+    }
+    .modal-content label { display: block; margin-top: 0.5rem; font-size: 0.9rem; }
 /* 只給輸入框/下拉/文字區，排除 radio & checkbox */
 .modal-content input:not([type="radio"]):not([type="checkbox"]),
 .modal-content select,
 .modal-content textarea {
-  width: 100%;
-  padding: 0.5rem;
-  margin-top: 0.25rem;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
 }
 
 //儲存按鈕
 .save-btn {
-  background-color: #009973;
-  color: white;
-  border: none;
-  padding: 0.5rem;
-  border-radius: 6px;
-  cursor: pointer;
-  margin-bottom: 0.5rem;
-  width: 100%;
+  background-color: #009973;
+  color: white;
+  border: none;
+  padding: 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  width: 100%;
 }
 .save-btn:hover {
-  background-color: #008060;
+  background-color: #008060;
 }
 
 .modal-content > button {
-  margin-top: 1rem;
-  width: 100%;
-  padding: 0.5rem;
-  background-color: #00aaff;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
+  margin-top: 1rem;
+  width: 100%;
+  padding: 0.5rem;
+  background-color: #00aaff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 
 .save-btn-half, .delete-btn-half {
-  flex: 1;
-  padding: 0.5rem;
-  border-radius: 6px;
-  cursor: pointer;
-  width: 50%;
-  border: none;
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 50%;
+  border: none;
 }
 
 .save-btn-half {
-  background-color: #77d4bc;
-  color: white;
+  background-color: #77d4bc;
+  color: white;
 }
 .save-btn-half:hover {
-  background-color: #008060;
+  background-color: #008060;
 }
 
 .delete-btn-half {
-  background-color: #fc9a9a;
-  color: white;
+  background-color: #fc9a9a;
+  color: white;
 }
 .delete-btn-half:hover {
-  background-color: #cc3333;
+  background-color: #cc3333;
 }
 
 .close-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: 50%;
-  background-color: #eee;
-  color: #333;
-  font-size: 16px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: #eee;
+  color: #333;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
 .modal-content > .close-btn {
-  width: auto;
+  width: auto;
 }
 
 #check-success {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 9999;
-  width: 100px;
-  height: 100px;
-  opacity: 0;
-  pointer-events: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  width: 100px;
+  height: 100px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 #check-success.show {
-  animation: pop-in 1.5s ease forwards;
+  animation: pop-in 1.5s ease forwards;
 }
 
 #check-success svg {
-  width: 100px;
-  height: 100px;
+  width: 100px;
+  height: 100px;
 }
 
 .circle {
-  stroke: #a2f4c5;
-  stroke-width: 4;
-  stroke-dasharray: 157;
-  stroke-dashoffset: 157;
-  animation: draw-circle 0.5s ease-out forwards;
+  stroke: #a2f4c5;
+  stroke-width: 4;
+  stroke-dasharray: 157;
+  stroke-dashoffset: 157;
+  animation: draw-circle 0.5s ease-out forwards;
 }
 
 .check {
-  stroke: #2ecc71;
-  stroke-width: 5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 30;
-  stroke-dashoffset: 30;
-  animation: draw-check 0.3s 0.5s ease-out forwards;
+  stroke: #2ecc71;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: draw-check 0.3s 0.5s ease-out forwards;
 }
 
 @keyframes draw-circle {
-  to {
-    stroke-dashoffset: 0;
-  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes draw-check {
-  to {
-    stroke-dashoffset: 0;
-  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes pop-in {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.5);
-    filter: blur(4px);
-  }
-  40% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.1);
-    filter: blur(0);
-  }
-  80% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.8);
-  }
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+    filter: blur(4px);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.1);
+    filter: blur(0);
+  }
+  80% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
 }
 .confirm-buttons {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 
 .confirm-buttons button {
-  flex: 1;
-  padding: 0.6rem;
-  font-size: 1rem;
-  font-weight: bold;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  flex: 1;
+  padding: 0.6rem;
+  font-size: 1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .confirm-btn {
-  background-color: #fc9a9a;
-  color: white;
+  background-color: #fc9a9a;
+  color: white;
 }
 .confirm-btn:hover {
-  background-color: #cc4444;
+  background-color: #cc4444;
 }
 
 .cancel-btn {
-  background-color: #f0f0f0;
-  color: #333;
+  background-color: #f0f0f0;
+  color: #333;
 }
 .cancel-btn:hover {
-  background-color: #ddd;
+  background-color: #ddd;
 }
 
 //編輯分類用
 .section.edit-mode {
-  position: relative;
-  padding-left: 2.5rem;
+  position: relative;
+  padding-left: 2.5rem;
 }
 
 .section-title {
-  position: relative; /* 新增這一行讓內部絕對定位生效 */
-  font-size: 1.2rem;
-  font-weight: bold;
-  margin-bottom: 0.5rem;
+  position: relative; /* 新增這一行讓內部絕對定位生效 */
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
 }
 
 .drag-handle {
-  display: inline-block;
-  margin-right: 0.5rem;
-  font-size: 1.2rem;
-  cursor: grab;
-  color: #888;
-  vertical-align: middle;
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 1.2rem;
+  cursor: grab;
+  color: #888;
+  vertical-align: middle;
 }
 
 
 .delete-btn {
-  position: absolute;
-  top: 0;
-  right: 0;
-  background-color: transparent;
-  border: none;
-  font-size: 1rem;
-  color: #999;
-  cursor: pointer;
-  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  background-color: transparent;
+  border: none;
+  font-size: 1rem;
+  color: #999;
+  cursor: pointer;
+  display: none;
 }
 .section.edit-mode .delete-btn {
-  display: block;
+  display: block;
 }
 
 .section.dragging {
-  opacity: 0.5;
-  background-color: transparent !important;
+  opacity: 0.5;
+  background-color: transparent !important;
 }
 
 .dragging {
-  opacity: 0.6;
-  background: #eef8ff;
+  opacity: 0.6;
+  background: #eef8ff;
 }
 
 
 /* 重命名按鈕 */
 /* 讓標題成一行排列：☰、標題文字、✎（刪除鍵依然在右上角絕對定位） */
 .section-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 /* 鉛筆跟在標題文字後方（不要絕對定位） */
 .rename-btn {
-  position: static;           /* 重要：取消原本的 absolute */
-  display: none;              /* 只有編輯模式才顯示 */
-  background: transparent;
-  border: none;
-  font-size: 1rem;
-  color: #999;
-  cursor: pointer;
-  margin-left: 0.8rem;
+  position: static;           /* 重要：取消原本的 absolute */
+  display: none;              /* 只有編輯模式才顯示 */
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  color: #999;
+  cursor: pointer;
+  margin-left: 0.8rem;
 transform: translateY(-2.2px); /* ⬆ 往上 2px，可自行調整 */
-  padding: 0;                 /* 取消小方塊外框感 */
+  padding: 0;                 /* 取消小方塊外框感 */
 }
 .section.edit-mode .rename-btn { display: inline-flex; }
 
 /* 更多功能（修正後）*/
 /* 右上角 ... 按鈕 */
 .more-btn {
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  width: 32px;      /* 縮小寬 */
-  height: 32px;     /* 縮小高 */
-  border-radius: 50%;
-  background: #fff;
-  color: #555;
-  font-size: 18px;  /* 字體也縮小 */
-  font-weight: bold;
-  display: flex;
-  align-items: center;    /* 垂直置中 */
-  justify-content: center;/* 水平置中 */
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-  cursor: pointer;
-  z-index: 100;
-  line-height: 1;         /* 確保文字垂直居中 */
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 32px;      /* 縮小寬 */
+  height: 32px;     /* 縮小高 */
+  border-radius: 50%;
+  background: #fff;
+  color: #555;
+  font-size: 18px;  /* 字體也縮小 */
+  font-weight: bold;
+  display: flex;
+  align-items: center;    /* 垂直置中 */
+  justify-content: center;/* 水平置中 */
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  cursor: pointer;
+  z-index: 100;
+  line-height: 1;         /* 確保文字垂直居中 */
 }
 
 
 
 /* 更多功能 Modal */
 #moreModal .modal-content {
-  max-width: 300px;
+  max-width: 300px;
 }
 .filter-days {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: -1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: -1rem;
 }
 .filter-days label {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
 }
 
 /* 歷史紀錄 */
 .filter-status {
-  display: flex;
-  gap: 1rem;    
-  margin-top: -1rem;           /* 兩個選項之間的距離 */
+  display: flex;
+  gap: 1rem;    
+  margin-top: -1rem;           /* 兩個選項之間的距離 */
 }
 
 .filter-status label {
-  display: inline-flex;    /* 關鍵：讓○和文字在同一行 */
-  align-items: center;
-  gap: 0.25rem;            /* ○ 和文字距離 */
-  white-space: nowrap;     /* 禁止文字換行 */
+  display: inline-flex;    /* 關鍵：讓○和文字在同一行 */
+  align-items: center;
+  gap: 0.25rem;            /* ○ 和文字距離 */
+  white-space: nowrap;     /* 禁止文字換行 */
 }
 
 /* 天數設定 */
 .filter-mode {
-  display: flex;
-  gap: 1rem;          /* 選項之間距離 */
-  margin-top: -1rem;  /* 跟上方標題的距離可依需求調整 */
+  display: flex;
+  gap: 1rem;          /* 選項之間距離 */
+  margin-top: -1rem;  /* 跟上方標題的距離可依需求調整 */
 }
 
 .filter-mode label {
-  display: inline-flex;     /* ○ 和文字同一行 */
-  align-items: center;
-  gap: 0.25rem;             /* ○ 和文字距離 */
-  white-space: nowrap;      /* 禁止換行 */
+  display: inline-flex;     /* ○ 和文字同一行 */
+  align-items: center;
+  gap: 0.25rem;             /* ○ 和文字距離 */
+  white-space: nowrap;      /* 禁止換行 */
 }
 
 .logout-btn{
-  width:100%;
+  width:100%;
 font-size:15px;
-  padding:0.6rem;
-  background:#f5f5f5;
-  color:#333;
-  border:none;
-  border-radius:6px;
-  cursor:pointer;
+  padding:0.6rem;
+  background:#f5f5f5;
+  color:#333;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
 }
 .logout-btn:hover{ background:#eee; }
 
@@ -439,124 +439,124 @@ font-size:15px;
 
 /* 登入CSS */
 #loginPage{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  min-height:100vh;
-  background:var(--blue-light);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-height:100vh;
+  background:var(--blue-light);
 }
 
 /* 白色卡片：這裡控制寬度、圓角、陰影、內距 */
 #loginCard{
-  position: absolute !important; /* 無視前面設定 */
-  top: 80px;                      /* 往上 20px，你可以改 */
-  left: 50%;
-  transform: translateX(-50%);    /* 水平置中 */
-  background:var(--white);
-  border-radius:12px;          /* ← 卡片圓角 */
-  box-shadow:0 2px 6px rgba(0,0,0,0.08); /* ← 卡片陰影 */
-  padding:2rem;                /* ← 卡片內距 */
-  width:95%;
-  max-width:450px;
+  position: absolute !important; /* 無視前面設定 */
+  top: 80px;                      /* 往上 20px，你可以改 */
+  left: 50%;
+  transform: translateX(-50%);    /* 水平置中 */
+  background:var(--white);
+  border-radius:12px;          /* ← 卡片圓角 */
+  box-shadow:0 2px 6px rgba(0,0,0,0.08); /* ← 卡片陰影 */
+  padding:2rem;                /* ← 卡片內距 */
+  width:95%;
+  max-width:450px;
 min-height: 500px; /* 最小高度，內容超過時會自動變高 */
 
 }
 
 /* 標題 */
 .login-title{
-  text-align:center;
-  margin:0 0 1.5rem;
-  font-size:28px;              /* ← 標題大小 */
-  font-weight:800;
+  text-align:center;
+  margin:0 0 1.5rem;
+  font-size:28px;              /* ← 標題大小 */
+  font-weight:800;
 }
 
 /* label 與欄位的間距 */
 .login-label{
-  font-weight:600;
-  margin:0.4rem 0 0.4rem;
+  font-weight:600;
+  margin:0.4rem 0 0.4rem;
 }
 
 /* 輸入框外觀：高度、字體、圓角、邊框 */
 .login-input{
-  width:100%;
-  height:44px;                 /* ← 欄位高度 */
-  padding:0 12px;              /* ← 文字左右內距 */
-  border:1px solid #ccc;
-  border-radius:8px;           /* ← 欄位圓角 */
-  font-size:16px;              /* ← 欄位字體大小 */
-  margin:0 0 1rem;
+  width:100%;
+  height:44px;                 /* ← 欄位高度 */
+  padding:0 12px;              /* ← 文字左右內距 */
+  border:1px solid #ccc;
+  border-radius:8px;           /* ← 欄位圓角 */
+  font-size:16px;              /* ← 欄位字體大小 */
+  margin:0 0 1rem;
 margin-top:0.8rem;
-  outline:none;
+  outline:none;
 }
 .login-input:focus{
-  border-color:#95d3ff;
-  box-shadow:0 0 0 3px rgba(0,170,255,.15);
+  border-color:#95d3ff;
+  box-shadow:0 0 0 3px rgba(0,170,255,.15);
 }
 
 /* 勾選列（checkbox 與文字在同一行） */
 .login-checkrow{
-  display:flex;
-  align-items:center;
-  gap:.4rem;
-  margin:0 0 1rem;
+  display:flex;
+  align-items:center;
+  gap:.4rem;
+  margin:0 0 1rem;
 }
 
 /* 登入按鈕外觀與互動 */
 .login-btn{
-  width:100%;
-  height:46px;                 /* ← 按鈕高度 */
-  background:#00aaff;          /* ← 按鈕主色 */
-  color:#fff;
-  border:none;
-  border-radius:8px;           /* ← 按鈕圓角 */
-  font-size:16px;
-  cursor:pointer;
+  width:100%;
+  height:46px;                 /* ← 按鈕高度 */
+  background:#00aaff;          /* ← 按鈕主色 */
+  color:#fff;
+  border:none;
+  border-radius:8px;           /* ← 按鈕圓角 */
+  font-size:16px;
+  cursor:pointer;
 }
 .login-btn:hover{ background:#0791e6; }
 .login-btn:active{ transform:translateY(1px); }
 
 /* 底下紅色提示 */
 .login-tip{
-  margin-top:1rem;
-  color:#cc4444;
-  font-size:0.85rem;           /* ← 提示文字大小 */
-  text-align:center;
+  margin-top:1rem;
+  color:#cc4444;
+  font-size:0.85rem;           /* ← 提示文字大小 */
+  text-align:center;
 }
 
 /* 可選：小螢幕再縮一點 padding */
 @media (max-width:360px){
-  #loginCard{ padding:1.25rem; }
+  #loginCard{ padding:1.25rem; }
 }
 
 /* 區塊分類 + 重要 勾選 同行排版 */
 .inline-row {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-  margin-top: .25rem;     /* 與上方 label 的距離 */
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-top: .25rem;     /* 與上方 label 的距離 */
 }
 
 /* 下拉選單縮到一半寬、靠左 */
 .inline-row .half {
-  width: 50%;
-  min-width: 160px;       /* 視需要可調或拿掉 */
+  width: 50%;
+  min-width: 160px;       /* 視需要可調或拿掉 */
 }
 
 /* 勾選的外觀 */
 .important-flag {
-  display: inline-flex;
-  align-items: center;
-  gap: .35rem;
-  white-space: nowrap;
-  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  white-space: nowrap;
+  font-size: 0.95rem;
 }
 .drag-handle{
-  cursor: grab;
-  touch-action: none;          /* 重點：阻止預設捲動 */
-  -webkit-user-select: none;   /* iOS 不要選字 */
-  user-select: none;
-  -webkit-user-drag: none;
+  cursor: grab;
+  touch-action: none;          /* 重點：阻止預設捲動 */
+  -webkit-user-select: none;   /* iOS 不要選字 */
+  user-select: none;
+  -webkit-user-drag: none;
 }
 /* 可選：內容區仍可上下捲動 */
 .section { touch-action: pan-y; }
@@ -564,65 +564,65 @@ margin-top:0.8rem;
 
 /* 滑動完成（藍色基底） */
 .slide-complete {
-  margin-top: .75rem;
+  margin-top: .75rem;
 }
 
 .slide-track {
-  position: relative;
-  height: 44px;
-  border-radius: 999px;
-  background: linear-gradient(0deg, #e8f4ff, #f4faff);
-  border: 1px solid #d6eaff;
-  overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.05);
-  -webkit-user-select: none;
-  user-select: none;
-  touch-action: none;
+  position: relative;
+  height: 44px;
+  border-radius: 999px;
+  background: linear-gradient(0deg, #e8f4ff, #f4faff);
+  border: 1px solid #d6eaff;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.05);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
 }
 
 .slide-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 0%;
-  background: linear-gradient(90deg, #77c7ff, #00aaff);
-  opacity: .25;
-  transition: width .25s ease;
-  pointer-events: none;
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: linear-gradient(90deg, #77c7ff, #00aaff);
+  opacity: .25;
+  transition: width .25s ease;
+  pointer-events: none;
 }
 
 .slide-hint {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #449ad6;
-  font-weight: 600;
-  letter-spacing: .5px;
-  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #449ad6;
+  font-weight: 600;
+  letter-spacing: .5px;
+  pointer-events: none;
 }
 
 .slide-handle {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #ffffff, #e6f3ff);
-  border: 1px solid #cfe6ff;
-  box-shadow: 0 2px 6px rgba(0,0,0,.15);
-  cursor: grab;
-  transition: transform .2s ease;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ffffff, #e6f3ff);
+  border: 1px solid #cfe6ff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.15);
+  cursor: grab;
+  transition: transform .2s ease;
 }
 .slide-handle:active { cursor: grabbing; }
 
 .slide-track.done .slide-hint {
-  color: #2f9e44;
+  color: #2f9e44;
 }
 .slide-track.done .slide-fill {
-  background: linear-gradient(90deg, #7ee8b5, #2ecc71);
-  opacity: .35;
+  background: linear-gradient(90deg, #7ee8b5, #2ecc71);
+  opacity: .35;
 }
 
 /* 只在編輯狀態顯示滑桿；完成檢視(readonly)隱藏 */
@@ -631,101 +631,101 @@ margin-top:0.8rem;
 /* 淺色版：儲存 & 移除 */
 .save-btn-half,
 .delete-btn-half {
-  border: 1px solid transparent;
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0,0,0,.06);
-  transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
+  border: 1px solid transparent;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
 }
 
 /* 儲存：薄薄綠藍 */
 .save-btn-half {
-  background: linear-gradient(0deg, #eefbf6, #f6fdf9);
-  border-color: #ccefe2;
-  color: #176d59;           /* 深一點，易讀 */
+  background: linear-gradient(0deg, #eefbf6, #f6fdf9);
+  border-color: #ccefe2;
+  color: #176d59;           /* 深一點，易讀 */
 }
 .save-btn-half:hover {
-  background: #e8faf3;
-  box-shadow: 0 2px 6px rgba(0,0,0,.08);
+  background: #e8faf3;
+  box-shadow: 0 2px 6px rgba(0,0,0,.08);
 }
 .save-btn-half:active { transform: translateY(1px); }
 
 /* 移除：薄薄珊瑚粉 */
 .delete-btn-half {
-  background: linear-gradient(0deg, #fff3f3, #fff7f7);
-  border-color: #ffd8d8;
-  color: #b23b3b;           /* 深一點，易讀 */
+  background: linear-gradient(0deg, #fff3f3, #fff7f7);
+  border-color: #ffd8d8;
+  color: #b23b3b;           /* 深一點，易讀 */
 }
 .delete-btn-half:hover {
-  background: #ffeef0;
-  box-shadow: 0 2px 6px rgba(0,0,0,.08);
+  background: #ffeef0;
+  box-shadow: 0 2px 6px rgba(0,0,0,.08);
 }
 .delete-btn-half:active { transform: translateY(1px); }
 
 /* 全幅儲存（若你也想同步變淺） */
 .save-btn {
-  background: linear-gradient(0deg, #eefbf6, #f6fdf9);
-  border: 1px solid #ccefe2;
-  color: #176d59;
+  background: linear-gradient(0deg, #eefbf6, #f6fdf9);
+  border: 1px solid #ccefe2;
+  color: #176d59;
 }
 .save-btn:hover { background:#e8faf3; }
 
 /* FAB：開合時旋轉、陰影更柔和 */
 .fab{
-  position: fixed; bottom: 24px; right: 24px;
-  width: 48px; height: 48px; border-radius: 50%;
-  display:flex; align-items:center; justify-content:center;
-  background:#00aaff; color:#fff; font-size:28px; font-weight:700;
-  box-shadow: 0 10px 22px rgba(0,0,0,.18);
-  cursor:pointer; z-index: 110;
-  transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
+  position: fixed; bottom: 24px; right: 24px;
+  width: 48px; height: 48px; border-radius: 50%;
+  display:flex; align-items:center; justify-content:center;
+  background:#00aaff; color:#fff; font-size:28px; font-weight:700;
+  box-shadow: 0 10px 22px rgba(0,0,0,.18);
+  cursor:pointer; z-index: 110;
+  transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
 }
 .fab:active{ transform: scale(.98); }
-.fab.open{ transform: rotate(45deg); }   /* 打開時變成 × 的感覺 */
+.fab.open{ transform: rotate(45deg); }   /* 打開時變成 × 的感覺 */
 
 /* 新：極簡玻璃卡片浮層 */
 .menu{
-  position: fixed; bottom: 88px; right: 24px;
-  min-width: 100px;
-  padding: 8px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(180, 210, 255, .35);
-  box-shadow: 0 12px 28px rgba(0, 60, 130, .12);
-  display: block;               /* 用透明控制顯示 */
-  opacity: 0; transform: translateY(8px) scale(.98);
-  pointer-events: none;
-  z-index: 105;
+  position: fixed; bottom: 88px; right: 24px;
+  min-width: 100px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(180, 210, 255, .35);
+  box-shadow: 0 12px 28px rgba(0, 60, 130, .12);
+  display: block;               /* 用透明控制顯示 */
+  opacity: 0; transform: translateY(8px) scale(.98);
+  pointer-events: none;
+  z-index: 105;
 }
 
 /* 打開狀態 */
 .menu.show{
-  opacity: 1; transform: translateY(0) scale(1);
-  pointer-events: auto;
-  transition: opacity .18s ease, transform .18s ease;
+  opacity: 1; transform: translateY(0) scale(1);
+  pointer-events: auto;
+  transition: opacity .18s ease, transform .18s ease;
 }
 
 /* 小圓角分隔 + 品牌色系按鈕 */
 .menu button{
-  display:flex; align-items:center; gap:.5rem;
-  width:100%;
-  background: transparent;
-  border: 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-size: 15px; font-weight: 600;
-  color: #176dff;                 /* 淺藍系主色，與主視覺協調 */
-  letter-spacing:.2px;
-  cursor:pointer;
+  display:flex; align-items:center; gap:.5rem;
+  width:100%;
+  background: transparent;
+  border: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 15px; font-weight: 600;
+  color: #176dff;                 /* 淺藍系主色，與主視覺協調 */
+  letter-spacing:.2px;
+  cursor:pointer;
 }
 
 /* hover / active 的輕微回饋（手機也好點） */
 .menu button:hover{
-  background: linear-gradient(0deg,#eef6ff,#f7fbff);
+  background: linear-gradient(0deg,#eef6ff,#f7fbff);
 }
 .menu button:active{
-  transform: translateY(1px);
+  transform: translateY(1px);
 }
 
 /* 項目之間加一點間距 */
@@ -733,306 +733,306 @@ margin-top:0.8rem;
 
 /* 指向 FAB 的小尾巴 */
 .menu::after{
-  content:"";
-  position:absolute;
-  right: 12px; bottom: -6px;
-  width: 12px; height:12px;
-  background: rgba(255,255,255,.72);
-  border: 1px solid rgba(180,210,255,.35);
-  border-top: none; border-left: none;
-  transform: rotate(45deg);
-  box-shadow: 4px 4px 10px rgba(0,60,130,.06);
+  content:"";
+  position:absolute;
+  right: 12px; bottom: -6px;
+  width: 12px; height:12px;
+  background: rgba(255,255,255,.72);
+  border: 1px solid rgba(180,210,255,.35);
+  border-top: none; border-left: none;
+  transform: rotate(45deg);
+  box-shadow: 4px 4px 10px rgba(0,60,130,.06);
 }
 
 /* 在「已完成」時禁用（你前面已做 pointer-events/opactiy，也可沿用） */
 .fab[aria-disabled="true"]{
-  pointer-events: none; opacity:.5; box-shadow: none;
+  pointer-events: none; opacity:.5; box-shadow: none;
 }
 /* 預設都不顯示，避免閃爍 */
 #loginPage { display: none; }
 .container { display: none !important; }
 
 /* 只在確定要顯示時，才打開對應區塊 */
-html.show-login #loginPage { display: flex; }      /* 顯示登入頁 */
-html.show-app   .container { display: block !important; } /* 顯示主畫面 */
+html.show-login #loginPage { display: flex; }      /* 顯示登入頁 */
+html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 
 /* ===== 自動登入載入層 ===== */
 #autologin-overlay{
-  position: fixed; inset: 0;
-  display: none;                  /* 預設不顯示 */
-  align-items: center;
-  justify-content: center;
-  background: rgba(255,255,255,.72);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  z-index: 260;                   /* 高於 modal(200) 但不擋你登出確認(220) 的話可調高到 260 */
+  position: fixed; inset: 0;
+  display: none;                  /* 預設不顯示 */
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 260;                   /* 高於 modal(200) 但不擋你登出確認(220) 的話可調高到 260 */
 }
 #autologin-overlay.show{ display:flex; }
 
 .autologin-box{
-  display:flex; flex-direction:column; align-items:center; gap:.75rem;
-  padding: 16px 18px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.9);
-  border: 1px solid rgba(180,210,255,.35);
-  box-shadow: 0 12px 28px rgba(0,60,130,.12);
-  transform: translateY(6px);
-  animation: al-pop .2s ease-out forwards;
+  display:flex; flex-direction:column; align-items:center; gap:.75rem;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.9);
+  border: 1px solid rgba(180,210,255,.35);
+  box-shadow: 0 12px 28px rgba(0,60,130,.12);
+  transform: translateY(6px);
+  animation: al-pop .2s ease-out forwards;
 }
 
 .autologin-loader{
-  width: 42px; height: 42px; border-radius: 50%;
-  border: 3px solid #e6f4ff;
-  border-top-color: #00aaff;     /* 跟主色一致 */
-  animation: al-spin .8s linear infinite;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.04);
+  width: 42px; height: 42px; border-radius: 50%;
+  border: 3px solid #e6f4ff;
+  border-top-color: #00aaff;     /* 跟主色一致 */
+  animation: al-spin .8s linear infinite;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.04);
 }
 
 .autologin-text{
-  font-weight: 700;
-  letter-spacing: .3px;
-  color: #176dff;                 /* 淺藍系字色 */
-  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: #176dff;                 /* 淺藍系字色 */
+  font-size: 14px;
 }
 
 @keyframes al-spin { to { transform: rotate(360deg); } }
 @keyframes al-pop {
-  from { opacity: 0; transform: translateY(10px) scale(.98); }
-  to   { opacity: 1; transform: translateY(0)    scale(1); }
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 /* Section 區：關閉文字選取、iOS 長按呼叫菜單、點擊高亮 */
 #section-container {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 #section-container .section {
-  -webkit-tap-highlight-color: transparent;
-  will-change: transform;
-  transition: transform 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+  will-change: transform;
+  transition: transform 120ms ease;
 }
 
 /* 點擊/按壓的視覺回饋 */
 .section.__pressed { transform: scale(0.985); }
 @keyframes __bump {
-  0% { transform: scale(1); }
-  50%{ transform: scale(0.985); }
-  100%{ transform: scale(1); }
+  0% { transform: scale(1); }
+  50%{ transform: scale(0.985); }
+  100%{ transform: scale(1); }
 }
 .section.__bump { animation: __bump .18s ease; }
 
 #section-container { touch-action: pan-y; }
-  </style>
+  </style>
 </head>
 <body>
 <!-- 登錄頁面 -->
 <div id="loginPage">
-  <div id="loginCard">
-   <h1 style="display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 24px;">
-  <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png" alt="icon" width="40" style="position: relative; top: 1px;">
-  MyTask
+  <div id="loginCard">
+   <h1 style="display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 24px;">
+  <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png" alt="icon" width="40" style="position: relative; top: 1px;">
+  MyTask
 </h1>
 
-    <label class="login-label">自訂帳號</label>
-    <input type="text" id="login-username" class="login-input" placeholder="請輸入帳號">
+    <label class="login-label">自訂帳號</label>
+    <input type="text" id="login-username" class="login-input" placeholder="請輸入帳號">
 
-    <label class="login-label">自訂密碼</label>
-    <input type="password" id="login-password" class="login-input" placeholder="請輸入密碼">
+    <label class="login-label">自訂密碼</label>
+    <input type="password" id="login-password" class="login-input" placeholder="請輸入密碼">
 
-    <label class="login-checkrow">
-      <input type="checkbox" id="auto-login">
-      <span>自動登入</span>
-    </label>
+    <label class="login-checkrow">
+      <input type="checkbox" id="auto-login">
+      <span>自動登入</span>
+    </label>
 
-    <button id="login-btn" class="login-btn">登入</button>
+    <button id="login-btn" class="login-btn">登入</button>
 
-    <p class="login-tip">平台免註冊，自訂帳號密碼即可登錄</p>
-  </div>
+    <p class="login-tip">平台免註冊，自訂帳號密碼即可登錄</p>
+  </div>
 </div>
 
 
 
-  <div class="container" style="display:none">
-    <h1 style="display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 24px;">
-  <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png"
-       alt="icon" width="40" style="transform: translateY(2px);">
-  MyTask
+  <div class="container" style="display:none">
+    <h1 style="display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 24px;">
+  <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png"
+       alt="icon" width="40" style="transform: translateY(2px);">
+  MyTask
 </h1>
 
 <!-- 右上角 ... 按鈕 -->
 <div class="more-btn" onclick="openModalById('moreModal')">⋯</div>
 <div id="section-container">
 <div id="doneMore" style="display:none; text-align:right; margin:0.25rem 0;">
-  <button id="doneMoreBtn" style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">更多…</button>
-  <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
+  <button id="doneMoreBtn" style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">更多…</button>
+  <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
 </div>
 
-    <div class="section" id="照顧服務">
-      <div class="section-title">照顧服務</div>
-    </div>
-    <div class="section" id="專業服務">
-      <div class="section-title">專業服務</div>
-    </div>
-    <div class="section" id="交通接送">
-      <div class="section-title">交通接送</div>
-    </div>
-    <div class="section" id="喘息服務">
-      <div class="section-title">喘息服務</div>
-    </div>
-    <div class="section" id="輔具申請">
-      <div class="section-title">輔具申請</div>
-    </div>
-    <div class="section" id="其它">
-      <div class="section-title">其它</div>
-    </div>
+    <div class="section" id="照顧服務">
+      <div class="section-title">照顧服務</div>
+    </div>
+    <div class="section" id="專業服務">
+      <div class="section-title">專業服務</div>
+    </div>
+    <div class="section" id="交通接送">
+      <div class="section-title">交通接送</div>
+    </div>
+    <div class="section" id="喘息服務">
+      <div class="section-title">喘息服務</div>
+    </div>
+    <div class="section" id="輔具申請">
+      <div class="section-title">輔具申請</div>
+    </div>
+    <div class="section" id="其它">
+      <div class="section-title">其它</div>
+    </div>
 
-  </div>
+  </div>
 
-  <div class="fab" onclick="toggleMenu()">＋</div>
+  <div class="fab" onclick="toggleMenu()">＋</div>
 <div class="menu" id="menu">
-<button onclick="openModal()" 
-        style="background:#e6f6fc; color:#0091cc; font-weight:600; 
-               padding:8px 16px; border:none; border-radius:8px; 
-               box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer; 
-               margin-bottom:12px;">
-  新增任務
+<button onclick="openModal()" 
+        style="background:#e6f6fc; color:#0091cc; font-weight:600; 
+               padding:8px 16px; border:none; border-radius:8px; 
+               box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer; 
+               margin-bottom:12px;">
+  新增任務
 </button>
 
-<button onclick="openCategoryModal()" 
-        style="background:#e9f9f1; color:#1fa87a; font-weight:600; 
-               padding:8px 16px; border:none; border-radius:8px; 
-               box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer; 
-               margin-bottom:12px;">
-  新增分類
+<button onclick="openCategoryModal()" 
+        style="background:#e9f9f1; color:#1fa87a; font-weight:600; 
+               padding:8px 16px; border:none; border-radius:8px; 
+               box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer; 
+               margin-bottom:12px;">
+  新增分類
 </button>
 
-<button onclick="enterEditMode()" 
-        style="background:#fff6e6; color:#d98a00; font-weight:600; 
-               padding:8px 16px; border:none; border-radius:8px; 
-               box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer;">
-  編輯分類
+<button onclick="enterEditMode()" 
+        style="background:#fff6e6; color:#d98a00; font-weight:600; 
+               padding:8px 16px; border:none; border-radius:8px; 
+               box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer;">
+  編輯分類
 </button>
 </div>
 
 <!-- ✅ 新增的按鈕，讓使用者完成編輯分類 -->
 <button id="exitEditBtn" onclick="exitEditMode()" style="
-  display: none;
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #e3ffe8;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: bold;
-  cursor: pointer;
-  z-index: 10;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  display: none;
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #e3ffe8;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 ">✅</button>
 
 
-  <!-- 新增任務視窗 -->
-  <div class="modal" id="taskModal">
-    <div class="modal-content">
-      <button class="close-btn" onclick="closeModal('taskModal')">✕</button>
-      <h3>新增任務</h3>
-    <label>任務分類</label>
-    <div class="inline-row">
-      <!-- 這裡要用 taskSection（不是 detailSection）-->
-      <select id="taskSection" class="half">
-      </select>
+  <!-- 新增任務視窗 -->
+  <div class="modal" id="taskModal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeModal('taskModal')">✕</button>
+      <h3>新增任務</h3>
+    <label>任務分類</label>
+    <div class="inline-row">
+      <!-- 這裡要用 taskSection（不是 detailSection）-->
+      <select id="taskSection" class="half">
+      </select>
 
-      <!-- 這裡要用 taskImportant（不是 detailImportant）-->
-      <label class="important-flag">
-        <input type="checkbox" id="taskImportant">
-        重要
-      </label>
-    </div>
+      <!-- 這裡要用 taskImportant（不是 detailImportant）-->
+      <label class="important-flag">
+        <input type="checkbox" id="taskImportant">
+        重要
+      </label>
+    </div>
 
-      <label>任務標題(必填)</label>
-      <input type="text" id="taskTitle">
-      <label>任務內容</label>
-      <textarea id="taskContent"></textarea>
-      <label>預定完成日</label>
-      <input type="date" id="taskDate">
-      <label>處理情形</label>
-      <textarea id="taskNote"></textarea>
-      <button onclick="addTask()" style="font-weight:bold;">新增</button>
-    </div>
-  </div>
+      <label>任務標題(必填)</label>
+      <input type="text" id="taskTitle">
+      <label>任務內容</label>
+      <textarea id="taskContent"></textarea>
+      <label>預定完成日</label>
+      <input type="date" id="taskDate">
+      <label>處理情形</label>
+      <textarea id="taskNote"></textarea>
+      <button onclick="addTask()" style="font-weight:bold;">新增</button>
+    </div>
+  </div>
 
-  <!-- 任務內容檢視視窗 -->
-  <div class="modal" id="detailModal">
-    <div class="modal-content">
-      <button class="close-btn" onclick="closeModal('detailModal')">✕</button>
-      <h3>任務內容</h3>
+  <!-- 任務內容檢視視窗 -->
+  <div class="modal" id="detailModal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeModal('detailModal')">✕</button>
+      <h3>任務內容</h3>
 <label>任務分類</label>
 <div class="inline-row">
-  <select id="detailSection" class="half">
-  </select>
+  <select id="detailSection" class="half">
+  </select>
 
-  <label class="important-flag">
-    <input type="checkbox" id="detailImportant">
-    重要
-  </label>
+  <label class="important-flag">
+    <input type="checkbox" id="detailImportant">
+    重要
+  </label>
 </div>
 
-      <label>任務標題</label>
-      <input type="text" id="detailTitle">
-      <label>任務內容</label>
-      <textarea id="detailContent"></textarea>
-      <label>預定完成日</label>
-      <input type="date" id="detailDate">
-      <label>處理情形</label>
-      <textarea id="detailNote"></textarea>
+      <label>任務標題</label>
+      <input type="text" id="detailTitle">
+      <label>任務內容</label>
+      <textarea id="detailContent"></textarea>
+      <label>預定完成日</label>
+      <input type="date" id="detailDate">
+      <label>處理情形</label>
+      <textarea id="detailNote"></textarea>
 <div style="display: flex; gap: 0.5rem;">
-  <button class="save-btn-half" onclick="saveTask()">💾 儲存</button>
-  <button class="delete-btn-half" onclick="confirmDelete()">🗑️ 移除</button>
+  <button class="save-btn-half" onclick="saveTask()">💾 儲存</button>
+  <button class="delete-btn-half" onclick="confirmDelete()">🗑️ 移除</button>
 </div>
 <!-- 滑動完成 -->
 <div class="slide-complete" id="slideComplete">
-  <div class="slide-track">
-    <div class="slide-hint">➡ 往右拖拉完成</div>
-    <div class="slide-fill" id="slideFill"></div>
-    <div class="slide-handle" id="slideHandle" aria-label="往右拖拉完成"></div>
-  </div>
+  <div class="slide-track">
+    <div class="slide-hint">➡ 往右拖拉完成</div>
+    <div class="slide-fill" id="slideFill"></div>
+    <div class="slide-handle" id="slideHandle" aria-label="往右拖拉完成"></div>
+  </div>
 </div>
 
-    </div>
-  </div>
+    </div>
+  </div>
 
-  <script>
-let isEditing = false;   // 目前是否在編輯分類模式
-  // ✅ 分類在這裡維護（有順序）
-let categoriesLoaded = false;  // 分類是否已從雲端載入
+  <script>
+let isEditing = false;   // 目前是否在編輯分類模式
+  // ✅ 分類在這裡維護（有順序）
+let categoriesLoaded = false;  // 分類是否已從雲端載入
 let categories = [];
-let sectionSortable = null;  // 存住 Sortable 實例
+let sectionSortable = null;  // 存住 Sortable 實例
 // ✅ 重新畫出所有分類區塊（依照 categories 順序）
 function refreshCurrentView(){
-  if (statusFilter === 'done') {
-    buildDoneMonthMenu();
-    renderCompletedTasks();
-  } else {
-    showOngoing();
-  }
+  if (statusFilter === 'done') {
+    buildDoneMonthMenu();
+    renderCompletedTasks();
+  } else {
+    showOngoing();
+  }
 }
 // ✅ 只存分類（不要再從 tasks 推回去）
 function saveCategoriesToFirebase(){
-  if(!roomPath) return;
-  db.ref(`${roomPath}/categories`).set(categories);
+  if(!roomPath) return;
+  db.ref(`${roomPath}/categories`).set(categories);
 }
 // === Firebase 初始化（放在這支 <script> 的最上面）===
 const firebaseConfig = {
-  apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
-  authDomain: "kjreminder-24d74.firebaseapp.com",
-  projectId: "kjreminder-24d74",
-  storageBucket: "kjreminder-24d74.firebasestorage.app",
-  messagingSenderId: "176371952161",
-  appId: "1:176371952161:web:948121be209cd2e4181160",
-  databaseURL: "https://kjreminder-24d74-default-rtdb.asia-southeast1.firebasedatabase.app/"
+  apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
+  authDomain: "kjreminder-24d74.firebaseapp.com",
+  projectId: "kjreminder-24d74",
+  storageBucket: "kjreminder-24d74.firebasestorage.app",
+  messagingSenderId: "176371952161",
+  appId: "1:176371952161:web:948121be209cd2e4181160",
+  databaseURL: "https://kjreminder-24d74-default-rtdb.asia-southeast1.firebasedatabase.app/"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -1047,97 +1047,97 @@ const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
 
 // 等網路起來
 function waitOnline() {
-  if (navigator.onLine) return Promise.resolve();
-  return new Promise(res => window.addEventListener('online', res, { once: true }));
+  if (navigator.onLine) return Promise.resolve();
+  return new Promise(res => window.addEventListener('online', res, { once: true }));
 }
 
 // 測試 IndexedDB 是否可用（iOS PWA 冷啟有時會炸）
 function testIndexedDB() {
-  return new Promise((resolve) => {
-    try {
-      const req = indexedDB.open('kjreminder-idb-test', 1);
-      req.onsuccess = () => { try { req.result.close(); } catch(_){} resolve(true); };
-      req.onerror   = () => resolve(false);
-      req.onblocked = () => resolve(false);
-    } catch(_) { resolve(false); }
-  });
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('kjreminder-idb-test', 1);
+      req.onsuccess = () => { try { req.result.close(); } catch(_){} resolve(true); };
+      req.onerror   = () => resolve(false);
+      req.onblocked = () => resolve(false);
+    } catch(_) { resolve(false); }
+  });
 }
 
 // PWA 啟動時，稍等一下讓存儲與網路就緒，並選擇安全的持久性
 async function pwaAuthWarmup() {
-  // 先等 DOM 妥當
-  await new Promise(r => setTimeout(r, 120));
+  // 先等 DOM 妥當
+  await new Promise(r => setTimeout(r, 120));
 
-  // 等網路
-  await waitOnline();
+  // 等網路
+  await waitOnline();
 
-  // iOS PWA 冷啟：IndexedDB 常常 0.x 秒內不可用，稍等一點再測
-  await new Promise(r => setTimeout(r, 120));
+  // iOS PWA 冷啟：IndexedDB 常常 0.x 秒內不可用，稍等一點再測
+  await new Promise(r => setTimeout(r, 120));
 
-  const idbOK = await testIndexedDB();
+  const idbOK = await testIndexedDB();
 
-  try {
-    if (idbOK) {
-      // 正常用 LOCAL（能記住登入）
-      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-    } else {
-      // 退而求其次：不持久（本次開啟有效，避免卡在持久層）
-      await auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
-    }
-  } catch(_) {
-    // 就算 setPersistence 失敗也別擋流程
-  }
+  try {
+    if (idbOK) {
+      // 正常用 LOCAL（能記住登入）
+      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    } else {
+      // 退而求其次：不持久（本次開啟有效，避免卡在持久層）
+      await auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+    }
+  } catch(_) {
+    // 就算 setPersistence 失敗也別擋流程
+  }
 }
 
 // 你的一鍵開機（如果你已經做了 bootAuth/ensureSignedIn，就在裡面呼叫 pwaAuthWarmup）
 async function bootAuth() {
-  if (bootAuth.__busy) return;
-  bootAuth.__busy = true;
-  setLoginBusy(true);
+  if (bootAuth.__busy) return;
+  bootAuth.__busy = true;
+  setLoginBusy(true);
 
-  // 先把顯示狀態清掉，避免閃爍
-  document.documentElement.classList.remove('show-login', 'show-app');
+  // 先把顯示狀態清掉，避免閃爍
+  document.documentElement.classList.remove('show-login', 'show-app');
 
-  // PWA 先熱身（網路/儲存就緒 & 設定持久性）
-  if (isStandalone) {
-    await pwaAuthWarmup();
-  } else {
-    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(_) {}
-  }
+  // PWA 先熱身（網路/儲存就緒 & 設定持久性）
+  if (isStandalone) {
+    await pwaAuthWarmup();
+  } else {
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(_) {}
+  }
 
-  // 讀 sessionStorage 或 localStorage，算出 roomPath
-  hydrateRoomPath();
+  // 讀 sessionStorage 或 localStorage，算出 roomPath
+  hydrateRoomPath();
 
-  if (!roomPath) {
-    // 沒憑證：停在登入頁，並確保沒有殘留登入狀態
-    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
-    document.documentElement.classList.add('show-login');
-    setLoginBusy(false);
-    bootAuth.__busy = false;
-    return;
-  }
+  if (!roomPath) {
+    // 沒憑證：停在登入頁，並確保沒有殘留登入狀態
+    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
+    document.documentElement.classList.add('show-login');
+    setLoginBusy(false);
+    bootAuth.__busy = false;
+    return;
+  }
 
-  // 有憑證：乾淨登入 + 超時備援
-  try {
-    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
+  // 有憑證：乾淨登入 + 超時備援
+  try {
+    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
 
-    const timeout = new Promise((_, rej) =>
-      setTimeout(() => rej(new Error('timeout')), 7000)
-    );
-    await Promise.race([auth.signInAnonymously(), timeout]);
+    const timeout = new Promise((_, rej) =>
+      setTimeout(() => rej(new Error('timeout')), 7000)
+    );
+    await Promise.race([auth.signInAnonymously(), timeout]);
 
-    // 成功 → 顯示主畫面
-    document.documentElement.classList.add('show-app');
-    loadTasksFromFirebase();
-    updateSectionOptions();
-  } catch (e) {
-    // 失敗 → 停在登入頁
-    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
-    document.documentElement.classList.add('show-login');
-  } finally {
-    setLoginBusy(false);
-    bootAuth.__busy = false;
-  }
+    // 成功 → 顯示主畫面
+    document.documentElement.classList.add('show-app');
+    loadTasksFromFirebase();
+    updateSectionOptions();
+  } catch (e) {
+    // 失敗 → 停在登入頁
+    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
+    document.documentElement.classList.add('show-login');
+  } finally {
+    setLoginBusy(false);
+    bootAuth.__busy = false;
+  }
 }
 
 // 事件：開頁、回前景、聚焦時都補呼叫一次
@@ -1149,63 +1149,63 @@ let authBusy = false;
 let authTimer = null;
 
 async function ensureSignedIn() {
-  if (authBusy) return;
-  authBusy = true;
-  setLoginBusy(true);
+  if (authBusy) return;
+  authBusy = true;
+  setLoginBusy(true);
 
-  // 先從 localStorage 拿 saved（判斷是否有「自動登入」資料）
-  let saved = null;
-  try { saved = localStorage.getItem('todo_room_info'); } catch(_) {}
+  // 先從 localStorage 拿 saved（判斷是否有「自動登入」資料）
+  let saved = null;
+  try { saved = localStorage.getItem('todo_room_info'); } catch(_) {}
 
-  // ✅ 情況 1：沒有儲存帳密 → 不要自動登入！直接顯示登入頁
-  if (!saved) {
-    authBusy = false;
-    setLoginBusy(false);
-    // 顯示登入頁
+  // ✅ 情況 1：沒有儲存帳密 → 不要自動登入！直接顯示登入頁
+  if (!saved) {
+    authBusy = false;
+    setLoginBusy(false);
+    // 顯示登入頁
 document.documentElement.classList.remove('show-app');
 document.documentElement.classList.add('show-login');
 
-    // 為了保險：若瀏覽器還留著舊的匿名使用者，登出一次，避免之後 onAuthStateChanged 亂切畫面
-    try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
-    return;
-  }
+    // 為了保險：若瀏覽器還留著舊的匿名使用者，登出一次，避免之後 onAuthStateChanged 亂切畫面
+    try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
+    return;
+  }
 
-  // ✅ 情況 2：有儲存帳密 → 正常自動登入流程
-  hydrateRoomPath(); // 組好 roomPath
+  // ✅ 情況 2：有儲存帳密 → 正常自動登入流程
+  hydrateRoomPath(); // 組好 roomPath
 
 showAutoLoginOverlay();
 startAutoLoginWatchdog();
 
-  try {
-    // A. 若已經有 user 且有 roomPath，直接進主畫面
-    if (auth.currentUser && roomPath) {
-      document.getElementById('loginPage').style.display = 'none';
-      document.querySelector('.container').style.display = 'block';
-      loadTasksFromFirebase();
-      updateSectionOptions();
+  try {
+    // A. 若已經有 user 且有 roomPath，直接進主畫面
+    if (auth.currentUser && roomPath) {
+      document.getElementById('loginPage').style.display = 'none';
+      document.querySelector('.container').style.display = 'block';
+      loadTasksFromFirebase();
+      updateSectionOptions();
 hideAutoLoginOverlay();
-      return;
-    }
+      return;
+    }
 
-    // B. 確保乾淨狀態再登入（避免殘留 session）
-    if (auth.currentUser) await auth.signOut();
+    // B. 確保乾淨狀態再登入（避免殘留 session）
+    if (auth.currentUser) await auth.signOut();
 
-    // C. 加超時保護：6 秒還沒回應就重試一次匿名登入
-    authTimer = setTimeout(async () => {
-      try {
-        if (auth.currentUser) await auth.signOut();
-        await auth.signInAnonymously();
-      } catch(e) {/* 忽略 */}
-    }, AUTH_TIMEOUT_MS);
+    // C. 加超時保護：6 秒還沒回應就重試一次匿名登入
+    authTimer = setTimeout(async () => {
+      try {
+        if (auth.currentUser) await auth.signOut();
+        await auth.signInAnonymously();
+      } catch(e) {/* 忽略 */}
+    }, AUTH_TIMEOUT_MS);
 
-    await auth.signInAnonymously();
-  } catch (e) {
-    alert('自動登入失敗：' + (e?.message || e));
+    await auth.signInAnonymously();
+  } catch (e) {
+    alert('自動登入失敗：' + (e?.message || e));
 hideAutoLoginOverlay();
-  } finally {
-    authBusy = false;
-    // 其餘切畫面由 onAuthStateChanged 統一處理
-  }
+  } finally {
+    authBusy = false;
+    // 其餘切畫面由 onAuthStateChanged 統一處理
+  }
 }
 
 let roomPath = ""; // ← 放這裡！全檔只出現一次
@@ -1216,216 +1216,216 @@ const DEFAULT_CATEGORIES = ['照顧服務','專業服務','交通接送','喘息
 
 // 小工具：把不合法字元換掉（Firebase 路徑不能有 . # $ [ ] /）
 function sanitizeKey(s){
-  return String(s).replace(/[.#$/\[\]\/]/g, '_');
+  return String(s).replace(/[.#$/\[\]\/]/g, '_');
 }
 
 
 // 1) 全域狀態（放在你的全域變數區）
 let dayMode = 'work'; // 'work' 工作天(預設) / 'calendar' 日曆天
-    let tasks = [];
-    let selectedTaskId = null;
+    let tasks = [];
+    let selectedTaskId = null;
 
 function hydrateRoomPath(){
-  // 從 localStorage 裡把房間資訊還原回 roomPath（如果有）
-  try {
-    const saved = localStorage.getItem('todo_room_info');
-    if (!saved) return;
-    const { username, password } = JSON.parse(saved);
-    roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-  } catch (e) {
-    console.warn('hydrateRoomPath 失敗：', e);
-  }
+  // 從 localStorage 裡把房間資訊還原回 roomPath（如果有）
+  try {
+    const saved = localStorage.getItem('todo_room_info');
+    if (!saved) return;
+    const { username, password } = JSON.parse(saved);
+    roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+  } catch (e) {
+    console.warn('hydrateRoomPath 失敗：', e);
+  }
 }
 
 function openModal(prefSectionId) {
-  updateSectionOptions();                 // ★ 先同步選項
-  if (prefSectionId) {
-    const sel = document.getElementById('taskSection');
-    if (sel) {
-      // 有對應選項就預選；沒有就維持原狀
-      const opt = sel.querySelector(`option[value="${prefSectionId}"]`);
-      if (opt) sel.value = prefSectionId;
-    }
-  }
-  document.getElementById('taskModal').style.display = 'flex';
-  closeFabMenu();
+  updateSectionOptions();                 // ★ 先同步選項
+  if (prefSectionId) {
+    const sel = document.getElementById('taskSection');
+    if (sel) {
+      // 有對應選項就預選；沒有就維持原狀
+      const opt = sel.querySelector(`option[value="${prefSectionId}"]`);
+      if (opt) sel.value = prefSectionId;
+    }
+  }
+  document.getElementById('taskModal').style.display = 'flex';
+  closeFabMenu();
 }
 
 
-    function closeModal(id) {
-      document.getElementById(id).style.display = 'none';
-    }
+    function closeModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
 
 //剩餘天數邏輯
 // 2) 取代你目前的 getRemainingDays（支援兩種模式）
 function getRemainingDays(dateStr) {
-  if (!dateStr) return null;
-  const today = new Date(); today.setHours(0,0,0,0);
-  const target = new Date(dateStr); target.setHours(0,0,0,0);
+  if (!dateStr) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(dateStr); target.setHours(0,0,0,0);
 
-  if (dayMode === 'calendar') {
-    // 日曆天：含六日；今天=0、明天=+1、昨天=-1
-    const ms = target.getTime() - today.getTime();
-    return Math.round(ms / 86400000);
-  }
+  if (dayMode === 'calendar') {
+    // 日曆天：含六日；今天=0、明天=+1、昨天=-1
+    const ms = target.getTime() - today.getTime();
+    return Math.round(ms / 86400000);
+  }
 
-  // 工作天：排除六日；今天=0；未來/過去都以工作天計
-  if (target.getTime() === today.getTime()) return 0;
-  const forward = target > today;
-  let start = new Date(forward ? today : target);
-  let end   = new Date(forward ? target : today);
+  // 工作天：排除六日；今天=0；未來/過去都以工作天計
+  if (target.getTime() === today.getTime()) return 0;
+  const forward = target > today;
+  let start = new Date(forward ? today : target);
+  let end   = new Date(forward ? target : today);
 
-  let count = 0, cur = new Date(start);
-  while (cur <= end) {
-    const d = cur.getDay();
-    if (d !== 0 && d !== 6) count++;     // 只算週一～週五
-    cur.setDate(cur.getDate() + 1);
-  }                      // 不含起始日
-  return forward ? count : -count;
+  let count = 0, cur = new Date(start);
+  while (cur <= end) {
+    const d = cur.getDay();
+    if (d !== 0 && d !== 6) count++;     // 只算週一～週五
+    cur.setDate(cur.getDate() + 1);
+  }                      // 不含起始日
+  return forward ? count : -count;
 }
 
 
 
-    function getColorByDays(days) {
-      if (days == null) return 'var(--green-light)';
-      if (days >= 7) return 'var(--green-light)';
-      if (days >= 4) return '#ffeaea';
-      if (days >= 1) return '#ffb3b3';
-      return '#ff8080';
-    }
+    function getColorByDays(days) {
+      if (days == null) return 'var(--green-light)';
+      if (days >= 7) return 'var(--green-light)';
+      if (days >= 4) return '#ffeaea';
+      if (days >= 1) return '#ffb3b3';
+      return '#ff8080';
+    }
 
-    function addTask() {
-  const section = document.getElementById('taskSection').value;
-  const title   = document.getElementById('taskTitle').value;
-  const content = document.getElementById('taskContent').value;
-  const date    = document.getElementById('taskDate').value;
-  const note    = document.getElementById('taskNote').value;
+    function addTask() {
+  const section = document.getElementById('taskSection').value;
+  const title   = document.getElementById('taskTitle').value;
+  const content = document.getElementById('taskContent').value;
+  const date    = document.getElementById('taskDate').value;
+  const note    = document.getElementById('taskNote').value;
 
-  if (!title) return;
+  if (!title) return;
 
-  // 讀「重要」勾選（沒有這個欄位就先設 false）
-  const importantEl = document.getElementById('taskImportant');
-  const important   = importantEl ? importantEl.checked : false;
+  // 讀「重要」勾選（沒有這個欄位就先設 false）
+  const importantEl = document.getElementById('taskImportant');
+  const important   = importantEl ? importantEl.checked : false;
 
-  const id = `task-${Date.now()}`;
-  const task = { id, section, title, content, date, note, important };
-  tasks.push(task);
+  const id = `task-${Date.now()}`;
+  const task = { id, section, title, content, date, note, important };
+  tasks.push(task);
 
-  const days = getRemainingDays(date);
-  const bg = getColorByDays(days);
-  const displayDays = (days == null) ? '無' : days;
+  const days = getRemainingDays(date);
+  const bg = getColorByDays(days);
+  const displayDays = (days == null) ? '無' : days;
 
-  const el = document.createElement('div');
-  el.className = 'task';
-  el.dataset.id = id;
-  el.style.backgroundColor = bg;
-  el.innerHTML = `
-    <div class="task-content">
-      <div class="task-title">${getTitleWithFlag(task)}</div>
-    </div>
-    <div class="task-days">${displayDays}</div>
-  `;
-  el.onclick = () => openDetail(id);
+  const el = document.createElement('div');
+  el.className = 'task';
+  el.dataset.id = id;
+  el.style.backgroundColor = bg;
+  el.innerHTML = `
+    <div class="task-content">
+      <div class="task-title">${getTitleWithFlag(task)}</div>
+    </div>
+    <div class="task-days">${displayDays}</div>
+  `;
+  el.onclick = () => openDetail(id);
 
-  document.getElementById(section).appendChild(el);
-  sortTasks(section);
+  document.getElementById(section).appendChild(el);
+  sortTasks(section);
 
 // 關閉視窗（加回這行）
 closeModal('taskModal');
 
-  // 清空表單
-  document.getElementById('taskTitle').value = '';
-  document.getElementById('taskContent').value = '';
-  document.getElementById('taskDate').value = '';
-  document.getElementById('taskNote').value = '';
-  if (importantEl) importantEl.checked = false;   // ← 把「重要」勾選清掉
+  // 清空表單
+  document.getElementById('taskTitle').value = '';
+  document.getElementById('taskContent').value = '';
+  document.getElementById('taskDate').value = '';
+  document.getElementById('taskNote').value = '';
+  if (importantEl) importantEl.checked = false;   // ← 把「重要」勾選清掉
 
-  applyDayFilter();
-  saveTasksToFirebase();
+  applyDayFilter();
+  saveTasksToFirebase();
 }
 
 
 //排序邏輯用
 function sortTasks(section) {
-  const container = document.getElementById(section);
-  const tasksInSection = Array.from(container.querySelectorAll('.task'));
+  const container = document.getElementById(section);
+  const tasksInSection = Array.from(container.querySelectorAll('.task'));
 
-  tasksInSection.sort((a, b) => {
-    const taskA = tasks.find(t => t.id === a.dataset.id);
-    const taskB = tasks.find(t => t.id === b.dataset.id);
+  tasksInSection.sort((a, b) => {
+    const taskA = tasks.find(t => t.id === a.dataset.id);
+    const taskB = tasks.find(t => t.id === b.dataset.id);
 
-    const daysA = getRemainingDays(taskA.date);
-    const daysB = getRemainingDays(taskB.date);
+    const daysA = getRemainingDays(taskA.date);
+    const daysB = getRemainingDays(taskB.date);
 
-    // 空日期視為最大天數（排序到最下面）
-    const safeDaysA = daysA == null ? Infinity : daysA;
-    const safeDaysB = daysB == null ? Infinity : daysB;
+    // 空日期視為最大天數（排序到最下面）
+    const safeDaysA = daysA == null ? Infinity : daysA;
+    const safeDaysB = daysB == null ? Infinity : daysB;
 
-    return safeDaysA - safeDaysB;
-  });
+    return safeDaysA - safeDaysB;
+  });
 
-  // 清空後依排序結果重新加入
-  tasksInSection.forEach(taskEl => container.appendChild(taskEl));
+  // 清空後依排序結果重新加入
+  tasksInSection.forEach(taskEl => container.appendChild(taskEl));
 }
 
 
-    function openDetail(id) {
-      selectedTaskId = id;
-      const task = tasks.find(t => t.id === id);
-      if (!task) return;
+    function openDetail(id) {
+      selectedTaskId = id;
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
 
-      document.getElementById('detailSection').value = task.section;
-      document.getElementById('detailTitle').value = task.title;
-      document.getElementById('detailContent').value = task.content;
-      document.getElementById('detailDate').value = task.date;
-      document.getElementById('detailNote').value = task.note;
+      document.getElementById('detailSection').value = task.section;
+      document.getElementById('detailTitle').value = task.title;
+      document.getElementById('detailContent').value = task.content;
+      document.getElementById('detailDate').value = task.date;
+      document.getElementById('detailNote').value = task.note;
 
-      document.getElementById('detailModal').style.display = 'flex';
-setDetailReadonly(false);   // 加在 openDetail() 填值後
+      document.getElementById('detailModal').style.display = 'flex';
+setDetailReadonly(false);   // 加在 openDetail() 填值後
 document.getElementById('detailImportant').checked = !!task.important;
 if (window.__resetSlideComplete) window.__resetSlideComplete();
 
-    }
+    }
 
 
 //儲存功能
 function saveTask() {
-  if (!selectedTaskId) return;
+  if (!selectedTaskId) return;
 
-  const task = tasks.find(t => t.id === selectedTaskId);
-  if (!task) return;
+  const task = tasks.find(t => t.id === selectedTaskId);
+  if (!task) return;
 
-  task.section = document.getElementById('detailSection').value;
-  task.title = document.getElementById('detailTitle').value;
-  task.content = document.getElementById('detailContent').value;
-  task.date = document.getElementById('detailDate').value;
-  task.note = document.getElementById('detailNote').value;
-task.important = document.getElementById('detailImportant').checked;   // ★新增
+  task.section = document.getElementById('detailSection').value;
+  task.title = document.getElementById('detailTitle').value;
+  task.content = document.getElementById('detailContent').value;
+  task.date = document.getElementById('detailDate').value;
+  task.note = document.getElementById('detailNote').value;
+task.important = document.getElementById('detailImportant').checked;   // ★新增
 
-  const oldEl = document.querySelector(`[data-id='${task.id}']`);
-  if (oldEl) oldEl.remove();
+  const oldEl = document.querySelector(`[data-id='${task.id}']`);
+  if (oldEl) oldEl.remove();
 
-  const days = getRemainingDays(task.date);
-  const bg = getColorByDays(days);
-  const displayDays = (days == null) ? '無' : days;
+  const days = getRemainingDays(task.date);
+  const bg = getColorByDays(days);
+  const displayDays = (days == null) ? '無' : days;
 
-  const el = document.createElement('div');
-  el.className = 'task';
-  el.dataset.id = task.id;
-  el.style.backgroundColor = bg;
+  const el = document.createElement('div');
+  el.className = 'task';
+  el.dataset.id = task.id;
+  el.style.backgroundColor = bg;
 el.innerHTML = `
-  <div class="task-content">
-    <div class="task-title">${getTitleWithFlag(task)}</div>
-  </div>
-  <div class="task-days">${displayDays}</div>
+  <div class="task-content">
+    <div class="task-title">${getTitleWithFlag(task)}</div>
+  </div>
+  <div class="task-days">${displayDays}</div>
 `;
 
-  el.onclick = () => openDetail(task.id);
+  el.onclick = () => openDetail(task.id);
 
-  document.getElementById(task.section).appendChild(el);
-  sortTasks(task.section);
+  document.getElementById(task.section).appendChild(el);
+  sortTasks(task.section);
 
-  closeModal('detailModal'); // ✅ 新增這一行
+  closeModal('detailModal'); // ✅ 新增這一行
 applyDayFilter();
 saveTasksToFirebase();
 
@@ -1434,53 +1434,53 @@ saveTasksToFirebase();
 
 //移除功能
 function confirmDelete() {
-  document.getElementById('confirmModal').style.display = 'flex';
+  document.getElementById('confirmModal').style.display = 'flex';
 }
 
 function deleteTask() {
-  if (!selectedTaskId) return;
+  if (!selectedTaskId) return;
 
-  const el = document.querySelector(`[data-id='${selectedTaskId}']`);
-  if (el) el.remove();
+  const el = document.querySelector(`[data-id='${selectedTaskId}']`);
+  if (el) el.remove();
 
-  tasks = tasks.filter(t => t.id !== selectedTaskId);
+  tasks = tasks.filter(t => t.id !== selectedTaskId);
 
-  closeModal('confirmModal');
-  closeModal('detailModal');
-saveTasksToFirebase();  // ← 加這行
+  closeModal('confirmModal');
+  closeModal('detailModal');
+saveTasksToFirebase();  // ← 加這行
 
 }
 //新增分類功能
 function openCategoryModal() {
-  document.getElementById('newCategoryName').value = '';
-  document.getElementById('categoryModal').style.display = 'flex';
-  closeFabMenu(); // ✅ 自動關閉選單
+  document.getElementById('newCategoryName').value = '';
+  document.getElementById('categoryModal').style.display = 'flex';
+  closeFabMenu(); // ✅ 自動關閉選單
 }
 
 function addCategory() {
-  const name = document.getElementById('newCategoryName').value.trim();
-  if (!name) return;
-  if (categories.includes(name)) { alert("此分類已存在！"); return; }
+  const name = document.getElementById('newCategoryName').value.trim();
+  if (!name) return;
+  if (categories.includes(name)) { alert("此分類已存在！"); return; }
 
-  // ✅ 更新陣列、存雲、重畫
-  categories.push(name);
-  saveCategoriesToFirebase();
-  renderSections(categories);
-refreshCurrentView();  
-  closeModal('categoryModal');
+  // ✅ 更新陣列、存雲、重畫
+  categories.push(name);
+  saveCategoriesToFirebase();
+  renderSections(categories);
+refreshCurrentView();  
+  closeModal('categoryModal');
 }
 
 
 
 //防雙擊
-  let lastTouchTime = 0;
-  document.addEventListener('touchend', function (event) {
-    const now = new Date().getTime();
-    if (now - lastTouchTime <= 300) {
-      event.preventDefault(); // 阻止第二次點擊導致放大
-    }
-    lastTouchTime = now;
-  }, false);
+  let lastTouchTime = 0;
+  document.addEventListener('touchend', function (event) {
+    const now = new Date().getTime();
+    if (now - lastTouchTime <= 300) {
+      event.preventDefault(); // 阻止第二次點擊導致放大
+    }
+    lastTouchTime = now;
+  }, false);
 
 
 //編輯分類功能
@@ -1488,60 +1488,60 @@ refreshCurrentView();  
 let pendingRenameId = null;
 
 function enterEditMode() {
-  isEditing = true;
-  decorateSectionsForEdit();
-  closeFabMenu();
-  const exitBtn = document.getElementById('exitEditBtn');
+  isEditing = true;
+  decorateSectionsForEdit();
+  closeFabMenu();
+  const exitBtn = document.getElementById('exitEditBtn');
 if (exitBtn) exitBtn.style.display = 'block';
 }
 // 刪除分類彈窗
 function confirmDeleteCategory(id) {
-  const category = document.getElementById(id);
-  if (!category) return;
+  const category = document.getElementById(id);
+  if (!category) return;
 
-  // 建立確認視窗
-  const confirmBox = document.createElement('div');
-  confirmBox.className = 'modal';
-  confirmBox.style.display = 'flex';
-  confirmBox.innerHTML = `
-    <div class="modal-content">
-      <h3 style="text-align: center;">是否確認刪除此分類？</h3>
-      <div class="confirm-buttons">
-        <button class="confirm-btn">確認</button>
-        <button class="cancel-btn">取消</button>
-      </div>
-    </div>
-  `;
+  // 建立確認視窗
+  const confirmBox = document.createElement('div');
+  confirmBox.className = 'modal';
+  confirmBox.style.display = 'flex';
+  confirmBox.innerHTML = `
+    <div class="modal-content">
+      <h3 style="text-align: center;">是否確認刪除此分類？</h3>
+      <div class="confirm-buttons">
+        <button class="confirm-btn">確認</button>
+        <button class="cancel-btn">取消</button>
+      </div>
+    </div>
+  `;
 
-  // 綁定按鈕事件
+  // 綁定按鈕事件
 confirmBox.querySelector('.confirm-btn').onclick = () => {
-  // ✅ 先處理任務：把在這個分類的任務，移去一個安全分類
-  const fallback = categories.find(c => c !== id) || '其它';
-  tasks.forEach(t => { if (t.section === id) t.section = fallback; });
-  completedTasks.forEach(t => { if (t.section === id) t.section = fallback; });
-  saveTasksToFirebase(); // 任務有動到就存一下
+  // ✅ 先處理任務：把在這個分類的任務，移去一個安全分類
+  const fallback = categories.find(c => c !== id) || '其它';
+  tasks.forEach(t => { if (t.section === id) t.section = fallback; });
+  completedTasks.forEach(t => { if (t.section === id) t.section = fallback; });
+  saveTasksToFirebase(); // 任務有動到就存一下
 
-  // ✅ 更新分類陣列
-  categories = categories.filter(c => c !== id);
-  saveCategoriesToFirebase();
+  // ✅ 更新分類陣列
+  categories = categories.filter(c => c !== id);
+  saveCategoriesToFirebase();
 
-  // ✅ 重畫分類與任務
-  renderSections(categories);
-  if (statusFilter === 'done') renderCompletedTasks(); else showOngoing();
+  // ✅ 重畫分類與任務
+  renderSections(categories);
+  if (statusFilter === 'done') renderCompletedTasks(); else showOngoing();
 
-  confirmBox.remove();
+  confirmBox.remove();
 };
-  confirmBox.querySelector('.cancel-btn').onclick = () => {
-    confirmBox.remove();
-  };
+  confirmBox.querySelector('.cancel-btn').onclick = () => {
+    confirmBox.remove();
+  };
 
-  document.body.appendChild(confirmBox);
+  document.body.appendChild(confirmBox);
 
 // ✅ 同步從所有 select 中移除這個分類選項
 const selects = [document.getElementById('taskSection'), document.getElementById('detailSection')];
 selects.forEach(select => {
-  const option = select.querySelector(`option[value="${id}"]`);
-  if (option) option.remove();
+  const option = select.querySelector(`option[value="${id}"]`);
+  if (option) option.remove();
 });
 }
 
@@ -1550,101 +1550,101 @@ selects.forEach(select => {
 
 //確認完成編輯
 function exitEditMode() {
-  // 關閉編輯狀態
-  isEditing = false;
+  // 關閉編輯狀態
+  isEditing = false;
 
-  // 清掉編輯配件與樣式
-  document.querySelectorAll('.section').forEach(section => {
-    section.classList.remove('edit-mode');
+  // 清掉編輯配件與樣式
+  document.querySelectorAll('.section').forEach(section => {
+    section.classList.remove('edit-mode');
 
-    const titleBar = section.querySelector('.section-title');
-    if (titleBar) {
-      // 還原只顯示名稱
-      titleBar.innerHTML = section.id;
-    }
-  });
+    const titleBar = section.querySelector('.section-title');
+    if (titleBar) {
+      // 還原只顯示名稱
+      titleBar.innerHTML = section.id;
+    }
+  });
 
-  // 隱藏底部「完成編輯」鈕
-  const exitBtn = document.getElementById('exitEditBtn');
-  if (exitBtn) exitBtn.style.display = 'none';
+  // 隱藏底部「完成編輯」鈕
+  const exitBtn = document.getElementById('exitEditBtn');
+  if (exitBtn) exitBtn.style.display = 'none';
 
-  // （可選）確保拖拉實例乾淨
-  if (sectionSortable && sectionSortable.destroy) {
-    sectionSortable.destroy();
-    sectionSortable = null;
-  }
-  // 重新初始化拖拉（非編輯模式下有把手就能拖，沒把手就不會動）
-  initSectionSortable();
+  // （可選）確保拖拉實例乾淨
+  if (sectionSortable && sectionSortable.destroy) {
+    sectionSortable.destroy();
+    sectionSortable = null;
+  }
+  // 重新初始化拖拉（非編輯模式下有把手就能拖，沒把手就不會動）
+  initSectionSortable();
 
-  // 編輯結束後，更新下拉選單
-  updateSectionOptions();
+  // 編輯結束後，更新下拉選單
+  updateSectionOptions();
 }
 
 //手機拖拉
 function initSectionSortable(){
-  const el = document.getElementById('section-container');
-  if (!el) return;
+  const el = document.getElementById('section-container');
+  if (!el) return;
 
-  // 先銷毀舊的，避免多次初始化衝突
-  if (sectionSortable && sectionSortable.destroy) {
-    sectionSortable.destroy();
-  }
+  // 先銷毀舊的，避免多次初始化衝突
+  if (sectionSortable && sectionSortable.destroy) {
+    sectionSortable.destroy();
+  }
 
 sectionSortable = new Sortable(el, {
-  animation: 150,
-  handle: '.drag-handle',
-  draggable: '.section',
-  ghostClass: 'dragging',
+  animation: 150,
+  handle: '.drag-handle',
+  draggable: '.section',
+  ghostClass: 'dragging',
 
-  // ⬇️ 立刻拖：取消長按延遲與門檻
-  forceFallback: true,
-  fallbackOnBody: true,
-  delay: 0,                 // 立刻開始
-  delayOnTouchOnly: false,  // 不需要長按邏輯
-  touchStartThreshold: 0,   // 觸碰就拖
+  // ⬇️ 立刻拖：取消長按延遲與門檻
+  forceFallback: true,
+  fallbackOnBody: true,
+  delay: 0,                 // 立刻開始
+  delayOnTouchOnly: false,  // 不需要長按邏輯
+  touchStartThreshold: 0,   // 觸碰就拖
 
-  onEnd: () => {
-    categories = Array.from(document.querySelectorAll('#section-container .section'))
-      .map(sec => sec.id);
-    saveCategoriesToFirebase();
-  }
+  onEnd: () => {
+    categories = Array.from(document.querySelectorAll('#section-container .section'))
+      .map(sec => sec.id);
+    saveCategoriesToFirebase();
+  }
 });
 }
 function openRenameModal(sectionId) {
-  pendingRenameId = sectionId;
-  document.getElementById('renameInput').value = sectionId;
-  document.getElementById('renameModal').style.display = 'flex';
+  pendingRenameId = sectionId;
+  document.getElementById('renameInput').value = sectionId;
+  document.getElementById('renameModal').style.display = 'flex';
 }
 
 function confirmRename() {
-  const oldId = pendingRenameId;
-  const newName = document.getElementById('renameInput').value.trim();
-  if (!newName || document.getElementById(newName)) {
-    alert('名稱不可為空或已存在！');
-    return;
-  }
+  const oldId = pendingRenameId;
+  const newName = document.getElementById('renameInput').value.trim();
+  if (!newName || document.getElementById(newName)) {
+    alert('名稱不可為空或已存在！');
+    return;
+  }
 
-  // 進行中任務：改 section
-  tasks.forEach(t => { if (t.section === oldId) t.section = newName; });
+  // 進行中任務：改 section
+  tasks.forEach(t => { if (t.section === oldId) t.section = newName; });
 
-  // 已完成任務：也要改 section
-  completedTasks.forEach(t => { if (t.section === oldId) t.section = newName; });
+  // 已完成任務：也要改 section
+  completedTasks.forEach(t => { if (t.section === oldId) t.section = newName; });
 
-  // ✅ 把 categories 陣列裡的舊名換新名
-  categories = categories.map(c => c === oldId ? newName : c);
-  saveCategoriesToFirebase();   // 存分類
-  saveTasksToFirebase();        // 存任務
+  // ✅ 把 categories 陣列裡的舊名換新名
+  categories = categories.map(c => c === oldId ? newName : c);
+  saveCategoriesToFirebase();   // 存分類
+  saveTasksToFirebase();        // 存任務
 
-  // ✅ 重畫 + 依當前頁籤刷新
-  renderSections(categories);
-  if (statusFilter === 'done') {
-    renderCompletedTasks();
-  } else {
-    showOngoing();
-  }
+  // ✅ 重畫 + 依當前頁籤刷新
+  renderSections(categories);
+  if (statusFilter === 'done') {
+    renderCompletedTasks();
+  } else {
+    showOngoing();
+  }
 
-  closeModal('renameModal');
-  pendingRenameId = null;
+  closeModal('renameModal');
+  pendingRenameId = null;
 }
 
 
@@ -1652,301 +1652,301 @@ function confirmRename() {
 
 //新增分類
 function updateSectionOptions() {
-  const sections = document.querySelectorAll('.section');
-  const options = Array.from(sections).map(section => {
-    const id = section.id;
-    return `<option value="${id}">${id}</option>`;
-  }).join('');
+  const sections = document.querySelectorAll('.section');
+  const options = Array.from(sections).map(section => {
+    const id = section.id;
+    return `<option value="${id}">${id}</option>`;
+  }).join('');
 
-  document.getElementById('taskSection').innerHTML = options;
-  document.getElementById('detailSection').innerHTML = options;
+  document.getElementById('taskSection').innerHTML = options;
+  document.getElementById('detailSection').innerHTML = options;
 }
 
 //更多功能-篩選剩餘日
 let filterDay = "all"; // 預設全部
 
 document.addEventListener("change", function(e) {
-  if (e.target.matches('.filter-days input[type="radio"]')) {
-    filterDay = e.target.value;   // 直接切換
-    applyDayFilter();
-  }
+  if (e.target.matches('.filter-days input[type="radio"]')) {
+    filterDay = e.target.value;   // 直接切換
+    applyDayFilter();
+  }
 });
 
 function applyDayFilter() {
-  document.querySelectorAll(".task").forEach(taskEl => {
-    const task = tasks.find(t => t.id === taskEl.dataset.id);
-    if (!task) return;
+  document.querySelectorAll(".task").forEach(taskEl => {
+    const task = tasks.find(t => t.id === taskEl.dataset.id);
+    if (!task) return;
 
-    const days = getRemainingDays(task.date);
-    let show = true;
+    const days = getRemainingDays(task.date);
+    let show = true;
 
-    if (filterDay !== "all") {
-      const v = parseInt(filterDay, 10);   // 0/1/2/3
-      // 無日期 -> 不顯示；選 0 表示 <=0（含負數），其餘 N 表示 <=N
-      show = (days !== null) && (days <= v);
-    }
+    if (filterDay !== "all") {
+      const v = parseInt(filterDay, 10);   // 0/1/2/3
+      // 無日期 -> 不顯示；選 0 表示 <=0（含負數），其餘 N 表示 <=N
+      show = (days !== null) && (days <= v);
+    }
 
-    taskEl.style.display = show ? "" : "none";
-  });
- // ⬇️ 只有啟用篩選時才隱藏沒命中的分類；「全部」時全部顯示
-  if (filterDay === 'all') {
-    document.querySelectorAll('#section-container .section').forEach(sec => sec.style.display = '');
-  } else {
-    hideEmptySectionsAfterFilter();
-  }
+    taskEl.style.display = show ? "" : "none";
+  });
+ // ⬇️ 只有啟用篩選時才隱藏沒命中的分類；「全部」時全部顯示
+  if (filterDay === 'all') {
+    document.querySelectorAll('#section-container .section').forEach(sec => sec.style.display = '');
+  } else {
+    hideEmptySectionsAfterFilter();
+  }
 }
 
 
 
 function openModalById(id) {
-  document.getElementById(id).style.display = 'flex';
+  document.getElementById(id).style.display = 'flex';
 }
 
 //歷史紀錄
 // ====== 新增的全域狀態 ======
-let completedTasks = [];          // 歸檔的完成任務
-let statusFilter = "ongoing";     // 進行中 / 已完成
+let completedTasks = [];          // 歸檔的完成任務
+let statusFilter = "ongoing";     // 進行中 / 已完成
 let completedMonthFilter = "recent15"; // recent15 或 '11407' 這種月份
 
 // 單選：任務狀態（即時切換）
 document.addEventListener("change", function(e){
-  if (e.target.matches('.filter-status input[type="radio"]')) {
-    statusFilter = e.target.value;              // 'ongoing' or 'done'
- if (statusFilter === 'done') {
-  // 禁用右下＋按鈕
-  const fab = document.querySelector('.fab');
-  if (fab) {
-    fab.style.pointerEvents = 'none';   // 不可點
-    fab.style.opacity = '0.5';          // 變淡
-  }
+  if (e.target.matches('.filter-status input[type="radio"]')) {
+    statusFilter = e.target.value;              // 'ongoing' or 'done'
+ if (statusFilter === 'done') {
+  // 禁用右下＋按鈕
+  const fab = document.querySelector('.fab');
+  if (fab) {
+    fab.style.pointerEvents = 'none';   // 不可點
+    fab.style.opacity = '0.5';          // 變淡
+  }
 
-  completedMonthFilter = "recent15";
-  buildDoneMonthMenu();                    
-  document.getElementById('doneMore').style.display = 'block';
-  renderCompletedTasks();
+  completedMonthFilter = "recent15";
+  buildDoneMonthMenu();                    
+  document.getElementById('doneMore').style.display = 'block';
+  renderCompletedTasks();
 } else {
-  // 恢復右下＋按鈕
-  const fab = document.querySelector('.fab');
-  if (fab) {
-    fab.style.pointerEvents = 'auto';   // 可點
-    fab.style.opacity = '1';            // 還原
-  }
+  // 恢復右下＋按鈕
+  const fab = document.querySelector('.fab');
+  if (fab) {
+    fab.style.pointerEvents = 'auto';   // 可點
+    fab.style.opacity = '1';            // 還原
+  }
 
-  document.getElementById('doneMore').style.display = 'none';
-  showOngoing();                           
+  document.getElementById('doneMore').style.display = 'none';
+  showOngoing();                           
 }
-  }
+  }
 });
 // 3) 監聽「天數設定」切換（在你的 document.addEventListener 區塊加這段）
 document.addEventListener("change", function(e){
-  if (e.target.matches('.filter-mode input[type="radio"]')) {
-    dayMode = e.target.value;                 // 'work' or 'calendar'
-    if (statusFilter === 'done') {
-      renderCompletedTasks();                 // 完成視圖不吃天數，但保持一致刷新
-    } else {
-      showOngoing();                          // 重新計算天數/顏色/排序並套用篩選
-    }
-  }
+  if (e.target.matches('.filter-mode input[type="radio"]')) {
+    dayMode = e.target.value;                 // 'work' or 'calendar'
+    if (statusFilter === 'done') {
+      renderCompletedTasks();                 // 完成視圖不吃天數，但保持一致刷新
+    } else {
+      showOngoing();                          // 重新計算天數/顏色/排序並套用篩選
+    }
+  }
 });
 
 
 // 完成按鈕：改為歸檔（覆蓋你的 completeTask）
 function completeTask() {
-  if (!selectedTaskId) return;
+  if (!selectedTaskId) return;
 
-  const idx = tasks.findIndex(t => t.id === selectedTaskId);
-  if (idx === -1) return;
+  const idx = tasks.findIndex(t => t.id === selectedTaskId);
+  if (idx === -1) return;
 
-  // 用 timestamp（number）存到雲端最穩
-  const finished = { ...tasks[idx], completedAt: Date.now() };
+  // 用 timestamp（number）存到雲端最穩
+  const finished = { ...tasks[idx], completedAt: Date.now() };
 
-  tasks.splice(idx, 1);
-  const el = document.querySelector(`[data-id='${selectedTaskId}']`);
-  if (el) el.remove();
-  closeModal('detailModal');
+  tasks.splice(idx, 1);
+  const el = document.querySelector(`[data-id='${selectedTaskId}']`);
+  if (el) el.remove();
+  closeModal('detailModal');
 
-  completedTasks.push(finished);
+  completedTasks.push(finished);
 
-  // 儲存已完成任務到 Firebase
-  saveTasksToFirebase();
+  // 儲存已完成任務到 Firebase
+  saveTasksToFirebase();
 
-  // 動畫
-  const checkmark = document.getElementById('check-success');
-  checkmark.classList.add('show');
-  setTimeout(() => checkmark.classList.remove('show'), 1500);
+  // 動畫
+  const checkmark = document.getElementById('check-success');
+  checkmark.classList.add('show');
+  setTimeout(() => checkmark.classList.remove('show'), 1500);
 
-  if (statusFilter === 'done') {
-    buildDoneMonthMenu();
-    renderCompletedTasks();
-  }
+  if (statusFilter === 'done') {
+    buildDoneMonthMenu();
+    renderCompletedTasks();
+  }
 }
 
 
 // ====== 渲染邏輯 ======
 function clearAllSections() {
-  document.querySelectorAll('.section').forEach(sec => {
-    // 保留 section-title，清掉任務卡
-    Array.from(sec.querySelectorAll('.task')).forEach(t => t.remove());
-  });
+  document.querySelectorAll('.section').forEach(sec => {
+    // 保留 section-title，清掉任務卡
+    Array.from(sec.querySelectorAll('.task')).forEach(t => t.remove());
+  });
 }
 
 function showOngoing() {
-  clearAllSections();
+  clearAllSections();
 // 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
 // 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
 const needed = Array.from(new Set(tasks.map(t => t.section).filter(Boolean)));
 const merged = Array.from(new Set([...(categories || []), ...needed]));
 
 if (merged.length !== (categories || []).length) {
-  categories = merged;
-  if (categoriesLoaded) {          // ★★★ 分類載好後才允許存雲端
-    saveCategoriesToFirebase();
-  }
-  renderSections(categories);       // 重畫分類
+  categories = merged;
+  if (categoriesLoaded) {          // ★★★ 分類載好後才允許存雲端
+    saveCategoriesToFirebase();
+  }
+  renderSections(categories);       // 重畫分類
 }
-  // 重新把進行中 tasks 依 section 渲染
-  tasks.forEach(t => {
-    const days = getRemainingDays(t.date);
-    const bg = getColorByDays(days);
-    const displayDays = (days == null) ? '無' : days;
+  // 重新把進行中 tasks 依 section 渲染
+  tasks.forEach(t => {
+    const days = getRemainingDays(t.date);
+    const bg = getColorByDays(days);
+    const displayDays = (days == null) ? '無' : days;
 
-    const el = document.createElement('div');
-    el.className = 'task';
-    el.dataset.id = t.id;
-    el.style.backgroundColor = bg;
-    el.innerHTML = `
-      <div class="task-content">
-        <div class="task-title">${getTitleWithFlag(t)}</div>
-      </div>
-      <div class="task-days">${displayDays}</div>
-    `;
-    el.onclick = () => openDetail(t.id);
-    const sec = document.getElementById(t.section);
-    if (sec) sec.appendChild(el);
-  });
+    const el = document.createElement('div');
+    el.className = 'task';
+    el.dataset.id = t.id;
+    el.style.backgroundColor = bg;
+    el.innerHTML = `
+      <div class="task-content">
+        <div class="task-title">${getTitleWithFlag(t)}</div>
+      </div>
+      <div class="task-days">${displayDays}</div>
+    `;
+    el.onclick = () => openDetail(t.id);
+    const sec = document.getElementById(t.section);
+    if (sec) sec.appendChild(el);
+  });
 
-  // 依你原本邏輯排序
-  const sections = new Set(tasks.map(t => t.section));
-  sections.forEach(sortTasks);
+  // 依你原本邏輯排序
+  const sections = new Set(tasks.map(t => t.section));
+  sections.forEach(sortTasks);
 
-  // 進行中也要套用你目前的「剩餘天數」篩選
-  applyDayFilter();
+  // 進行中也要套用你目前的「剩餘天數」篩選
+  applyDayFilter();
 }
 
 // 轉民國年月（回傳如 "11407"）
 function toRocYM(input) {
-  // 允許傳進來是字串或 Date
-  const d = (input instanceof Date) ? input : new Date(input);
+  // 允許傳進來是字串或 Date
+  const d = (input instanceof Date) ? input : new Date(input);
 
-  // 沒填日期 or 無效日期 → 直接歸到「無」
-  if (!input || isNaN(d.getTime())) return '無';
+  // 沒填日期 or 無效日期 → 直接歸到「無」
+  if (!input || isNaN(d.getTime())) return '無';
 
-  const yy = d.getFullYear() - 1911;
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `${yy}${mm}`;
+  const yy = d.getFullYear() - 1911;
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${yy}${mm}`;
 }
 
 // 生成月份清單（僅列出 >15 天的月份，且有資料的）
 function buildDoneMonthMenu() {
-  const menu = document.getElementById('doneMonthMenu');
-  if (!menu) return;
-  menu.innerHTML = '';
+  const menu = document.getElementById('doneMonthMenu');
+  if (!menu) return;
+  menu.innerHTML = '';
 
-  // 置頂：近5日
-  const recentBtn = document.createElement('button');
-  recentBtn.textContent = '近5日';
-  recentBtn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;font-weight:600;';
-  recentBtn.onclick = () => {
-    completedMonthFilter = 'recent15';
-    menu.style.display = 'none';
-    renderCompletedTasks();
-  };
-  menu.appendChild(recentBtn);
+  // 置頂：近5日
+  const recentBtn = document.createElement('button');
+  recentBtn.textContent = '近5日';
+  recentBtn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;font-weight:600;';
+  recentBtn.onclick = () => {
+    completedMonthFilter = 'recent15';
+    menu.style.display = 'none';
+    renderCompletedTasks();
+  };
+  menu.appendChild(recentBtn);
 
-  const monthSet = new Set();
-  
-  completedTasks.forEach(t => {
-    const d = new Date(t.date);  // ← 改用預定完成日期
-    const rocYM = toRocYM(d);
-    console.log('Adding month:', rocYM);  // 調試，檢查每個任務的年月是否正確
-    monthSet.add(rocYM);
-  });
+  const monthSet = new Set();
+  
+  completedTasks.forEach(t => {
+    const d = new Date(t.date);  // ← 改用預定完成日期
+    const rocYM = toRocYM(d);
+    console.log('Adding month:', rocYM);  // 調試，檢查每個任務的年月是否正確
+    monthSet.add(rocYM);
+  });
 
-  if (monthSet.size === 0) {
-    const empty = document.createElement('div');
-    empty.textContent = '無更多月份';
-    menu.appendChild(empty);
-    return;
-  }
+  if (monthSet.size === 0) {
+    const empty = document.createElement('div');
+    empty.textContent = '無更多月份';
+    menu.appendChild(empty);
+    return;
+  }
 
-  // 將月份按字母排序並生成按鈕
-  Array.from(monthSet).sort((a, b) => b.localeCompare(a)).forEach(ym => {
-    const btn = document.createElement('button');
-    btn.textContent = ym;
-    btn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;';
-    btn.onclick = () => {
-      completedMonthFilter = ym;
-      menu.style.display = 'none';
-      renderCompletedTasks();
-    };
-    menu.appendChild(btn);
-  });
+  // 將月份按字母排序並生成按鈕
+  Array.from(monthSet).sort((a, b) => b.localeCompare(a)).forEach(ym => {
+    const btn = document.createElement('button');
+    btn.textContent = ym;
+    btn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;';
+    btn.onclick = () => {
+      completedMonthFilter = ym;
+      menu.style.display = 'none';
+      renderCompletedTasks();
+    };
+    menu.appendChild(btn);
+  });
 }
 
 // 點「更多…」展開月份清單
 document.getElementById('doneMoreBtn')?.addEventListener('click', () => {
-  const menu = document.getElementById('doneMonthMenu');
-  if (!menu) return;
-  menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'block' : 'none';
+  const menu = document.getElementById('doneMonthMenu');
+  if (!menu) return;
+  menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'block' : 'none';
 });
 
 // 渲染已完成（預設顯示 15 日內；點月份則顯示該月份）
 function renderCompletedTasks() {
-  clearAllSections();
+  clearAllSections();
 // 把已完成任務用到的分類也補回 categories
 // 把已完成任務用到的分類也補回 categories
 const needFromDone = Array.from(new Set(completedTasks.map(t => t.section).filter(Boolean)));
 const merged2 = Array.from(new Set([...(categories || []), ...needFromDone]));
 
 if (merged2.length !== (categories || []).length) {
-  categories = merged2;
-  if (categoriesLoaded) {          // ★★★ 分類載好後才允許存雲端
-    saveCategoriesToFirebase();
-  }
-  renderSections(categories);
+  categories = merged2;
+  if (categoriesLoaded) {          // ★★★ 分類載好後才允許存雲端
+    saveCategoriesToFirebase();
+  }
+  renderSections(categories);
 }
 
-  const now = new Date();
-  const list = completedTasks.filter(t => {
-    const d = new Date(t.date);  // ← 改用預定完成日期
-    const rocYM = toRocYM(d);  // 轉換為 ROC 年月
+  const now = new Date();
+  const list = completedTasks.filter(t => {
+    const d = new Date(t.date);  // ← 改用預定完成日期
+    const rocYM = toRocYM(d);  // 轉換為 ROC 年月
 
-    console.log('Task completedAt:', t.completedAt, 'Converted to ROC YM:', rocYM); // 調試，確認每個任務的時間戳與轉換結果
+    console.log('Task completedAt:', t.completedAt, 'Converted to ROC YM:', rocYM); // 調試，確認每個任務的時間戳與轉換結果
 
 if (completedMonthFilter === 'recent15') {
-  const completedDate = new Date(t.completedAt);  // ← 用實際完成日期
-  const diff = Math.floor((Date.now() - completedDate.getTime()) / 86400000);
-  return diff <= 5;  // 只顯示最近 5 天完成的任務
+  const completedDate = new Date(t.completedAt);  // ← 用實際完成日期
+  const diff = Math.floor((Date.now() - completedDate.getTime()) / 86400000);
+  return diff <= 5;  // 只顯示最近 5 天完成的任務
 } else {
-  return rocYM === completedMonthFilter;  // 月份歸類用預定完成日期
+  return rocYM === completedMonthFilter;  // 月份歸類用預定完成日期
 }
-  });
+  });
 
-  list.forEach(t => {
-    const el = document.createElement('div');
-    el.className = 'task';
-    el.dataset.id = t.id;
-    el.style.backgroundColor = 'var(--green-light)'; // 完成用淡綠色背景
-    el.innerHTML = `
-      <div class="task-content">
-        <div class="task-title">✅ ${t.important ? '❗ ' : ''}${t.title}</div>
-      </div>
-      <div class="task-days">完</div>
-    `;
-    el.onclick = () => openCompletedDetail(t.id);
-    const sec = document.getElementById(t.section);
-    if (sec) sec.appendChild(el);
-  });
+  list.forEach(t => {
+    const el = document.createElement('div');
+    el.className = 'task';
+    el.dataset.id = t.id;
+    el.style.backgroundColor = 'var(--green-light)'; // 完成用淡綠色背景
+    el.innerHTML = `
+      <div class="task-content">
+        <div class="task-title">✅ ${t.important ? '❗ ' : ''}${t.title}</div>
+      </div>
+      <div class="task-days">完</div>
+    `;
+    el.onclick = () => openCompletedDetail(t.id);
+    const sec = document.getElementById(t.section);
+    if (sec) sec.appendChild(el);
+  });
 }
 
 
@@ -1957,177 +1957,177 @@ function setDetailReadonly(ro) {
 
 const modal = document.getElementById('detailModal');
 if (modal) modal.classList.toggle('readonly', !!ro);
-  ['detailSection','detailTitle','detailContent','detailDate','detailNote']
-    .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = ro; });
+  ['detailSection','detailTitle','detailContent','detailDate','detailNote']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = ro; });
 
-  const saveBtn = document.querySelector('#detailModal .save-btn-half');
-  const delBtn  = document.querySelector('#detailModal .delete-btn-half');
-  const completeBtn = Array.from(document.querySelectorAll('#detailModal button'))
-    .find(b => b.textContent.includes('已完成'));
+  const saveBtn = document.querySelector('#detailModal .save-btn-half');
+  const delBtn  = document.querySelector('#detailModal .delete-btn-half');
+  const completeBtn = Array.from(document.querySelectorAll('#detailModal button'))
+    .find(b => b.textContent.includes('已完成'));
 
 
-  if (ro) {
-    if (saveBtn) { saveBtn.textContent = '我了解了！'; saveBtn.onclick = () => closeModal('detailModal'); }
-    if (delBtn)  { delBtn.onclick = confirmDeleteCompleted; } // ← 改叫「確認刪除(完成)」
+  if (ro) {
+    if (saveBtn) { saveBtn.textContent = '我了解了！'; saveBtn.onclick = () => closeModal('detailModal'); }
+    if (delBtn)  { delBtn.onclick = confirmDeleteCompleted; } // ← 改叫「確認刪除(完成)」
 
-    if (completeBtn) completeBtn.style.display = 'none';
-  } else {
-    if (saveBtn) { saveBtn.textContent = '💾 儲存'; saveBtn.onclick = saveTask; }
-    if (delBtn)  { delBtn.onclick = confirmDelete; }
-    if (completeBtn) completeBtn.style.display = '';
-  }
+    if (completeBtn) completeBtn.style.display = 'none';
+  } else {
+    if (saveBtn) { saveBtn.textContent = '💾 儲存'; saveBtn.onclick = saveTask; }
+    if (delBtn)  { delBtn.onclick = confirmDelete; }
+    if (completeBtn) completeBtn.style.display = '';
+  }
 
-  // ★ 新增：鎖住/解鎖「重要」checkbox
-  const importantEl = document.getElementById('detailImportant');
-  if (importantEl) importantEl.disabled = ro;
+  // ★ 新增：鎖住/解鎖「重要」checkbox
+  const importantEl = document.getElementById('detailImportant');
+  if (importantEl) importantEl.disabled = ro;
 
 }
 
 let selectedCompletedId = null;
 function openCompletedDetail(id) {
-  selectedCompletedId = id;
-  const t = completedTasks.find(x => x.id === id);
-  if (!t) return;
+  selectedCompletedId = id;
+  const t = completedTasks.find(x => x.id === id);
+  if (!t) return;
 
-  // 填值
-  document.getElementById('detailSection').value = t.section;
-  document.getElementById('detailTitle').value   = t.title;
-  document.getElementById('detailContent').value = t.content || '';
-  document.getElementById('detailDate').value    = t.date || '';
-  document.getElementById('detailNote').value    = t.note || '';
+  // 填值
+  document.getElementById('detailSection').value = t.section;
+  document.getElementById('detailTitle').value   = t.title;
+  document.getElementById('detailContent').value = t.content || '';
+  document.getElementById('detailDate').value    = t.date || '';
+  document.getElementById('detailNote').value    = t.note || '';
 
-  setDetailReadonly(true);
-  document.getElementById('detailModal').style.display = 'flex';
+  setDetailReadonly(true);
+  document.getElementById('detailModal').style.display = 'flex';
 }
 
 function deleteCompleted() {
-  if (!selectedCompletedId) return;
-  const idx = completedTasks.findIndex(x => x.id === selectedCompletedId);
-  if (idx >= 0) completedTasks.splice(idx, 1);
-  closeModal('detailModal');
-  renderCompletedTasks();
+  if (!selectedCompletedId) return;
+  const idx = completedTasks.findIndex(x => x.id === selectedCompletedId);
+  if (idx >= 0) completedTasks.splice(idx, 1);
+  closeModal('detailModal');
+  renderCompletedTasks();
 }
 
 function confirmDeleteCompleted() {
-  const modal = document.getElementById('confirmModal');
-  const confirmBtn = modal.querySelector('.confirm-btn');
+  const modal = document.getElementById('confirmModal');
+  const confirmBtn = modal.querySelector('.confirm-btn');
 
-  const oldHandler = confirmBtn.onclick;     // 暫存原本（進行中刪除）的 handler
-  confirmBtn.onclick = () => {                // 暫時改成刪「已完成」
-    deleteCompletedConfirmed();
-    confirmBtn.onclick = oldHandler;          // 刪完還原
-  };
+  const oldHandler = confirmBtn.onclick;     // 暫存原本（進行中刪除）的 handler
+  confirmBtn.onclick = () => {                // 暫時改成刪「已完成」
+    deleteCompletedConfirmed();
+    confirmBtn.onclick = oldHandler;          // 刪完還原
+  };
 
-  modal.style.display = 'flex';
+  modal.style.display = 'flex';
 }
 
 function deleteCompletedConfirmed() {
-  if (!selectedCompletedId) return;
-  const idx = completedTasks.findIndex(x => x.id === selectedCompletedId);
-  if (idx >= 0) completedTasks.splice(idx, 1);
+  if (!selectedCompletedId) return;
+  const idx = completedTasks.findIndex(x => x.id === selectedCompletedId);
+  if (idx >= 0) completedTasks.splice(idx, 1);
 
-  // ✅ 這行一定要
-  saveTasksToFirebase();
+  // ✅ 這行一定要
+  saveTasksToFirebase();
 
-  closeModal('confirmModal');
-  closeModal('detailModal');
-  renderCompletedTasks();
+  closeModal('confirmModal');
+  closeModal('detailModal');
+  renderCompletedTasks();
 }
 //登入
 
 let loggingIn = false;
 
 function setLoginBusy(busy){
-  const btn = document.getElementById('login-btn');
-  if (!btn) return;
-  btn.disabled = busy;
-  btn.textContent = busy ? '登入中…' : '登入';
+  const btn = document.getElementById('login-btn');
+  if (!btn) return;
+  btn.disabled = busy;
+  btn.textContent = busy ? '登入中…' : '登入';
 }
 
 auth.onAuthStateChanged(async (user) => {
-  try {
-    if (authTimer) { clearTimeout(authTimer); authTimer = null; }
+  try {
+    if (authTimer) { clearTimeout(authTimer); authTimer = null; }
 
-    hydrateRoomPath();
+    hydrateRoomPath();
 
-    // 先清乾淨
-    document.documentElement.classList.remove('show-login', 'show-app');
+    // 先清乾淨
+    document.documentElement.classList.remove('show-login', 'show-app');
 
-    if (user && roomPath) {
-      // 顯示主畫面（用 class）
-    // 顯示主畫面（用 class）
+    if (user && roomPath) {
+      // 顯示主畫面（用 class）
+    // 顯示主畫面（用 class）
 document.documentElement.classList.add('show-app');
 
 // 🔧 重要：把舊的 inline 顯示值清掉，避免重疊
-const lp  = document.getElementById('loginPage');
+const lp  = document.getElementById('loginPage');
 const app = document.querySelector('.container');
-if (lp)  lp.style.display  = '';   // 清除 "display:flex"
-if (app) app.style.display = '';   // 清除任何 inline display
+if (lp)  lp.style.display  = '';   // 清除 "display:flex"
+if (app) app.style.display = '';   // 清除任何 inline display
 
-      // 初始化資料
-      loadTasksFromFirebase();
-      updateSectionOptions();
-    } else {
-      // 沒登入或沒 roomPath -> 回登入頁
-      try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
-      document.documentElement.classList.add('show-login');
-    }
-  } catch (e) {
-    console.error('onAuthStateChanged 錯誤：', e);
-    alert('畫面初始化失敗：' + (e?.message || e));
-    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
-    document.documentElement.classList.remove('show-app');
-    document.documentElement.classList.add('show-login');
-  } finally {
+      // 初始化資料
+      loadTasksFromFirebase();
+      updateSectionOptions();
+    } else {
+      // 沒登入或沒 roomPath -> 回登入頁
+      try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
+      document.documentElement.classList.add('show-login');
+    }
+  } catch (e) {
+    console.error('onAuthStateChanged 錯誤：', e);
+    alert('畫面初始化失敗：' + (e?.message || e));
+    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
+    document.documentElement.classList.remove('show-app');
+    document.documentElement.classList.add('show-login');
+  } finally {
 hideAutoLoginOverlay();
-stopAutoLoginWatchdog();    // ← 新增：登入完成或切頁都關掉看門狗
+stopAutoLoginWatchdog();    // ← 新增：登入完成或切頁都關掉看門狗
 setLoginBusy(false);
-    loggingIn = false;
-  }
+    loggingIn = false;
+  }
 });
 
 document.getElementById('login-btn').addEventListener('click', async function(){
-  if (loggingIn) return; // 防止重複點
-  const username = document.getElementById('login-username').value.trim();
-  const password = document.getElementById('login-password').value.trim();
-  const autoLogin = document.getElementById('auto-login').checked;
+  if (loggingIn) return; // 防止重複點
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value.trim();
+  const autoLogin = document.getElementById('auto-login').checked;
 
-  if(!username || !password){
-    alert('請輸入帳號與密碼');
-    return;
-  }
+  if(!username || !password){
+    alert('請輸入帳號與密碼');
+    return;
+  }
 
-  roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-  if(autoLogin){
-    localStorage.setItem('todo_room_info', JSON.stringify({username, password}));
-  } else {
-    localStorage.removeItem('todo_room_info');
-  }
+  roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+  if(autoLogin){
+    localStorage.setItem('todo_room_info', JSON.stringify({username, password}));
+  } else {
+    localStorage.removeItem('todo_room_info');
+  }
 
-  loggingIn = true;
-  setLoginBusy(true);
+  loggingIn = true;
+  setLoginBusy(true);
 
- try {
-  // 先登出舊的匿名使用者（加在這裡！）
-  if (auth.currentUser) {
-    await auth.signOut();
-  }
-    // 設一個 8 秒的保護時間，避免卡死
-    const loginPromise = auth.signInAnonymously();
-    await Promise.race([
-      loginPromise,
-      new Promise((_, rej)=>setTimeout(()=>rej(new Error('登入逾時，請重試')), 8000))
-    ]);
-    // 不在這裡切畫面，等 onAuthStateChanged 自動切
-  } catch (e) {
-    loggingIn = false;
-    setLoginBusy(false);
-    alert('登入失敗：' + (e && e.message ? e.message : e));
-  }
+ try {
+  // 先登出舊的匿名使用者（加在這裡！）
+  if (auth.currentUser) {
+    await auth.signOut();
+  }
+    // 設一個 8 秒的保護時間，避免卡死
+    const loginPromise = auth.signInAnonymously();
+    await Promise.race([
+      loginPromise,
+      new Promise((_, rej)=>setTimeout(()=>rej(new Error('登入逾時，請重試')), 8000))
+    ]);
+    // 不在這裡切畫面，等 onAuthStateChanged 自動切
+  } catch (e) {
+    loggingIn = false;
+    setLoginBusy(false);
+    alert('登入失敗：' + (e && e.message ? e.message : e));
+  }
 });
 
-  // 從雲端載資料
-  loadTasksFromFirebase();
+  // 從雲端載資料
+  loadTasksFromFirebase();
 
 // === 自動登入（有記錄房間就直接進） ===
 // ✅ 最簡單的「一定會自動登入」版本
@@ -2138,655 +2138,655 @@ document.addEventListener('DOMContentLoaded', ensureSignedIn);
 window.addEventListener('pageshow', ensureSignedIn);
 // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
 function loadTasksFromFirebase() {
-  if (!roomPath || !auth.currentUser) return;
+  if (!roomPath || !auth.currentUser) return;
 
-  // 先取消舊監聽，避免重複綁
-  if (tasksRef) tasksRef.off();
-  if (completedRef) completedRef.off();
+  // 先取消舊監聽，避免重複綁
+  if (tasksRef) tasksRef.off();
+  if (completedRef) completedRef.off();
 
-  tasksRef = db.ref(`${roomPath}/tasks`);
-  completedRef = db.ref(`${roomPath}/completedTasks`);
-  const categoriesRef = db.ref(`${roomPath}/categories`);
+  tasksRef = db.ref(`${roomPath}/tasks`);
+  completedRef = db.ref(`${roomPath}/completedTasks`);
+  const categoriesRef = db.ref(`${roomPath}/categories`);
 
-  tasksRef.on('value', (snap) => {
-    const data = snap.val() || {};
-    tasks = Object.values(data);
-    showOngoing();
-  });
+  tasksRef.on('value', (snap) => {
+    const data = snap.val() || {};
+    tasks = Object.values(data);
+    showOngoing();
+  });
 
-  completedRef.on('value', (snap) => {
-    const data = snap.val() || {};
-    completedTasks = Object.values(data);
-    if (statusFilter === 'done') renderCompletedTasks();
-  });
+  completedRef.on('value', (snap) => {
+    const data = snap.val() || {};
+    completedTasks = Object.values(data);
+    if (statusFilter === 'done') renderCompletedTasks();
+  });
 
-  // 載入分類名稱
+  // 載入分類名稱
 categoriesRef.on('value', (snap) => {
-  const cloud = snap.val();
+  const cloud = snap.val();
 
-  if (Array.isArray(cloud) && cloud.length > 0) {
-    // 用雲端的
-    categories = cloud.slice();
-  } else {
-    // 雲端是空的 → 用預設清單補回去
-    categories = DEFAULT_CATEGORIES.slice();
-    saveCategoriesToFirebase(); // 存回雲端
-  }
+  if (Array.isArray(cloud) && cloud.length > 0) {
+    // 用雲端的
+    categories = cloud.slice();
+  } else {
+    // 雲端是空的 → 用預設清單補回去
+    categories = DEFAULT_CATEGORIES.slice();
+    saveCategoriesToFirebase(); // 存回雲端
+  }
 
 categoriesLoaded = true;
 
-  // 先畫分類，再畫任務
-  renderSections(categories);
-  if (statusFilter === 'done') {
-    renderCompletedTasks();
-  } else {
-    showOngoing();
-  }
+  // 先畫分類，再畫任務
+  renderSections(categories);
+  if (statusFilter === 'done') {
+    renderCompletedTasks();
+  } else {
+    showOngoing();
+  }
 });
 }
 
 
 // === 寫回雲端（先寫 tasks；completed 之後再接）===
 function saveTasksToFirebase() {
-  const obj = {};
-  tasks.forEach(t => obj[t.id] = t);
+  const obj = {};
+  tasks.forEach(t => obj[t.id] = t);
 
-  const doneObj = {};
-  completedTasks.forEach(t => doneObj[t.id] = t);
+  const doneObj = {};
+  completedTasks.forEach(t => doneObj[t.id] = t);
 
-  // 儲存任務資料
-  db.ref(`${roomPath}/tasks`).set(obj);
-  db.ref(`${roomPath}/completedTasks`).set(doneObj);
+  // 儲存任務資料
+  db.ref(`${roomPath}/tasks`).set(obj);
+  db.ref(`${roomPath}/completedTasks`).set(doneObj);
 
-  // 儲存分類資料
+  // 儲存分類資料
 }
 
 //登出
 
 function openLogoutModal(){
-  document.getElementById('logoutModal').style.display = 'flex';
+  document.getElementById('logoutModal').style.display = 'flex';
 }
 
 async function doLogout(){
-  // 關閉 DB 監聽
-  try {
-    if (tasksRef) { tasksRef.off(); tasksRef = null; }
-    if (completedRef) { completedRef.off(); completedRef = null; }
-  } catch(e){ console.warn(e); }
+  // 關閉 DB 監聽
+  try {
+    if (tasksRef) { tasksRef.off(); tasksRef = null; }
+    if (completedRef) { completedRef.off(); completedRef = null; }
+  } catch(e){ console.warn(e); }
 
-  // 清空本機資料
-  tasks = [];
-  completedTasks = [];
-  selectedTaskId = null;
-  clearAllSections();
+  // 清空本機資料
+  tasks = [];
+  completedTasks = [];
+  selectedTaskId = null;
+  clearAllSections();
 
-  // 清掉自動登入與房間
-  localStorage.removeItem('todo_room_info');
-  roomPath = "";
+  // 清掉自動登入與房間
+  localStorage.removeItem('todo_room_info');
+  roomPath = "";
 
-  // 嘗試登出（若沒開 Auth 也沒關係）
-  try { if (firebase.auth) await auth.signOut(); } catch(e){ /* 忽略 */ }
+  // 嘗試登出（若沒開 Auth 也沒關係）
+  try { if (firebase.auth) await auth.signOut(); } catch(e){ /* 忽略 */ }
 
-  // 切回登入頁
+  // 切回登入頁
 document.documentElement.classList.remove('show-app');
 document.documentElement.classList.add('show-login');
 
-  closeModal('logoutModal');
-  closeModal('moreModal'); // 關掉「⋯」選單
+  closeModal('logoutModal');
+  closeModal('moreModal'); // 關掉「⋯」選單
 }
 
 
-  //快取
+  //快取
 const v = Date.now(); // 每次刷新都帶入唯一值，避開快取
 document.querySelectorAll('link[rel="icon"], link[rel="manifest"]').forEach(el => {
-  if (el.href) {
-    el.href += (el.href.includes('?') ? '&' : '?') + 'v=' + v;
-  }
+  if (el.href) {
+    el.href += (el.href.includes('?') ? '&' : '?') + 'v=' + v;
+  }
 });
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/service-worker.js?v=' + v)
-    .then(reg => console.log('SW 註冊成功', reg.scope))
-    .catch(err => console.log('SW 註冊失敗', err));
+  navigator.serviceWorker.register('/service-worker.js?v=' + v)
+    .then(reg => console.log('SW 註冊成功', reg.scope))
+    .catch(err => console.log('SW 註冊失敗', err));
 }
 
 function getTitleWithFlag(t){
-  return (t.important ? '❗ ' : '') + (t.title || '');
+  return (t.important ? '❗ ' : '') + (t.title || '');
 }
 
 function renderSections(list){
-  const wrap = document.getElementById('section-container');
-  // 先重建 doneMore（固定在最上面）
-  wrap.innerHTML = `
-    <div id="doneMore" style="display:none; text-align:right; margin:0.25rem 0;">
-      <button id="doneMoreBtn" style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">更多…</button>
-      <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
-    </div>
-  `;
+  const wrap = document.getElementById('section-container');
+  // 先重建 doneMore（固定在最上面）
+  wrap.innerHTML = `
+    <div id="doneMore" style="display:none; text-align:right; margin:0.25rem 0;">
+      <button id="doneMoreBtn" style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">更多…</button>
+      <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
+    </div>
+  `;
 
-  // 依 categories 畫出各分類
-  list.forEach(name => {
-    const sec = document.createElement('div');
-    sec.className = 'section';
-    sec.id = name;
-    sec.innerHTML = `<div class="section-title">${name}</div>`;
-    wrap.appendChild(sec);
-  });
+  // 依 categories 畫出各分類
+  list.forEach(name => {
+    const sec = document.createElement('div');
+    sec.className = 'section';
+    sec.id = name;
+    sec.innerHTML = `<div class="section-title">${name}</div>`;
+    wrap.appendChild(sec);
+  });
 
-  updateSectionOptions();
-  initSectionSortable();      // 你已有的函式
+  updateSectionOptions();
+  initSectionSortable();      // 你已有的函式
 
-  // 重新掛「更多…」按鈕的事件（因為 innerHTML 會清掉舊的事件）
-  const btn = document.getElementById('doneMoreBtn');
-  if (btn) btn.onclick = () => {
-    const menu = document.getElementById('doneMonthMenu');
-    if (menu) menu.style.display = (menu.style.display === 'block' ? 'none' : 'block');
-  };
+  // 重新掛「更多…」按鈕的事件（因為 innerHTML 會清掉舊的事件）
+  const btn = document.getElementById('doneMoreBtn');
+  if (btn) btn.onclick = () => {
+    const menu = document.getElementById('doneMonthMenu');
+    if (menu) menu.style.display = (menu.style.display === 'block' ? 'none' : 'block');
+  };
 
-  // ✅ 如果還在編輯模式，重畫後馬上套回編輯配件
-  if (isEditing) {
-    decorateSectionsForEdit();
-  }
+  // ✅ 如果還在編輯模式，重畫後馬上套回編輯配件
+  if (isEditing) {
+    decorateSectionsForEdit();
+  }
 }
 
 function decorateSectionsForEdit() {
-  const sections = document.querySelectorAll('.section');
-  sections.forEach(section => {
-    section.classList.add('edit-mode');
+  const sections = document.querySelectorAll('.section');
+  sections.forEach(section => {
+    section.classList.add('edit-mode');
 
-    const titleBar = section.querySelector('.section-title');
-    const currentName = section.id;
+    const titleBar = section.querySelector('.section-title');
+    const currentName = section.id;
 
-    // 先清乾淨避免重複疊
-    titleBar.innerHTML = '';
+    // 先清乾淨避免重複疊
+    titleBar.innerHTML = '';
 
-    // 拖拉把手
-    const drag = document.createElement('span');
-    drag.className = 'drag-handle';
-    drag.innerHTML = '☰';
-    titleBar.appendChild(drag);
+    // 拖拉把手
+    const drag = document.createElement('span');
+    drag.className = 'drag-handle';
+    drag.innerHTML = '☰';
+    titleBar.appendChild(drag);
 
-    // 名稱
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'section-name';
-    nameSpan.style.marginLeft = '0.5rem';
-    nameSpan.textContent = currentName;
-    titleBar.appendChild(nameSpan);
+    // 名稱
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'section-name';
+    nameSpan.style.marginLeft = '0.5rem';
+    nameSpan.textContent = currentName;
+    titleBar.appendChild(nameSpan);
 
-    // 重命名（✎）
-    const renameBtn = document.createElement('button');
-    renameBtn.className = 'rename-btn';
-    renameBtn.innerHTML = '✎';
-    renameBtn.onclick = () => openRenameModal(section.id);
-    titleBar.appendChild(renameBtn);
+    // 重命名（✎）
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'rename-btn';
+    renameBtn.innerHTML = '✎';
+    renameBtn.onclick = () => openRenameModal(section.id);
+    titleBar.appendChild(renameBtn);
 
-    // 刪除（✕）
-    const delBtn = document.createElement('button');
-    delBtn.className = 'delete-btn';
-    delBtn.innerHTML = '✕';
-    delBtn.onclick = () => confirmDeleteCategory(section.id);
-    titleBar.appendChild(delBtn);
-  });
+    // 刪除（✕）
+    const delBtn = document.createElement('button');
+    delBtn.className = 'delete-btn';
+    delBtn.innerHTML = '✕';
+    delBtn.onclick = () => confirmDeleteCategory(section.id);
+    titleBar.appendChild(delBtn);
+  });
 
-  // 重新掛拖拉
-  initSectionSortable();
+  // 重新掛拖拉
+  initSectionSortable();
 
-  // 顯示底部「完成編輯」按鈕
-  const exitBtn = document.getElementById('exitEditBtn');
-  if (exitBtn) exitBtn.style.display = 'block';
+  // 顯示底部「完成編輯」按鈕
+  const exitBtn = document.getElementById('exitEditBtn');
+  if (exitBtn) exitBtn.style.display = 'block';
 }
 
 // ===== 滑動完成：立即可用 =====
 (function initSlideToComplete(){
-  const track = document.getElementById('slideComplete')?.querySelector('.slide-track') 
-    || (function(){
-      // 如果還沒渲染 detailModal 就先等一下
-      document.addEventListener('DOMContentLoaded', initSlideToComplete);
-      return null;
-    })();
-  if (!track) return;
+  const track = document.getElementById('slideComplete')?.querySelector('.slide-track') 
+    || (function(){
+      // 如果還沒渲染 detailModal 就先等一下
+      document.addEventListener('DOMContentLoaded', initSlideToComplete);
+      return null;
+    })();
+  if (!track) return;
 
-  const handle = document.getElementById('slideHandle');
-  const fill = document.getElementById('slideFill');
+  const handle = document.getElementById('slideHandle');
+  const fill = document.getElementById('slideFill');
 
-  let dragging = false;
-  let startX = 0;
-  let startLeft = 0;
+  let dragging = false;
+  let startX = 0;
+  let startLeft = 0;
 
-  function maxLeft() {
-    // 可滑動範圍（容器寬 - 把手寬 - 兩側邊距 3px*2）
-    const W = track.clientWidth;
-    const hw = handle.clientWidth;
-    return Math.max(0, W - hw - 6);
-  }
+  function maxLeft() {
+    // 可滑動範圍（容器寬 - 把手寬 - 兩側邊距 3px*2）
+    const W = track.clientWidth;
+    const hw = handle.clientWidth;
+    return Math.max(0, W - hw - 6);
+  }
 
-  function setLeft(px) {
-    const lim = maxLeft();
-    const x = Math.max(0, Math.min(px, lim));
-    handle.style.transform = `translateX(${x}px)`;
-    const percent = Math.round((x / lim) * 100);
-    fill.style.width = `${percent}%`;
-    return percent;
-  }
+  function setLeft(px) {
+    const lim = maxLeft();
+    const x = Math.max(0, Math.min(px, lim));
+    handle.style.transform = `translateX(${x}px)`;
+    const percent = Math.round((x / lim) * 100);
+    fill.style.width = `${percent}%`;
+    return percent;
+  }
 
-  function pointerDown(e){
-    dragging = true;
-    const p = e.touches ? e.touches[0] : e;
-    startX = p.clientX;
-    // 解析目前 translateX
-    const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
-    startLeft = cur ? parseFloat(cur[1]) : 0;
-    e.preventDefault();
-  }
+  function pointerDown(e){
+    dragging = true;
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX;
+    // 解析目前 translateX
+    const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
+    startLeft = cur ? parseFloat(cur[1]) : 0;
+    e.preventDefault();
+  }
 
-  function pointerMove(e){
-    if (!dragging) return;
-    const p = e.touches ? e.touches[0] : e;
-    const dx = p.clientX - startX;
-    setLeft(startLeft + dx);
-    e.preventDefault();
-  }
+  function pointerMove(e){
+    if (!dragging) return;
+    const p = e.touches ? e.touches[0] : e;
+    const dx = p.clientX - startX;
+    setLeft(startLeft + dx);
+    e.preventDefault();
+  }
 
-  function pointerUp(){
-    if (!dragging) return;
-    dragging = false;
-    const lim = maxLeft();
-    // 讀目前 translateX
-    const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
-    const x = cur ? parseFloat(cur[1]) : 0;
-    const percent = lim === 0 ? 0 : (x / lim);
+  function pointerUp(){
+    if (!dragging) return;
+    dragging = false;
+    const lim = maxLeft();
+    // 讀目前 translateX
+    const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
+    const x = cur ? parseFloat(cur[1]) : 0;
+    const percent = lim === 0 ? 0 : (x / lim);
 
-    // 到 90% 以上視為完成
-    if (percent >= 0.9) {
-      track.classList.add('done');
-      setLeft(lim);
-      // 稍等一下讓動畫有感覺
-      setTimeout(() => {
-        // 呼叫你現有的完成流程
-        completeTask();
-        // 重置外觀（下次再打開 modal 時是初始狀態）
-        resetSlider();
-      }, 200);
-    } else {
-      // 回彈
-      handle.style.transition = 'transform .25s ease';
-      fill.style.transition = 'width .25s ease';
-      setLeft(0);
-      setTimeout(() => {
-        handle.style.transition = '';
-        fill.style.transition = 'width .25s ease'; // 保留 fill 的小過渡
-      }, 260);
-    }
-  }
+    // 到 90% 以上視為完成
+    if (percent >= 0.9) {
+      track.classList.add('done');
+      setLeft(lim);
+      // 稍等一下讓動畫有感覺
+      setTimeout(() => {
+        // 呼叫你現有的完成流程
+        completeTask();
+        // 重置外觀（下次再打開 modal 時是初始狀態）
+        resetSlider();
+      }, 200);
+    } else {
+      // 回彈
+      handle.style.transition = 'transform .25s ease';
+      fill.style.transition = 'width .25s ease';
+      setLeft(0);
+      setTimeout(() => {
+        handle.style.transition = '';
+        fill.style.transition = 'width .25s ease'; // 保留 fill 的小過渡
+      }, 260);
+    }
+  }
 
-  function resetSlider(){
-    track.classList.remove('done');
-    handle.style.transition = 'transform .2s ease';
-    fill.style.transition = 'width .25s ease';
-    setLeft(0);
-    setTimeout(() => {
-      handle.style.transition = '';
-    }, 220);
-  }
+  function resetSlider(){
+    track.classList.remove('done');
+    handle.style.transition = 'transform .2s ease';
+    fill.style.transition = 'width .25s ease';
+    setLeft(0);
+    setTimeout(() => {
+      handle.style.transition = '';
+    }, 220);
+  }
 
-  // 對外暴露，讓 openDetail 時可以重置
-  window.__resetSlideComplete = resetSlider;
+  // 對外暴露，讓 openDetail 時可以重置
+  window.__resetSlideComplete = resetSlider;
 
-  // 綁定事件（滑鼠 + 觸控）
-  handle.addEventListener('mousedown', pointerDown);
-  document.addEventListener('mousemove', pointerMove);
-  document.addEventListener('mouseup', pointerUp);
+  // 綁定事件（滑鼠 + 觸控）
+  handle.addEventListener('mousedown', pointerDown);
+  document.addEventListener('mousemove', pointerMove);
+  document.addEventListener('mouseup', pointerUp);
 
-  handle.addEventListener('touchstart', pointerDown, {passive:false});
-  document.addEventListener('touchmove', pointerMove, {passive:false});
-  document.addEventListener('touchend', pointerUp);
+  handle.addEventListener('touchstart', pointerDown, {passive:false});
+  document.addEventListener('touchmove', pointerMove, {passive:false});
+  document.addEventListener('touchend', pointerUp);
 })();
 
 function closeFabMenu(){
-  const m = document.getElementById('menu');
-  const fab = document.querySelector('.fab');
-  if (!m) return;
-  m.classList.remove('show');
-  if (fab) fab.classList.remove('open');
+  const m = document.getElementById('menu');
+  const fab = document.querySelector('.fab');
+  if (!m) return;
+  m.classList.remove('show');
+  if (fab) fab.classList.remove('open');
 }
 
 function toggleMenu(){
-  const m = document.getElementById('menu');
-  const fab = document.querySelector('.fab');
-  if (!m || !fab) return;
-  const willOpen = !m.classList.contains('show');
-  m.classList.toggle('show', willOpen);
-  fab.classList.toggle('open', willOpen);
+  const m = document.getElementById('menu');
+  const fab = document.querySelector('.fab');
+  if (!m || !fab) return;
+  const willOpen = !m.classList.contains('show');
+  m.classList.toggle('show', willOpen);
+  fab.classList.toggle('open', willOpen);
 }
 
 // 🔻 全域點擊：點到 menu 以外，就自動關
 document.addEventListener('click', function(e){
-  const menu = document.getElementById('menu');
+  const menu = document.getElementById('menu');
 if (!menu || !menu.classList.contains('show')) return;
 
-  const fab = document.querySelector('.fab');
-  const clickInsideMenu = menu.contains(e.target);
-  const clickOnFab = fab && fab.contains(e.target);
+  const fab = document.querySelector('.fab');
+  const clickInsideMenu = menu.contains(e.target);
+  const clickOnFab = fab && fab.contains(e.target);
 
-  if (!clickInsideMenu && !clickOnFab) {
-    closeFabMenu();
-  }
+  if (!clickInsideMenu && !clickOnFab) {
+    closeFabMenu();
+  }
 });
 
 // （可選但推薦）觸控更靈敏：手機先關
 document.addEventListener('touchstart', function(e){
-  const menu = document.getElementById('menu');
-  if (!menu || menu.style.display !== 'flex') return;
+  const menu = document.getElementById('menu');
+  if (!menu || menu.style.display !== 'flex') return;
 
-  const fab = document.querySelector('.fab');
-  const touchInsideMenu = menu.contains(e.target);
-  const touchOnFab = fab && fab.contains(e.target);
+  const fab = document.querySelector('.fab');
+  const touchInsideMenu = menu.contains(e.target);
+  const touchOnFab = fab && fab.contains(e.target);
 
-  if (!touchInsideMenu && !touchOnFab) {
-    closeFabMenu();
-  }
+  if (!touchInsideMenu && !touchOnFab) {
+    closeFabMenu();
+  }
 }, {passive:true});
 
 // （可選）按 ESC 關
 document.addEventListener('keydown', function(e){
-  if (e.key === 'Escape') closeFabMenu();
+  if (e.key === 'Escape') closeFabMenu();
 });
 
 // ✅ 事件委派：點到任何開著的 modal 的「背景區」就關閉
 document.addEventListener('click', function(e){
-  // 只處理點在 .modal 範圍內的事件
-  const modal = e.target.closest('.modal');
-  if (!modal) return;
+  // 只處理點在 .modal 範圍內的事件
+  const modal = e.target.closest('.modal');
+  if (!modal) return;
 
-  // 只關「有開著」的 modal（display !== 'none'）
-  if (getComputedStyle(modal).display === 'none') return;
+  // 只關「有開著」的 modal（display !== 'none'）
+  if (getComputedStyle(modal).display === 'none') return;
 
-  const content = modal.querySelector('.modal-content');
-  // 點到內容框外（=背景遮罩）才關
-  if (!content || !content.contains(e.target)) {
-    closeModal(modal.id);
-  }
+  const content = modal.querySelector('.modal-content');
+  // 點到內容框外（=背景遮罩）才關
+  if (!content || !content.contains(e.target)) {
+    closeModal(modal.id);
+  }
 }, { passive: true });
 
 // （可選）按 Esc 關掉目前所有開著的 modal
 document.addEventListener('keydown', function(e){
-  if (e.key !== 'Escape') return;
-  document.querySelectorAll('.modal').forEach(m=>{
-    if (getComputedStyle(m).display !== 'none') closeModal(m.id);
-  });
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.modal').forEach(m=>{
+    if (getComputedStyle(m).display !== 'none') closeModal(m.id);
+  });
 });
 
 function hideEmptySectionsAfterFilter(){
-  const sections = document.querySelectorAll('#section-container .section');
-  sections.forEach(sec => {
-    // 只算「仍然可見」的任務卡
-    const hasVisibleTask = Array.from(sec.querySelectorAll('.task'))
-      .some(el => getComputedStyle(el).display !== 'none');
-    sec.style.display = hasVisibleTask ? '' : 'none';
-  });
+  const sections = document.querySelectorAll('#section-container .section');
+  sections.forEach(sec => {
+    // 只算「仍然可見」的任務卡
+    const hasVisibleTask = Array.from(sec.querySelectorAll('.task'))
+      .some(el => getComputedStyle(el).display !== 'none');
+    sec.style.display = hasVisibleTask ? '' : 'none';
+  });
 }
 
 let __autoLoginShownAt = 0;
 
 function showAutoLoginOverlay(){
-  const el = document.getElementById('autologin-overlay');
-  if (!el) return;
+  const el = document.getElementById('autologin-overlay');
+  if (!el) return;
 
-  // 等兩個 frame，確保瀏覽器真的先把 overlay 畫出來
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      __autoLoginShownAt = performance.now();
-      el.classList.add('show');
-      el.setAttribute('aria-hidden','false');
+  // 等兩個 frame，確保瀏覽器真的先把 overlay 畫出來
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      __autoLoginShownAt = performance.now();
+      el.classList.add('show');
+      el.setAttribute('aria-hidden','false');
 
-      // 強制一次 reflow，避免同幀被合併
-      // （有些瀏覽器在極快切換時需要）
-      void el.offsetHeight;
-    });
-  });
+      // 強制一次 reflow，避免同幀被合併
+      // （有些瀏覽器在極快切換時需要）
+      void el.offsetHeight;
+    });
+  });
 }
 
 function hideAutoLoginOverlay(){
-  const el = document.getElementById('autologin-overlay');
-  if (!el) return;
+  const el = document.getElementById('autologin-overlay');
+  if (!el) return;
 
-  const minStay = 600; // 至少顯示 600ms，比 300ms 再明顯一些
-  const elapsed = performance.now() - __autoLoginShownAt;
-  const delay = Math.max(0, minStay - elapsed);
+  const minStay = 600; // 至少顯示 600ms，比 300ms 再明顯一些
+  const elapsed = performance.now() - __autoLoginShownAt;
+  const delay = Math.max(0, minStay - elapsed);
 
-  setTimeout(()=>{
-    el.classList.remove('show');
-    el.setAttribute('aria-hidden','true');
-  }, delay);
+  setTimeout(()=>{
+    el.classList.remove('show');
+    el.setAttribute('aria-hidden','true');
+  }, delay);
 }
 
 // ===== 自動登入看門狗：超時自救 =====
 let autoLoginWD = null;
 
 function startAutoLoginWatchdog(){
-  stopAutoLoginWatchdog();
-  autoLoginWD = setTimeout(runAutoLoginRescue, 2000); // 8 秒還沒好就救援
+  stopAutoLoginWatchdog();
+  autoLoginWD = setTimeout(runAutoLoginRescue, 2000); // 8 秒還沒好就救援
 }
 
 function stopAutoLoginWatchdog(){
-  if (autoLoginWD){ clearTimeout(autoLoginWD); autoLoginWD = null; }
+  if (autoLoginWD){ clearTimeout(autoLoginWD); autoLoginWD = null; }
 }
 
 async function runAutoLoginRescue(){
-  try {
-    // === Soft retry（溫和重試）===
-    await waitOnline();
-    try { if (auth.currentUser) await auth.signOut(); } catch(_){}
-    try {
-      // 依當下環境安全設定持久性
-      const idbOK = await testIndexedDB();
-      const mode = (isStandalone && idbOK)
-        ? firebase.auth.Auth.Persistence.LOCAL
-        : firebase.auth.Auth.Persistence.NONE;
-      await auth.setPersistence(mode);
-    } catch(_){}
-    // 5 秒保護超時
-    await Promise.race([
-      auth.signInAnonymously(),
-      new Promise((_, rej)=>setTimeout(()=>rej(new Error('soft-timeout')), 5000))
-    ]);
-    return; // 成功就交給 onAuthStateChanged 後續切畫面
-  } catch(_e1) {
-    // 繼續下面 Hard reset
-  }
+  try {
+    // === Soft retry（溫和重試）===
+    await waitOnline();
+    try { if (auth.currentUser) await auth.signOut(); } catch(_){}
+    try {
+      // 依當下環境安全設定持久性
+      const idbOK = await testIndexedDB();
+      const mode = (isStandalone && idbOK)
+        ? firebase.auth.Auth.Persistence.LOCAL
+        : firebase.auth.Auth.Persistence.NONE;
+      await auth.setPersistence(mode);
+    } catch(_){}
+    // 5 秒保護超時
+    await Promise.race([
+      auth.signInAnonymously(),
+      new Promise((_, rej)=>setTimeout(()=>rej(new Error('soft-timeout')), 5000))
+    ]);
+    return; // 成功就交給 onAuthStateChanged 後續切畫面
+  } catch(_e1) {
+    // 繼續下面 Hard reset
+  }
 
-  try {
-    // === Hard reset（強制重開 Firebase App）===
-    try { if (auth.currentUser) await auth.signOut(); } catch(_){}
-    try { await firebase.app().delete(); } catch(_){}
-    // 重新初始化
-    firebase.initializeApp(firebaseConfig);
-    window.auth = firebase.auth();
-    window.db   = firebase.database();
+  try {
+    // === Hard reset（強制重開 Firebase App）===
+    try { if (auth.currentUser) await auth.signOut(); } catch(_){}
+    try { await firebase.app().delete(); } catch(_){}
+    // 重新初始化
+    firebase.initializeApp(firebaseConfig);
+    window.auth = firebase.auth();
+    window.db   = firebase.database();
 
-    try {
-      const idbOK = await testIndexedDB();
-      const mode = (isStandalone && idbOK)
-        ? firebase.auth.Auth.Persistence.LOCAL
-        : firebase.auth.Auth.Persistence.NONE;
-      await auth.setPersistence(mode);
-    } catch(_){}
+    try {
+      const idbOK = await testIndexedDB();
+      const mode = (isStandalone && idbOK)
+        ? firebase.auth.Auth.Persistence.LOCAL
+        : firebase.auth.Auth.Persistence.NONE;
+      await auth.setPersistence(mode);
+    } catch(_){}
 
-    await Promise.race([
-      auth.signInAnonymously(),
-      new Promise((_, rej)=>setTimeout(()=>rej(new Error('hard-timeout')), 5000))
-    ]);
-    return;
-  } catch(_e2) {
-    // === 最終保底：給使用者手動登入 ===
-    hideAutoLoginOverlay();
-    document.documentElement.classList.remove('show-app');
-    document.documentElement.classList.add('show-login');
-    alert('自動登入逾時，請手動登入一次（已自動重設連線）。');
-  }
+    await Promise.race([
+      auth.signInAnonymously(),
+      new Promise((_, rej)=>setTimeout(()=>rej(new Error('hard-timeout')), 5000))
+    ]);
+    return;
+  } catch(_e2) {
+    // === 最終保底：給使用者手動登入 ===
+    hideAutoLoginOverlay();
+    document.documentElement.classList.remove('show-app');
+    document.documentElement.classList.add('show-login');
+    alert('自動登入逾時，請手動登入一次（已自動重設連線）。');
+  }
 }
 
 // ===== Section 空白處：長按新增（不阻擋捲動）＋ 輕點彈跳 =====
 (function enableCleanLongPressNewTask(){
-  const PRESS_MS = 900;      // 長按門檻（可調 700~1000）
-  const MOVE_TOL = 10;       // 位移門檻（px）
-  const PRESS_VISUAL_DELAY = 100; // 視覺壓下延遲，避免一滑就縮
+  const PRESS_MS = 900;      // 長按門檻（可調 700~1000）
+  const MOVE_TOL = 10;       // 位移門檻（px）
+  const PRESS_VISUAL_DELAY = 100; // 視覺壓下延遲，避免一滑就縮
 
-  const container = document.getElementById('section-container');
-  if (!container) return;
+  const container = document.getElementById('section-container');
+  if (!container) return;
 
-  let timer = null, visualTimer = null;
-  let startX = 0, startY = 0;
-  let moved = false, longPressed = false;
-  let pressSection = null;
+  let timer = null, visualTimer = null;
+  let startX = 0, startY = 0;
+  let moved = false, longPressed = false;
+  let pressSection = null;
 
-  function isEligibleTarget(e){
-    if (isEditing) return false;
-    if (statusFilter === 'done') return false;
-    const sec = e.target.closest('.section');
-    if (!sec) return false;
-    if (e.target.closest('.task')) return false;
-    if (e.target.closest('.drag-handle')) return false;
-    return sec;
-  }
+  function isEligibleTarget(e){
+    if (isEditing) return false;
+    if (statusFilter === 'done') return false;
+    const sec = e.target.closest('.section');
+    if (!sec) return false;
+    if (e.target.closest('.task')) return false;
+    if (e.target.closest('.drag-handle')) return false;
+    return sec;
+  }
 
-  function clearTimers(){
-    if (timer){ clearTimeout(timer); timer = null; }
-    if (visualTimer){ clearTimeout(visualTimer); visualTimer = null; }
-  }
+  function clearTimers(){
+    if (timer){ clearTimeout(timer); timer = null; }
+    if (visualTimer){ clearTimeout(visualTimer); visualTimer = null; }
+  }
 
-  function removePressVisual(){
-    if (pressSection) pressSection.classList.remove('__pressed');
-  }
+  function removePressVisual(){
+    if (pressSection) pressSection.classList.remove('__pressed');
+  }
 
-  function pointerDown(e){
-    const sec = isEligibleTarget(e);
-    if (!sec) return;
+  function pointerDown(e){
+    const sec = isEligibleTarget(e);
+    if (!sec) return;
 
-    // 不要 preventDefault，讓瀏覽器自然判斷要不要捲動
-    pressSection = sec;
-    longPressed = false;
-    moved = false;
+    // 不要 preventDefault，讓瀏覽器自然判斷要不要捲動
+    pressSection = sec;
+    longPressed = false;
+    moved = false;
 
-    const p = e.touches ? e.touches[0] : e;
-    startX = p.clientX; startY = p.clientY;
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX; startY = p.clientY;
 
-    clearTimers();
+    clearTimers();
 
-    // 視覺壓下：延遲一點，避免一開始就縮而造成「卡」的錯覺
-    visualTimer = setTimeout(()=>{
-      pressSection && pressSection.classList.add('__pressed');
-    }, PRESS_VISUAL_DELAY);
+    // 視覺壓下：延遲一點，避免一開始就縮而造成「卡」的錯覺
+    visualTimer = setTimeout(()=>{
+      pressSection && pressSection.classList.add('__pressed');
+    }, PRESS_VISUAL_DELAY);
 
-    // 長按計時
-    timer = setTimeout(()=>{
-      longPressed = true;
-      removePressVisual();
-      clearTimers();
-      if (!isEditing && statusFilter !== 'done') {
-        try { closeFabMenu(); } catch(_){}
-        openModal(pressSection?.id); // ★ 把被長按的 section 預選進去
-      }
-    }, PRESS_MS);
-  }
+    // 長按計時
+    timer = setTimeout(()=>{
+      longPressed = true;
+      removePressVisual();
+      clearTimers();
+      if (!isEditing && statusFilter !== 'done') {
+        try { closeFabMenu(); } catch(_){}
+        openModal(pressSection?.id); // ★ 把被長按的 section 預選進去
+      }
+    }, PRESS_MS);
+  }
 
-  function pointerMove(e){
-    if (!timer && !visualTimer) return;
+  function pointerMove(e){
+    if (!timer && !visualTimer) return;
 
-    const p = e.touches ? e.touches[0] : e;
-    const dx = Math.abs(p.clientX - startX);
-    const dy = Math.abs(p.clientY - startY);
+    const p = e.touches ? e.touches[0] : e;
+    const dx = Math.abs(p.clientX - startX);
+    const dy = Math.abs(p.clientY - startY);
 
-    // 只要移動超過門檻，或明顯是「垂直滑動」→ 取消長按，讓捲動為主
-    const verticalIntent = dy > dx + 2;
-    if (dx > MOVE_TOL || dy > MOVE_TOL || verticalIntent){
-      moved = true;
-      clearTimers();
-      removePressVisual();
-    }
-  }
+    // 只要移動超過門檻，或明顯是「垂直滑動」→ 取消長按，讓捲動為主
+    const verticalIntent = dy > dx + 2;
+    if (dx > MOVE_TOL || dy > MOVE_TOL || verticalIntent){
+      moved = true;
+      clearTimers();
+      removePressVisual();
+    }
+  }
 
-  function pointerUpOrCancel(e){
-    const wasLong = longPressed;
-    clearTimers();
-    // 若短按且沒移動太多 → 小彈跳
-    if (pressSection && !wasLong && !moved){
-      // 按到的還是同一個 section 才回饋
-      const stillOk = isEligibleTarget(e) === pressSection;
-      if (stillOk){
-        pressSection.classList.add('__bump');
-        setTimeout(()=> pressSection && pressSection.classList.remove('__bump'), 200);
-      }
-    }
-    removePressVisual();
-    pressSection = null;
-    moved = false;
-    longPressed = false;
-  }
+  function pointerUpOrCancel(e){
+    const wasLong = longPressed;
+    clearTimers();
+    // 若短按且沒移動太多 → 小彈跳
+    if (pressSection && !wasLong && !moved){
+      // 按到的還是同一個 section 才回饋
+      const stillOk = isEligibleTarget(e) === pressSection;
+      if (stillOk){
+        pressSection.classList.add('__bump');
+        setTimeout(()=> pressSection && pressSection.classList.remove('__bump'), 200);
+      }
+    }
+    removePressVisual();
+    pressSection = null;
+    moved = false;
+    longPressed = false;
+  }
 
-  // 不再攔 contextmenu；若你真的要完全關，可保留下一行
-  // container.addEventListener('contextmenu', e => { if (isEligibleTarget(e)) e.preventDefault(); });
+  // 不再攔 contextmenu；若你真的要完全關，可保留下一行
+  // container.addEventListener('contextmenu', e => { if (isEligibleTarget(e)) e.preventDefault(); });
 
-  // 綁定（滑鼠 + 觸控），觸控監聽改為 passive:true 以提升捲動順暢
-  container.addEventListener('mousedown', pointerDown);
-  container.addEventListener('mousemove', pointerMove);
-  document.addEventListener('mouseup', pointerUpOrCancel);
+  // 綁定（滑鼠 + 觸控），觸控監聽改為 passive:true 以提升捲動順暢
+  container.addEventListener('mousedown', pointerDown);
+  container.addEventListener('mousemove', pointerMove);
+  document.addEventListener('mouseup', pointerUpOrCancel);
 
-  container.addEventListener('touchstart', pointerDown, {passive:true});
-  container.addEventListener('touchmove',  pointerMove, {passive:true});
-  container.addEventListener('touchend',   pointerUpOrCancel, {passive:true});
-  container.addEventListener('touchcancel',pointerUpOrCancel, {passive:true});
+  container.addEventListener('touchstart', pointerDown, {passive:true});
+  container.addEventListener('touchmove',  pointerMove, {passive:true});
+  container.addEventListener('touchend',   pointerUpOrCancel, {passive:true});
+  container.addEventListener('touchcancel',pointerUpOrCancel, {passive:true});
 })();
-  </script>
+  </script>
 
 <div id="check-success">
-  <svg viewBox="0 0 52 52">
-    <circle class="circle" cx="26" cy="26" r="18" fill="none"/>
-    <path class="check" fill="none" d="M14 27l7 7 16-16"/>
-  </svg>
+  <svg viewBox="0 0 52 52">
+    <circle class="circle" cx="26" cy="26" r="18" fill="none"/>
+    <path class="check" fill="none" d="M14 27l7 7 16-16"/>
+  </svg>
 </div>
 
 <div class="modal" id="confirmModal">
-  <div class="modal-content">
-    <h3 style="text-align: center;">是否確認移除此任務？</h3>
-    <div class="confirm-buttons">
-      <button class="confirm-btn" onclick="deleteTask()">確認</button>
-      <button class="cancel-btn" onclick="closeModal('confirmModal')">返回</button>
-    </div>
-  </div>
+  <div class="modal-content">
+    <h3 style="text-align: center;">是否確認移除此任務？</h3>
+    <div class="confirm-buttons">
+      <button class="confirm-btn" onclick="deleteTask()">確認</button>
+      <button class="cancel-btn" onclick="closeModal('confirmModal')">返回</button>
+    </div>
+  </div>
 </div>
 
 <!-- ✅ 登出確認 modal 要和上面同一層，千萬不要放在 confirmModal 裡 -->
 <div class="modal" id="logoutModal">
-  <div class="modal-content">
-    <h3 style="text-align:center;">是否確認登出？</h3>
-    <div class="confirm-buttons">
-      <button class="confirm-btn" onclick="doLogout()">確認</button>
-      <button class="cancel-btn" onclick="closeModal('logoutModal')">取消</button>
-    </div>
-  </div>
+  <div class="modal-content">
+    <h3 style="text-align:center;">是否確認登出？</h3>
+    <div class="confirm-buttons">
+      <button class="confirm-btn" onclick="doLogout()">確認</button>
+      <button class="cancel-btn" onclick="closeModal('logoutModal')">取消</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal" id="categoryModal">
-  <div class="modal-content">
+  <div class="modal-content">
 <h3 style="text-align: center;">新增分類</h3>
 <input type="text" id="newCategoryName" placeholder="請輸入分類名稱">
-    <div class="confirm-buttons">
-      <button class="confirm-btn" onclick="addCategory()">確認</button>
-      <button class="cancel-btn" onclick="closeModal('categoryModal')">取消</button>
-    </div>
-  </div>
+    <div class="confirm-buttons">
+      <button class="confirm-btn" onclick="addCategory()">確認</button>
+      <button class="cancel-btn" onclick="closeModal('categoryModal')">取消</button>
+    </div>
+  </div>
 </div>
 <!-- 重命名分類 Modal -->
 <div class="modal" id="renameModal">
-  <div class="modal-content">
-    <button class="close-btn" onclick="closeModal('renameModal')">✕</button>
-    <h3 style="text-align:center;">重新命名分類</h3>
-    <input type="text" id="renameInput" placeholder="請輸入新的分類名稱" />
-    <div class="confirm-buttons">
-      <button class="confirm-btn" onclick="confirmRename()">確認</button>
-      <button class="cancel-btn" onclick="closeModal('renameModal')">取消</button>
-    </div>
-  </div>
+  <div class="modal-content">
+    <button class="close-btn" onclick="closeModal('renameModal')">✕</button>
+    <h3 style="text-align:center;">重新命名分類</h3>
+    <input type="text" id="renameInput" placeholder="請輸入新的分類名稱" />
+    <div class="confirm-buttons">
+      <button class="confirm-btn" onclick="confirmRename()">確認</button>
+      <button class="cancel-btn" onclick="closeModal('renameModal')">取消</button>
+    </div>
+  </div>
 </div>
 
 
@@ -2794,38 +2794,38 @@ async function runAutoLoginRescue(){
 
 <!-- 更多功能 Modal -->
 <div class="modal" id="moreModal">
-  <div class="modal-content">
-    <button class="close-btn" onclick="closeModal('moreModal')">✕</button>
-    <h3>篩選剩餘天數</h3>
+  <div class="modal-content">
+    <button class="close-btn" onclick="closeModal('moreModal')">✕</button>
+    <h3>篩選剩餘天數</h3>
 <div class="filter-days">
-  <label><input type="radio" name="daysFilter" value="1"> 1</label>
-  <label><input type="radio" name="daysFilter" value="3"> 3</label>
-  <label><input type="radio" name="daysFilter" value="5"> 5</label>
-  <label><input type="radio" name="daysFilter" value="3650"> 不限</label>
-  <label><input type="radio" name="daysFilter" value="all" checked>預設</label>
+  <label><input type="radio" name="daysFilter" value="1"> 1</label>
+  <label><input type="radio" name="daysFilter" value="3"> 3</label>
+  <label><input type="radio" name="daysFilter" value="5"> 5</label>
+  <label><input type="radio" name="daysFilter" value="3650"> 不限</label>
+  <label><input type="radio" name="daysFilter" value="all" checked>預設</label>
 </div>
 <h3>任務狀態</h3>
 <div class="filter-status">
-  <label><input type="radio" name="statusFilter" value="ongoing" checked> 進行中</label>
-  <label><input type="radio" name="statusFilter" value="done"> 已完成</label>
+  <label><input type="radio" name="statusFilter" value="ongoing" checked> 進行中</label>
+  <label><input type="radio" name="statusFilter" value="done"> 已完成</label>
 </div>
 <h3>天數設定</h3>
 <div class="filter-mode">
-  <label><input type="radio" name="dayMode" value="work" checked> 工作天</label>
-  <label><input type="radio" name="dayMode" value="calendar"> 日曆天</label>
+  <label><input type="radio" name="dayMode" value="work" checked> 工作天</label>
+  <label><input type="radio" name="dayMode" value="calendar"> 日曆天</label>
 </div>
 <hr style="margin:1rem 0;border:none;border-top:1px solid #eee;">
 <button class="logout-btn" style="font-weight:bold;" onclick="openLogoutModal()">登出</button>
 
-  </div>
+  </div>
 </div>
 
 <!-- 自動登入載入中 -->
 <div id="autologin-overlay" aria-hidden="true">
-  <div class="autologin-box">
-    <div class="autologin-loader"></div>
-    <div class="autologin-text">自動登入中…</div>
-  </div>
+  <div class="autologin-box">
+    <div class="autologin-loader"></div>
+    <div class="autologin-text">自動登入中…</div>
+  </div>
 </div>
 
 </body>
