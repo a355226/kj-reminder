@@ -873,8 +873,11 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
     <div class="section" id="右上「...」可篩選任務">
       <div class="section-title">右上「...」可篩選任務</div>
     </div>
-    <div class="section" id="長按以快速新增該分類任務">
-      <div class="section-title">長按以快速新增該分類任務</div>
+    <div class="section" id="長按空白處，快速新增該分類任務">
+      <div class="section-title">長按空白處，快速新增該分類任務</div>
+    </div>
+       <div class="section" id="自行移除分類後開始使用！">
+      <div class="section-title">自行移除分類後開始使用！</div>
     </div>
 
   </div>
@@ -1203,7 +1206,7 @@ let roomPath = ""; // ← 放這裡！全檔只出現一次
 let tasksRef = null;
 let completedRef = null; // 之後你有做 completedTasks 即可用到
 
-const DEFAULT_CATEGORIES = ['右下「+」可新增和編輯','右上「...」可篩選任務','長按以快速新增該分類任務'];
+const DEFAULT_CATEGORIES = ['右下「+」可新增和編輯','右上「...」可篩選任務','長按空白處，快速新增該分類任務','自行移除分類後開始使用！'];
 
 // 小工具：把不合法字元換掉（Firebase 路徑不能有 . # $ [ ] /）
 function sanitizeKey(s){
