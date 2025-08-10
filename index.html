@@ -867,25 +867,6 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
   <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
 </div>
 
-    <div class="section" id="照顧服務">
-      <div class="section-title">照顧服務</div>
-    </div>
-    <div class="section" id="專業服務">
-      <div class="section-title">專業服務</div>
-    </div>
-    <div class="section" id="交通接送">
-      <div class="section-title">交通接送</div>
-    </div>
-    <div class="section" id="喘息服務">
-      <div class="section-title">喘息服務</div>
-    </div>
-    <div class="section" id="輔具申請">
-      <div class="section-title">輔具申請</div>
-    </div>
-    <div class="section" id="其它">
-      <div class="section-title">其它</div>
-    </div>
-
   </div>
 
   <div class="fab" onclick="toggleMenu()">＋</div>
@@ -1212,6 +1193,8 @@ let roomPath = ""; // ← 放這裡！全檔只出現一次
 let tasksRef = null;
 let completedRef = null; // 之後你有做 completedTasks 即可用到
 
+const DEFAULT_CATEGORIES = ['照顧服務','專業服務','交通接送','喘息服務','輔具申請','其它'];
+
 // 小工具：把不合法字元換掉（Firebase 路徑不能有 . # $ [ ] /）
 function sanitizeKey(s){
   return String(s).replace(/[.#$/\[\]\/]/g, '_');
@@ -1363,6 +1346,7 @@ function sortTasks(section) {
   });
 
   // 清空後依排序結果重新加入
+
 }
 
 
