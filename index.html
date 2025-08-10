@@ -867,23 +867,14 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
   <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
 </div>
 
-    <div class="section" id="照顧服務">
-      <div class="section-title">照顧服務</div>
+    <div class="section" id="右下「+」可新增和編輯">
+      <div class="section-title">右下+可新增和編輯</div>
     </div>
-    <div class="section" id="專業服務">
-      <div class="section-title">專業服務</div>
+    <div class="section" id="右上「...」可篩選任務">
+      <div class="section-title">右上「...」可篩選任務</div>
     </div>
-    <div class="section" id="交通接送">
-      <div class="section-title">交通接送</div>
-    </div>
-    <div class="section" id="喘息服務">
-      <div class="section-title">喘息服務</div>
-    </div>
-    <div class="section" id="輔具申請">
-      <div class="section-title">輔具申請</div>
-    </div>
-    <div class="section" id="其它">
-      <div class="section-title">其它</div>
+    <div class="section" id="長按以快速新增該分類任務">
+      <div class="section-title">長按以快速新增該分類任務</div>
     </div>
 
   </div>
@@ -2564,7 +2555,7 @@ let autoLoginWD = null;
 
 function startAutoLoginWatchdog(){
   stopAutoLoginWatchdog();
-  autoLoginWD = setTimeout(runAutoLoginRescue, 3000); // 8 秒還沒好就救援
+  autoLoginWD = setTimeout(runAutoLoginRescue, 2000); // 8 秒還沒好就救援
 }
 
 function stopAutoLoginWatchdog(){
