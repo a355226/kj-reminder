@@ -2142,21 +2142,20 @@ function loadTasksFromFirebase() {
   });
 
   // 載入分類名稱
+// 載入分類名稱（允許空陣列，不自動補預設）
 categoriesRef.on('value', (snap) => {
   const cloud = snap.val();
 
-  if (Array.isArray(cloud) && cloud.length > 0) {
-    // 用雲端的
-    categories = cloud.slice();
+  if (Array.isArray(cloud)) {
+    categories = cloud.slice();          // ✅ 雲端是陣列（可為空），就照雲端
+  } else if (cloud && typeof cloud === 'object') {
+    categories = Object.values(cloud);   // 兼容舊格式（物件）
   } else {
-    // 雲端是空的 → 用預設清單補回去
-    categories = DEFAULT_CATEGORIES.slice();
-    saveCategoriesToFirebase(); // 存回雲端
+    categories = [];                     // ✅ 沒資料就保持空，不補 DEFAULT_CATEGORIES
   }
 
-categoriesLoaded = true;
+  categoriesLoaded = true;
 
-  // 先畫分類，再畫任務
   renderSections(categories);
   if (statusFilter === 'done') {
     renderCompletedTasks();
