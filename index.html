@@ -2146,22 +2146,33 @@ function loadTasksFromFirebase() {
 categoriesRef.on('value', (snap) => {
   const cloud = snap.val();
 
-  if (Array.isArray(cloud)) {
-    categories = cloud.slice();          // ✅ 雲端是陣列（可為空），就照雲端
+  // 用每個房間專屬的 key，確保不同帳號各自顯示一次
+  const welcomeKey = roomPath ? `welcome_shown_${roomPath}` : 'welcome_shown';
+
+  if (cloud === null) {
+    // 第一次登入：不補預設，分類維持空
+    categories = [];
+
+    // 本帳號（room）還沒看過才顯示
+    if (!localStorage.getItem(welcomeKey)) {
+      document.getElementById('welcomeModal').style.display = 'flex';
+      localStorage.setItem(welcomeKey, '1');
+    }
+
+    // 把空陣列寫上雲端，之後就不是 null 了
+    saveCategoriesToFirebase();
+
+  } else if (Array.isArray(cloud)) {
+    categories = cloud.slice();
   } else if (cloud && typeof cloud === 'object') {
-    categories = Object.values(cloud);   // 兼容舊格式（物件）
+    categories = Object.values(cloud);
   } else {
-    categories = [];                     // ✅ 沒資料就保持空，不補 DEFAULT_CATEGORIES
+    categories = [];
   }
 
   categoriesLoaded = true;
-
   renderSections(categories);
-  if (statusFilter === 'done') {
-    renderCompletedTasks();
-  } else {
-    showOngoing();
-  }
+  if (statusFilter === 'done') { renderCompletedTasks(); } else { showOngoing(); }
 });
 }
 
@@ -2807,6 +2818,20 @@ async function runAutoLoginRescue(){
     <div class="autologin-text">自動登入中…</div>
   </div>
 </div>
-
+<div class="modal" id="welcomeModal">
+  <div class="modal-content" style="text-align:left; line-height:1.6;">
+    <h3 style="text-align:center;">👋 歡迎使用 MyTask</h3>
+    <ol style="padding-left:1.2rem; margin-top:0.8rem;">
+      <li>右下「＋」新增任務或分類</li>
+      <li>長按分類空白處快速新增任務</li>
+      <li>點「任務條」可編輯或刪除</li>
+      <li>內容下方，右滑以完成任務</li>
+      <li>「＋」選「編輯分類」可排序、改名、刪除</li>
+      <li>右上「⋯」篩選天數、切換進行中/已完成、設定天數模式</li>
+<li style="font-weight:bold; color:#007BFF;">新增第一個「分類」開始使用！</li>
+    </ol>
+    <button class="confirm-btn" style="margin-top:1rem; width:100%;" onclick="closeModal('welcomeModal')">我知道了</button>
+  </div>
+</div>
 </body>
 </html>
