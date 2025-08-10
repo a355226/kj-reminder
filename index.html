@@ -2150,6 +2150,7 @@ categoriesRef.on('value', (snap) => {
     categories = cloud.slice();
   } else {
     // 雲端是空的 → 用預設清單補回去
+    categories = DEFAULT_CATEGORIES.slice();
     saveCategoriesToFirebase(); // 存回雲端
   }
 
