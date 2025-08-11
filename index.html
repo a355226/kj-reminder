@@ -1434,6 +1434,7 @@ closeModal('taskModal');
 
   applyDayFilter();
   saveTasksToFirebase();
+  bindSwipeToTasks();
 }
 
 // 強制提交目前正在輸入（收合輸入法、觸發 compositionend / blur）
@@ -1493,6 +1494,9 @@ if (window.__resetSlideComplete) window.__resetSlideComplete();
 function syncEditsIntoTask(task) {
   if (task.id !== selectedTaskId) return task;
 
+  // ★ 只有詳情視窗打開時才同步輸入值，避免把空字串覆蓋掉
+  if (!isModalOpen('detailModal')) return task;
+
   const secEl  = document.getElementById('detailSection');
   const ttlEl  = document.getElementById('detailTitle');
   const ctnEl  = document.getElementById('detailContent');
@@ -1543,6 +1547,8 @@ el.innerHTML = taskCardHTML(task, displayDays);
 
   document.getElementById(task.section).appendChild(el);
   sortTasks(task.section);
+  
+  bindSwipeToTasks();
 
   closeModal('detailModal'); // ✅ 新增這一行
 applyDayFilter();
@@ -1551,6 +1557,10 @@ saveTasksToFirebase();
 
 }
 
+function isModalOpen(id){
+  const m = document.getElementById(id);
+  return m && getComputedStyle(m).display !== 'none';
+}
 //移除功能
 function confirmDelete() {
   document.getElementById('confirmModal').style.display = 'flex';
