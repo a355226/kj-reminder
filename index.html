@@ -1535,8 +1535,6 @@ function addCategory() {
   renderSections(categories);
 refreshCurrentView();  
   closeModal('categoryModal');
-openModal(name);
-
 }
 
 
@@ -1732,7 +1730,7 @@ function updateSectionOptions() {
 }
 
 //更多功能-篩選剩餘日
-let filterDay = "all"; // 預設全部
+let filterDay = "default"; // 預設：顯示所有分類(含空白)
 
 document.addEventListener("change", function(e) {
   if (e.target.matches('.filter-days input[type="radio"]')) {
@@ -1742,24 +1740,38 @@ document.addEventListener("change", function(e) {
 });
 
 function applyDayFilter() {
+  const isDefault = (filterDay === 'default');
+
+  // 先決定每張任務卡是否顯示
   document.querySelectorAll(".task").forEach(taskEl => {
     const task = tasks.find(t => t.id === taskEl.dataset.id);
     if (!task) return;
 
-    const days = getRemainingDays(task.date);
     let show = true;
-
-    if (filterDay !== "all") {
-      const v = parseInt(filterDay, 10);   // 1 / 3 / 5 ...
-      // 有數字時：只顯示「有日期 且 <= v」
+    if (!isDefault && filterDay !== 'all') {
+      // 1 / 3 / 5：只顯示「有日期且 <= 指定天數」
+      const days = getRemainingDays(task.date);
+      const v = parseInt(filterDay, 10);
       show = (days !== null) && (days <= v);
     }
-    // filterDay === 'all' 時，包含 days === null（無期限）全部顯示
+    // 'all' 與 'default' 都不過濾任務卡
     taskEl.style.display = show ? "" : "none";
   });
 
-  // 不管是不是 all，都隱藏空白分類（完全沒有可見任務的分類）
-  hideEmptySectionsAfterFilter();
+  // 再決定要不要藏空分類
+  if (statusFilter === 'done') {
+    // 已完成頁面：一律隱藏空分類
+    hideEmptySectionsAfterFilter();
+  } else {
+    if (isDefault) {
+      // 預設：所有分類都顯示（即使目前沒有任何任務）
+      document.querySelectorAll('#section-container .section')
+        .forEach(sec => sec.style.display = '');
+    } else {
+      // 非預設（包含「不限」與數字篩選）：才隱藏空分類
+      hideEmptySectionsAfterFilter();
+    }
+  }
 }
 
 
@@ -2011,6 +2023,7 @@ if (completedMonthFilter === 'recent15') {
     const sec = document.getElementById(t.section);
     if (sec) sec.appendChild(el);
   });
+  hideEmptySectionsAfterFilter();   // ← 新增：完成視圖也隱藏空白分類
 }
 
 
@@ -2591,12 +2604,25 @@ document.addEventListener('keydown', function(e){
 
 function hideEmptySectionsAfterFilter(){
   const sections = document.querySelectorAll('#section-container .section');
+
+  // 當前畫面是否有任何「可見」任務
+  const anyVisibleTask = Array.from(document.querySelectorAll('#section-container .task'))
+    .some(el => getComputedStyle(el).display !== 'none');
+
   sections.forEach(sec => {
+    if (!anyVisibleTask) {
+      // 如果目前沒有任何任務可見 → 不要把分類藏起來（避免整頁空白）
+      sec.style.display = '';
+      return;
+    }
+    // 有任務可見時，才隱藏沒有任務的分類
     const hasVisibleTask = Array.from(sec.querySelectorAll('.task'))
       .some(el => getComputedStyle(el).display !== 'none');
     sec.style.display = hasVisibleTask ? '' : 'none';
   });
 }
+
+
 
 let __autoLoginShownAt = 0;
 
@@ -3035,7 +3061,7 @@ function bindSwipeToTasks() {
   <label><input type="radio" name="daysFilter" value="3"> 3</label>
   <label><input type="radio" name="daysFilter" value="5"> 5</label>
   <label><input type="radio" name="daysFilter" value="all"> 不限</label>
-  <label><input type="radio" name="daysFilter" value="all" checked>預設</label>
+  <label><input type="radio" name="daysFilter" value="default" checked> 預設</label>
 </div>
 <h3>任務狀態</h3>
 <div class="filter-status">
@@ -3077,5 +3103,4 @@ function bindSwipeToTasks() {
 </div>
 </body>
 </html>
-
 
