@@ -852,6 +852,49 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 .fab:hover{ background: rgba(0,170,255,0.95) !important; }
 .fab:active{ transform: scale(.98); }
 .fab.open{ transform: rotate(45deg); }
+
+/* 讓進度條與其文字蓋在最上層，避免被任務標題/天數遮住 */
+.task { position: relative; overflow: hidden; }
+.task .task-content, .task .task-days { position: relative; z-index: 2; }
+
+.task .swipe-bar {
+  position: absolute; top: 0; bottom: 0;
+  width: 0%;
+  z-index: 4;            /* ← 提到最上層 */
+  display: flex; align-items: center;
+  pointer-events: none;  /* 不攔互動 */
+  overflow: hidden;
+  transition: width .18s ease;
+}
+
+/* 進度條上的文字也確保在上層 */
+.task .swipe-bar .label{
+  position: relative;
+  z-index: 5;            /* ← 保險，再高一層 */
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity .12s ease, transform .12s ease;
+  font-weight: 800; letter-spacing: .3px;
+  font-size: .98rem;
+}
+
+/* 顏色與左右配置（更淺版本） */
+.task .swipe-bar.right { 
+  left: 0;  
+  background: #d6fae8; /* 非常淡的綠色 */
+  color: #0e4a36; 
+}
+.task .swipe-bar.right .label{ margin-left:12px; transform: translateX(-6px); }
+.task .swipe-bar.left {  
+  right: 0; 
+  background: #ffe4e6; /* 非常淡的紅色 */
+  color: #5c2020; 
+  justify-content: flex-end; 
+}
+.task .swipe-bar.left  .label{ margin-right:12px; transform: translateX(6px); }
+
+
+
   </style>
 </head>
 <body>
@@ -1330,12 +1373,8 @@ function getRemainingDays(dateStr) {
   el.className = 'task';
   el.dataset.id = id;
   el.style.backgroundColor = bg;
-  el.innerHTML = `
-    <div class="task-content">
-      <div class="task-title">${getTitleWithFlag(task)}</div>
-    </div>
-    <div class="task-days">${displayDays}</div>
-  `;
+el.innerHTML = taskCardHTML(task, displayDays);
+
   el.onclick = () => openDetail(id);
 
   document.getElementById(section).appendChild(el);
@@ -1424,12 +1463,8 @@ task.important = document.getElementById('detailImportant').checked;   // ★新
   el.className = 'task';
   el.dataset.id = task.id;
   el.style.backgroundColor = bg;
-el.innerHTML = `
-  <div class="task-content">
-    <div class="task-title">${getTitleWithFlag(task)}</div>
-  </div>
-  <div class="task-days">${displayDays}</div>
-`;
+el.innerHTML = taskCardHTML(task, displayDays);
+
 
   el.onclick = () => openDetail(task.id);
 
@@ -1825,12 +1860,8 @@ if (merged.length !== (categories || []).length) {
     el.className = 'task';
     el.dataset.id = t.id;
     el.style.backgroundColor = bg;
-    el.innerHTML = `
-      <div class="task-content">
-        <div class="task-title">${getTitleWithFlag(t)}</div>
-      </div>
-      <div class="task-days">${displayDays}</div>
-    `;
+el.innerHTML = taskCardHTML(t, displayDays);
+
     el.onclick = () => openDetail(t.id);
     const sec = document.getElementById(t.section);
     if (sec) sec.appendChild(el);
@@ -1842,6 +1873,7 @@ if (merged.length !== (categories || []).length) {
 
   // 進行中也要套用你目前的「剩餘天數」篩選
   applyDayFilter();
+bindSwipeToTasks(); 
 }
 
 // 轉民國年月（回傳如 "11407"）
@@ -2757,6 +2789,114 @@ async function runAutoLoginRescue(){
   container.addEventListener('touchend',   pointerUpOrCancel, {passive:true});
   container.addEventListener('touchcancel',pointerUpOrCancel, {passive:true});
 })();
+
+function taskCardHTML(task, displayDays) {
+  return `
+    <div class="swipe-bar right"><span class="label">✅ 已完成</span></div>
+    <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
+    <div class="task-content">
+      <div class="task-title">${getTitleWithFlag(task)}</div>
+    </div>
+    <div class="task-days">${displayDays}</div>
+  `;
+}
+
+function bindSwipeToTasks() {
+  if (statusFilter === 'done') return;
+  const BOUND = 0.85, CLICK_TOL = 8, MAX_TILT = 3;
+
+  document.querySelectorAll('.task').forEach(task => {
+    if (task.dataset.swipeBound === '1') return;
+    task.dataset.swipeBound = '1';
+
+    const barR = task.querySelector('.swipe-bar.right');
+    const barL = task.querySelector('.swipe-bar.left');
+    const labR = barR?.querySelector('.label');
+    const labL = barL?.querySelector('.label');
+
+    let startX=0, dx=0, dragging=false, width=0, clickCanceled=false;
+
+    task.addEventListener('pointerdown', onDown);
+    task.addEventListener('pointermove', onMove);
+    task.addEventListener('pointerup', onUp);
+    task.addEventListener('pointercancel', onUp);
+    task.addEventListener('lostpointercapture', onUp);
+
+    function onDown(e){
+      if (e.target.closest('button, input, select, textarea')) return;
+      dragging = true; clickCanceled = false;
+      startX = e.clientX; dx = 0; width = task.offsetWidth || 1;
+      task.style.transition = 'none';
+      try { task.setPointerCapture(e.pointerId); } catch(_){}
+    }
+
+    function onMove(e){
+      if (!dragging) return;
+      dx = e.clientX - startX;
+      const adx = Math.abs(dx);
+      const pct = Math.min(1, adx / width);
+      const tilt = (dx / width) * MAX_TILT;
+      task.style.transform = `translateX(${dx}px) rotate(${tilt}deg)`;
+
+      // 單向進度條（另一側清零）
+      if (dx > 0) {
+        if (barR) barR.style.width = (pct*100) + '%';
+        if (barL) barL.style.width = '0%';
+        // 右滑顯示「已完成」字樣
+        if (labR){
+          const o = Math.min(1, pct*1.2);
+          labR.style.opacity = o;
+          labR.style.transform = `translateX(${pct>0.05?0:-6}px)`;
+        }
+        if (labL){ labL.style.opacity = 0; labL.style.transform = 'translateX(6px)'; }
+      } else if (dx < 0) {
+        if (barL) barL.style.width = (pct*100) + '%';
+        if (barR) barR.style.width = '0%';
+        // 左滑顯示「移除」字樣
+        if (labL){
+          const o = Math.min(1, pct*1.2);
+          labL.style.opacity = o;
+          labL.style.transform = `translateX(${pct>0.05?0:6}px)`;
+        }
+        if (labR){ labR.style.opacity = 0; labR.style.transform = 'translateX(-6px)'; }
+      } else {
+        if (barR) barR.style.width = '0%';
+        if (barL) barL.style.width = '0%';
+        if (labR){ labR.style.opacity = 0; labR.style.transform = 'translateX(-6px)'; }
+        if (labL){ labL.style.opacity = 0; labL.style.transform = 'translateX(6px)'; }
+      }
+
+      if (adx > CLICK_TOL) clickCanceled = true;
+    }
+
+    function onUp(e){
+      if (!dragging) return; dragging = false;
+      try { task.releasePointerCapture(e.pointerId); } catch(_){}
+      const adx = Math.abs(dx), passed = adx >= width * BOUND, toRight = dx > 0;
+
+      // 回彈 & 收起
+      task.style.transition = 'transform .18s ease';
+      task.style.transform = '';
+      if (barR) barR.style.width = '0%';
+      if (barL) barL.style.width = '0%';
+      if (labR){ labR.style.opacity = 0; labR.style.transform = 'translateX(-6px)'; }
+      if (labL){ labL.style.opacity = 0; labL.style.transform = 'translateX(6px)'; }
+
+      if (passed) {
+        selectedTaskId = task.dataset.id;
+        setTimeout(() => {
+          if (toRight) completeTask();  // 右滑：直接完成
+          else          deleteTask();   // 左滑：直接移除
+        }, 10);
+      } else if (!clickCanceled) {
+        const id = task.dataset.id;
+        if (id) openDetail(id);
+      }
+      dx = 0; clickCanceled = false;
+    }
+  });
+}
+
   </script>
 
 <div id="check-success">
