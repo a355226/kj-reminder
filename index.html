@@ -367,7 +367,7 @@ transform: translateY(-2.2px); /* ⬆ 往上 2px，可自行調整 */
 .more-btn {
   position: fixed;
   top: 12px;
-  left: 12px;
+  leftt: 12px;
   width: 32px;      /* 縮小寬 */
   height: 32px;     /* 縮小高 */
   border-radius: 50%;
@@ -837,6 +837,21 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 .section.__bump { animation: __bump .18s ease; }
 
 #section-container { touch-action: pan-y; }
+
+/* 把檔案裡所有其他 .fab 刪掉，只留這段，並放在 <style> 的最底部 */
+.fab{
+  position: fixed; bottom: 24px; right: 24px;
+  width: 48px; height: 48px; border-radius: 50%;
+  display:flex; align-items:center; justify-content:center;
+  background: rgba(0,170,255,0.85) !important; /* 半透明、偏淡藍 */
+  color:#fff; font-size:28px; font-weight:700;
+  box-shadow: 0 10px 22px rgba(0,0,0,.18);
+  cursor:pointer; z-index: 110;
+  transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease, background-color .2s ease;
+}
+.fab:hover{ background: rgba(0,170,255,0.95) !important; }
+.fab:active{ transform: scale(.98); }
+.fab.open{ transform: rotate(45deg); }
   </style>
 </head>
 <body>
