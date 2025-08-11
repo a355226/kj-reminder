@@ -899,6 +899,19 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 }
 .task .swipe-bar.left  .label{ margin-right:12px; transform: translateX(6px); }
 
+/* 取消手機點按高亮 & 焦點外框 */
+.task { -webkit-tap-highlight-color: transparent; }
+.task:focus, .task:focus-visible { outline: none; }
+
+/* 動畫期間讓 GPU 合成更穩，避免邊緣「虛線」 */
+.task.swiping { will-change: transform; }
+.task { backface-visibility: hidden; transform: translateZ(0); }
+
+/* 進度條也開合成，邊緣更穩定 */
+.task .swipe-bar { will-change: width; transform: translateZ(0); }
+
+/* 有圓角時讓塗色緊貼內側，降低邊緣鋸齒 */
+.task { background-clip: padding-box; }
 
 
   </style>
@@ -1381,7 +1394,6 @@ function getRemainingDays(dateStr) {
   el.style.backgroundColor = bg;
 el.innerHTML = taskCardHTML(task, displayDays);
 
-  el.onclick = () => openDetail(id);
 
   document.getElementById(section).appendChild(el);
   sortTasks(section);
@@ -1471,8 +1483,6 @@ task.important = document.getElementById('detailImportant').checked;   // ★新
   el.style.backgroundColor = bg;
 el.innerHTML = taskCardHTML(task, displayDays);
 
-
-  el.onclick = () => openDetail(task.id);
 
   document.getElementById(task.section).appendChild(el);
   sortTasks(task.section);
@@ -1868,7 +1878,6 @@ if (merged.length !== (categories || []).length) {
     el.style.backgroundColor = bg;
 el.innerHTML = taskCardHTML(t, displayDays);
 
-    el.onclick = () => openDetail(t.id);
     const sec = document.getElementById(t.section);
     if (sec) sec.appendChild(el);
   });
@@ -1992,7 +2001,6 @@ if (completedMonthFilter === 'recent15') {
       </div>
       <div class="task-days">完</div>
     `;
-    el.onclick = () => openCompletedDetail(t.id);
     const sec = document.getElementById(t.section);
     if (sec) sec.appendChild(el);
   });
@@ -2816,43 +2824,30 @@ function bindSwipeToTasks() {
     if (task.dataset.swipeBound === '1') return;
     task.dataset.swipeBound = '1';
 
-    // ❶ 移除舊的 onclick，避免雙重綁定
+    // 不用 click 開詳情，保險起見也清掉
     task.onclick = null;
 
-    const barR = task.querySelector('.swipe-bar.right');
-    const barL = task.querySelector('.swipe-bar.left');
+    const barR = task.querySelector('.swipe-bar.right'); // ✅ 已完成
+    const barL = task.querySelector('.swipe-bar.left');  // 🗑 移除
     const labR = barR?.querySelector('.label');
     const labL = barL?.querySelector('.label');
 
     let startX=0, startY=0, dx=0, dy=0, width=0;
-    let mode = 'pending';           // 'pending' | 'swipe' | 'scroll'
+    let mode = 'pending';   // 'pending' | 'swipe' | 'scroll'
     let isDown = false;
     let activePid = null;
-
-    // ❷ 記錄最後一次手勢用來「擋掉」緊接著的 click
-    let lastGestureDx = 0;
-    let lastGestureDy = 0;
-    let lastGestureAt = 0;
-
-    // 用捕獲階段攔 click（比其他冒泡的 onclick 更早）
-    task.addEventListener('click', (e)=>{
-      const justAfterGesture = (performance.now() - lastGestureAt) < 350;
-      const moved = Math.abs(lastGestureDx) > 3 || Math.abs(lastGestureDy) > 3;
-      if (justAfterGesture && moved) {
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        return; // ← 剛滑完的 click 一律吞掉
-      }
-      // 只有沒位移的真正點擊才開詳情
-      const id = task.dataset.id;
-      if (id) openDetail(id);
-    }, true); // ← capture=true
 
     task.addEventListener('pointerdown', onDown);
     task.addEventListener('pointermove', onMove);
     task.addEventListener('pointerup', onUp);
     task.addEventListener('pointercancel', onCancel);
     task.addEventListener('lostpointercapture', onCancel);
+
+    // 同時，把任何 click 都吞掉（我們不用 click 了）
+    task.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
 
     function onDown(e){
       if (statusFilter === 'done') return;
@@ -2866,7 +2861,6 @@ function bindSwipeToTasks() {
       width = task.offsetWidth || 1;
       mode = 'pending';
       task.style.transition = 'none';
-
       try { task.setPointerCapture(e.pointerId); } catch(_) {}
     }
 
@@ -2877,14 +2871,19 @@ function bindSwipeToTasks() {
       dx = e.clientX - startX;
       dy = e.clientY - startY;
 
+      // 明顯垂直 → 當捲動
       if (Math.abs(dy) > V_CANCEL && Math.abs(dy) > Math.abs(dx) * (1 / DOMINANCE)) {
         mode = 'scroll';
         resetBars();
         task.style.transform = '';
         return;
       }
+
       if (mode === 'pending') {
+        // 還沒達到水平啟動距離
         if (Math.abs(dx) < H_START) return;
+
+        // 水平優勢才進入 swipe
         if (Math.abs(dx) > Math.abs(dy) * DOMINANCE) {
           mode = 'swipe';
         } else {
@@ -2892,12 +2891,12 @@ function bindSwipeToTasks() {
           return;
         }
       }
+
       if (mode !== 'swipe') return;
 
       const adx = Math.abs(dx);
       const pct = Math.min(1, adx / width);
       const tilt = (dx / width) * MAX_TILT;
-
       task.style.transform = `translateX(${Math.round(dx)}px) rotate(${tilt}deg)`;
 
       if (dx > 0) {
@@ -2920,11 +2919,7 @@ function bindSwipeToTasks() {
 
     function finish(e, cancel){
       const wasSwipe = (mode === 'swipe');
-
-      // 記下這次手勢給 click 攔截判斷
-      lastGestureDx = dx;
-      lastGestureDy = dy;
-      lastGestureAt = performance.now();
+      const tapLike  = Math.abs(dx) < 4 && Math.abs(dy) < 4 && mode !== 'scroll';
 
       mode = 'pending';
       isDown = false;
@@ -2934,7 +2929,16 @@ function bindSwipeToTasks() {
       task.style.transform = '';
       resetBars();
 
-      if (!wasSwipe || cancel) return;
+      // 1) 真正的「點一下」才開詳情（完全不用 click）
+      if (!wasSwipe && !cancel && tapLike) {
+        const id = task.dataset.id;
+        if (id) openDetail(id);
+        cleanup();
+        return;
+      }
+
+      // 2) 有滑動才進入這段
+      if (!wasSwipe || cancel) { cleanup(); return; }
 
       const adx = Math.abs(dx);
       const passed = adx >= width * BOUND;
@@ -2944,9 +2948,12 @@ function bindSwipeToTasks() {
         selectedTaskId = task.dataset.id;
         setTimeout(() => { toRight ? completeTask() : deleteTask(); }, 10);
       }
+      cleanup();
+    }
 
+    function cleanup(){
       dx = dy = 0;
-      try { task.releasePointerCapture?.(e.pointerId); } catch(_) {}
+      try { task.releasePointerCapture?.(activePid); } catch(_) {}
     }
 
     function resetBars(){
@@ -2955,6 +2962,7 @@ function bindSwipeToTasks() {
     }
   });
 }
+
 
 
   </script>
