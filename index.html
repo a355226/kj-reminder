@@ -1436,6 +1436,17 @@ closeModal('taskModal');
   saveTasksToFirebase();
 }
 
+// 強制提交目前正在輸入（收合輸入法、觸發 compositionend / blur）
+function commitActiveInput() {
+  const ae = document.activeElement;
+  if (!ae) return;
+  const tag = ae.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    try { ae.dispatchEvent(new Event('change', { bubbles: true })); } catch(_) {}
+    try { ae.blur(); } catch(_) {}
+  }
+}
+
 
 //排序邏輯用
 function sortTasks(section) {
@@ -1480,10 +1491,7 @@ if (window.__resetSlideComplete) window.__resetSlideComplete();
     }
 
 function syncEditsIntoTask(task) {
-  // 只有當詳情視窗真的開著、而且就是這筆 task，才同步（避免誤改）
-  const modal = document.getElementById('detailModal');
-  const opened = modal && getComputedStyle(modal).display !== 'none';
-  if (!opened || task.id !== selectedTaskId) return task;
+  if (task.id !== selectedTaskId) return task;
 
   const secEl  = document.getElementById('detailSection');
   const ttlEl  = document.getElementById('detailTitle');
@@ -1501,6 +1509,7 @@ function syncEditsIntoTask(task) {
 
   return task;
 }
+
 
 
 
@@ -1873,6 +1882,8 @@ document.addEventListener("change", function(e){
 
 // 完成按鈕：改為歸檔（覆蓋你的 completeTask）
 function completeTask(id) {
+  commitActiveInput();
+
   // 允許傳入 id；若沒傳就吃 selectedTaskId
   const targetId = id || selectedTaskId;
   if (!targetId) return;
@@ -1882,6 +1893,7 @@ function completeTask(id) {
 
   // ⭐ 先把詳情視窗的最新值「塞回」這筆任務
   const t = tasks[idx];
+
   syncEditsIntoTask(t);
 
   // 組成完成版本（帶時間戳）
@@ -3162,6 +3174,7 @@ if (passed) {
 </div>
 </body>
 </html>
+
 
 
 
