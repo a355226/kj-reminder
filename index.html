@@ -2963,25 +2963,6 @@ function bindSwipeToTasks() {
   });
 }
 
-document.addEventListener('keydown', function(e) {
-  // 避免輸入框、文字區也觸發
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-  // 只有 Enter 觸發
-  if (e.key === 'Enter') {
-    e.preventDefault(); // 防止預設行為（例如送表單）
-
-    // 這裡改成你要的功能
-    confirmAction();
-  }
-});
-
-function confirmAction() {
-  console.log('✅ 確認/同意');
-  // 例如呼叫已完成、送出表單、關閉視窗等
-}
-
-
   </script>
 
 <div id="check-success">
