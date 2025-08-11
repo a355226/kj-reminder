@@ -2006,6 +2006,9 @@ if (completedMonthFilter === 'recent15') {
       </div>
       <div class="task-days">完</div>
     `;
+      el.onclick = () => openCompletedDetail(t.id);
+
+
     const sec = document.getElementById(t.section);
     if (sec) sec.appendChild(el);
   });
