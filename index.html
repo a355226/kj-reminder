@@ -1478,6 +1478,30 @@ if (window.__resetSlideComplete) window.__resetSlideComplete();
 
     }
 
+function syncEditsIntoTask(task) {
+  // 只有當詳情視窗真的開著、而且就是這筆 task，才同步（避免誤改）
+  const modal = document.getElementById('detailModal');
+  const opened = modal && getComputedStyle(modal).display !== 'none';
+  if (!opened || task.id !== selectedTaskId) return task;
+
+  const secEl  = document.getElementById('detailSection');
+  const ttlEl  = document.getElementById('detailTitle');
+  const ctnEl  = document.getElementById('detailContent');
+  const dateEl = document.getElementById('detailDate');
+  const noteEl = document.getElementById('detailNote');
+  const impEl  = document.getElementById('detailImportant');
+
+  if (secEl)  task.section   = secEl.value;
+  if (ttlEl)  task.title     = ttlEl.value;
+  if (ctnEl)  task.content   = ctnEl.value;
+  if (dateEl) task.date      = dateEl.value;
+  if (noteEl) task.note      = noteEl.value;
+  if (impEl)  task.important = !!impEl.checked;
+
+  return task;
+}
+
+
 
 //儲存功能
 function saveTask() {
@@ -1847,23 +1871,31 @@ document.addEventListener("change", function(e){
 
 
 // 完成按鈕：改為歸檔（覆蓋你的 completeTask）
-function completeTask() {
-  if (!selectedTaskId) return;
+function completeTask(id) {
+  // 允許傳入 id；若沒傳就吃 selectedTaskId
+  const targetId = id || selectedTaskId;
+  if (!targetId) return;
 
-  const idx = tasks.findIndex(t => t.id === selectedTaskId);
+  const idx = tasks.findIndex(t => t.id === targetId);
   if (idx === -1) return;
 
-  // 用 timestamp（number）存到雲端最穩
-  const finished = { ...tasks[idx], completedAt: Date.now() };
+  // ⭐ 先把詳情視窗的最新值「塞回」這筆任務
+  const t = tasks[idx];
+  syncEditsIntoTask(t);
 
-  tasks.splice(idx, 1);
-  const el = document.querySelector(`[data-id='${selectedTaskId}']`);
+  // 組成完成版本（帶時間戳）
+  const finished = { ...t, completedAt: Date.now() };
+
+  // 從進行中移除 DOM + 陣列
+  const el = document.querySelector(`[data-id='${targetId}']`);
   if (el) el.remove();
+  tasks.splice(idx, 1);
+
+  // 關詳情（若有開）
   closeModal('detailModal');
 
+  // 推進已完成並存雲
   completedTasks.push(finished);
-
-  // 儲存已完成任務到 Firebase
   saveTasksToFirebase();
 
   // 動畫
@@ -1871,11 +1903,15 @@ function completeTask() {
   checkmark.classList.add('show');
   setTimeout(() => checkmark.classList.remove('show'), 1500);
 
+  // 依目前頁籤刷新
   if (statusFilter === 'done') {
     buildDoneMonthMenu();
     renderCompletedTasks();
+  } else {
+    hideEmptySectionsAfterFilter();
   }
 }
+
 
 
 // ====== 渲染邏輯 ======
@@ -2994,10 +3030,14 @@ function bindSwipeToTasks() {
       const passed = adx >= width * BOUND;
       const toRight = dx > 0;
 
-      if (passed) {
-        selectedTaskId = task.dataset.id;
-        setTimeout(() => { toRight ? completeTask() : deleteTask(); }, 10);
-      }
+if (passed) {
+   const id = task.dataset.id;
+   selectedTaskId = id; // 保留（詳情模式用得到）
+   setTimeout(() => {
+     if (toRight) completeTask(id);
+     else deleteTask();
+   }, 10);
+ }
       cleanup();
     }
 
@@ -3121,4 +3161,6 @@ function bindSwipeToTasks() {
 </div>
 </body>
 </html>
+
+
 
