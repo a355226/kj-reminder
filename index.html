@@ -1081,16 +1081,17 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 document.addEventListener('keydown', function(e){
   if (e.key !== 'Enter') return;
 
-  // 找最上層「正在顯示」的 modal
+  // 如果焦點在 textarea，直接 return（允許換行）
+  if (e.target.tagName === 'TEXTAREA') return;
+
   const openModals = Array.from(document.querySelectorAll('.modal'))
     .filter(m => getComputedStyle(m).display !== 'none');
   if (openModals.length === 0) return;
 
-  // 只讓 Enter 在 modal 內部生效，不要冒泡到外層按鈕
   e.preventDefault();
   e.stopPropagation();
 
-  // 可選：如果你想 Enter = 點「確認」： 
+  // 可選：如果你想 Enter = 點「確認」：
   // const top = openModals[openModals.length - 1];
   // top.querySelector('.confirm-btn')?.click();
 }, true); // 用捕獲階段，優先攔住
