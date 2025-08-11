@@ -1337,23 +1337,28 @@ function getRemainingDays(dateStr) {
   const target = new Date(dateStr); target.setHours(0,0,0,0);
 
   if (dayMode === 'calendar') {
-    // 日曆天：含六日；今天=0、明天=+1、昨天=-1
     const ms = target.getTime() - today.getTime();
-    return Math.round(ms / 86400000);
+    return Math.round(ms / 86400000); // 今天=0、明天=1、昨天=-1
   }
 
   // 工作天：排除六日；今天=0；未來/過去都以工作天計
   if (target.getTime() === today.getTime()) return 0;
-  const forward = target > today;
-  let start = new Date(forward ? today : target);
-  let end   = new Date(forward ? target : today);
 
-  let count = 0, cur = new Date(start);
+  const forward = target > today;
+  const start = new Date(forward ? today : target);
+  const end   = new Date(forward ? target : today);
+
+  let count = 0;
+
+  // 從「起始日的下一天」開始算，直到 end（包含 end）
+  const cur = new Date(start);
+  cur.setDate(cur.getDate() + 1);
+
   while (cur <= end) {
     const d = cur.getDay();
-    if (d !== 0 && d !== 6) count++;     // 只算週一～週五
+    if (d !== 0 && d !== 6) count++;  // 只算週一～週五
     cur.setDate(cur.getDate() + 1);
-  }                      // 不含起始日
+  }
   return forward ? count : -count;
 }
 
