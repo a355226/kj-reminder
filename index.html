@@ -2590,7 +2590,12 @@ document.addEventListener('keydown', function(e){
 function hideEmptySectionsAfterFilter(){
   const sections = document.querySelectorAll('#section-container .section');
   sections.forEach(sec => {
-    // 只算「仍然可見」的任務卡
+    // 進行中 + 不限：永遠顯示（避免新加的分類被藏起來）
+    if (statusFilter === 'ongoing' && filterDay === 'all') {
+      sec.style.display = '';
+      return;
+    }
+    // 其他情況才隱藏沒有可見任務的分類
     const hasVisibleTask = Array.from(sec.querySelectorAll('.task'))
       .some(el => getComputedStyle(el).display !== 'none');
     sec.style.display = hasVisibleTask ? '' : 'none';
