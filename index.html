@@ -913,7 +913,32 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 /* 有圓角時讓塗色緊貼內側，降低邊緣鋸齒 */
 .task { background-clip: padding-box; }
 
+/* 今日日期：右上角輕量文字式 */
+#today-badge{
+  position: fixed;
+  top: 14px;
+  right: 12px;
+  z-index: 120;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(50, 50, 50, 0.85);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  user-select: none;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+/* 二選一即可（先試 A，不夠再用 B） */
 
+/* A. 極小位移 */
+#today-badge{ transform: translateX(0.5px); }
+
+/* B. 非對稱 padding（右邊多 1px） */
+#today-badge{ padding-left: 9px; padding-right: 0px; }
   </style>
 </head>
 <body>
@@ -951,6 +976,7 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
   MyTask
 </h1>
 
+<div id="today-badge" aria-label="今天日期"></div>
 <!-- 右上角 ... 按鈕 -->
 <div class="more-btn" onclick="openModalById('moreModal')">⋯</div>
 <div id="section-container">
@@ -3076,6 +3102,36 @@ if (passed) {
   });
 }
 
+(function mountTodayBadge(){
+  const el = document.getElementById('today-badge');
+  if (!el) return;
+
+  const WEEK = ['日','一','二','三','四','五','六'];
+
+  function fmtToday(){
+    const now = new Date();
+    const m = String(now.getMonth()+1);
+    const d = String(now.getDate());
+    const w = WEEK[now.getDay()];
+    // 極簡、不突兀：8/11（週一）
+    return `${m}/${d}（${w}）`;
+  }
+
+  function render(){
+    el.textContent = fmtToday();
+  }
+
+  function scheduleMidnightTick(){
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24,0,0,0);
+    setTimeout(()=>{ render(); scheduleMidnightTick(); }, midnight - now);
+  }
+
+  render();
+  scheduleMidnightTick();
+})();
+
   </script>
 
 <div id="check-success">
@@ -3184,9 +3240,6 @@ if (passed) {
 </div>
 </body>
 </html>
-
-
-
 
 
 
