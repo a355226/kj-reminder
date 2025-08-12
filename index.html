@@ -368,7 +368,7 @@ transform: translateY(-2.2px); /* ⬆ 往上 2px，可自行調整 */
 .more-btn {
   position: fixed;
   top: 12px;
-  leftt: 12px;
+  left: 12px;
   width: 32px;      /* 縮小寬 */
   height: 32px;     /* 縮小高 */
   border-radius: 50%;
@@ -991,6 +991,50 @@ body.bg-metal::before{
       100% 280px;
   }
 }
+
+/* 展開圖示 */
+.expand-icon{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:22px; height:22px; margin-left:.4rem;
+  border-radius:4px; border:1px solid #ddd; background:#f8f8f8;
+  cursor:pointer; font-size:12px; line-height:1; color:#555;
+}
+.expand-icon:active{ transform: scale(.97); }
+
+/* 大型閱讀面板 */
+#detailViewer{
+  display:none;
+}
+#detailViewer.show{
+  display:block;
+}
+#detailForm.hide{
+  display:none;
+}
+.viewer-head{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:.5rem; margin-bottom:.5rem;
+}
+.viewer-title{
+  font-weight:700; font-size:1rem;
+}
+.viewer-close{
+  border:1px solid #ddd; background:#f7f7f7; border-radius:6px;
+  padding:.35rem .6rem; cursor:pointer;
+}
+.viewer-body{
+  width:100%;
+  min-height:50vh;
+  padding:.75rem;
+  border:1px solid #eee;
+  border-radius:8px;
+  background:#fafafa;
+  line-height:1.6;
+  font-size:.95rem;
+  resize:vertical; /* 可以調整高度 */
+}
+
+
   </style>
 </head>
 <body>
@@ -1119,38 +1163,65 @@ body.bg-metal::before{
   <div class="modal" id="detailModal">
     <div class="modal-content">
       <button class="close-btn" onclick="closeModal('detailModal')">✕</button>
-      <h3>任務內容</h3>
-<label>任務分類</label>
-<div class="inline-row">
-  <select id="detailSection" class="half">
-  </select>
+     <h3>任務內容</h3>
 
-  <label class="important-flag">
-    <input type="checkbox" id="detailImportant">
-    重要
+<!-- ▼ 表單視圖：預設顯示 -->
+<div id="detailForm">
+  <label>任務分類</label>
+  <div class="inline-row">
+    <select id="detailSection" class="half"></select>
+    <label class="important-flag">
+      <input type="checkbox" id="detailImportant"> 重要
+    </label>
+  </div>
+
+  <label>任務標題</label>
+  <input type="text" id="detailTitle">
+
+  <!-- 任務內容：加展開鈕 -->
+  <label style="display:flex;align-items:center;">
+    任務內容
+    <button type="button" class="expand-icon" onclick="toggleDetailExpand('detailContent','任務內容')" title="展開">⤢</button>
   </label>
-</div>
+  <textarea id="detailContent"></textarea>
 
-      <label>任務標題</label>
-      <input type="text" id="detailTitle">
-      <label>任務內容</label>
-      <textarea id="detailContent"></textarea>
-      <label>預定完成日</label>
-      <input type="date" id="detailDate">
-      <label>處理情形</label>
-      <textarea id="detailNote"></textarea>
-<div style="display: flex; gap: 0.5rem;">
-  <button class="save-btn-half" onclick="saveTask()">💾 儲存</button>
-  <button class="delete-btn-half" onclick="confirmDelete()">🗑️ 移除</button>
-</div>
-<!-- 滑動完成 -->
-<div class="slide-complete" id="slideComplete">
-  <div class="slide-track">
-    <div class="slide-hint">➡ 往右拖拉完成</div>
-    <div class="slide-fill" id="slideFill"></div>
-    <div class="slide-handle" id="slideHandle" aria-label="往右拖拉完成"></div>
+  <label>預定完成日</label>
+  <input type="date" id="detailDate">
+
+  <!-- 處理情形：加展開鈕 -->
+  <label style="display:flex;align-items:center;">
+    處理情形
+    <button type="button" class="expand-icon" onclick="toggleDetailExpand('detailNote','處理情形')" title="展開">⤢</button>
+  </label>
+  <textarea id="detailNote"></textarea>
+
+  <div style="display: flex; gap: 0.5rem;">
+    <button class="save-btn-half" onclick="saveTask()">💾 儲存</button>
+    <button class="delete-btn-half" onclick="confirmDelete()">🗑️ 移除</button>
+  </div>
+
+  <!-- 滑動完成 -->
+  <div class="slide-complete" id="slideComplete">
+    <div class="slide-track">
+      <div class="slide-hint">➡ 往右拖拉完成</div>
+      <div class="slide-fill" id="slideFill"></div>
+      <div class="slide-handle" id="slideHandle" aria-label="往右拖拉完成"></div>
+    </div>
   </div>
 </div>
+<!-- ▲ 表單視圖 -->
+
+<!-- ▼ 閱讀視圖：展開後顯示（預設隱藏） -->
+<div id="detailViewer">
+  <div class="viewer-head">
+    <div class="viewer-title" id="viewerTitle"></div>
+    <button type="button" class="viewer-close" onclick="toggleDetailExpand()">縮小</button>
+  </div>
+  <textarea class="viewer-body" id="viewerBody"></textarea>
+
+</div>
+<!-- ▲ 閱讀視圖 -->
+
 
     </div>
   </div>
@@ -1423,9 +1494,10 @@ function openModal(prefSectionId) {
 
 
 function closeModal(id) {
-  // ⬇⬇⬇ 新增：關掉詳情視窗時，解綁即時同步
-  if (id === 'detailModal') unbindDetailLiveSync();
-
+  // 關掉詳情視窗時，解綁即時同步（加保險）
+  if (id === 'detailModal' && typeof unbindDetailLiveSync === 'function') {
+    unbindDetailLiveSync();
+  }
   document.getElementById(id).style.display = 'none';
 }
 
@@ -3009,6 +3081,8 @@ function taskCardHTML(task, displayDays) {
   `;
 }
 
+const V_SLOPE = 1.2;
+
 function bindSwipeToTasks() {
   if (statusFilter === 'done') return;
 
@@ -3228,55 +3302,57 @@ document.addEventListener('click', function(e){
   }
 });
 
-let __detailUnbinders = [];
+let __expandedFieldId = null;
 
-function bindDetailLiveSync(task) {
-  unbindDetailLiveSync();
+function toggleDetailExpand(fieldId, title){
+  const form   = document.getElementById('detailForm');
+  const viewer = document.getElementById('detailViewer');
+  const vTitle = document.getElementById('viewerTitle');
+  const vBody  = document.getElementById('viewerBody');
 
-  const map = {
-    section:  document.getElementById('detailSection'),
-    title:    document.getElementById('detailTitle'),
-    content:  document.getElementById('detailContent'),
-    date:     document.getElementById('detailDate'),
-    note:     document.getElementById('detailNote'),
-    important:document.getElementById('detailImportant'),
-  };
+  // 先移除舊監聽
+  if (__expandedFieldId){
+    const prev = document.getElementById(__expandedFieldId);
+    if (prev && prev.__viewerSync){
+      prev.removeEventListener('input', prev.__viewerSync);
+      vBody.removeEventListener('input', vBody.__formSync);
+      prev.__viewerSync = null;
+      vBody.__formSync = null;
+    }
+  }
 
-  const apply = () => {
-    if (!isModalOpen('detailModal')) return;
-    if (map.section)   task.section   = map.section.value;
-    if (map.title)     task.title     = map.title.value;
-    if (map.content)   task.content   = map.content.value;
-    if (map.date)      task.date      = map.date.value;
-    if (map.note)      task.note      = map.note.value;
-    if (map.important) task.important = !!map.important.checked;
-  };
+  // 若已展開，再呼叫 = 縮小
+  const willCollapse = (__expandedFieldId && (!fieldId || fieldId === __expandedFieldId));
+  if (willCollapse){
+    form.classList.remove('hide');
+    viewer.classList.remove('show');
+    __expandedFieldId = null;
+    return;
+  }
 
-  const listen = (el, ev) => {
-    if (!el) return;
-    const h = () => setTimeout(apply, 0); // 保險：排到下一個 tick
-    el.addEventListener(ev, h);
-    __detailUnbinders.push(() => el.removeEventListener(ev, h));
-  };
+  // 展開並填入內容
+  const src = document.getElementById(fieldId);
+  vTitle.textContent = title || '';
+  vBody.value = src ? (src.value || '') : '';
+  viewer.classList.add('show');
+  form.classList.add('hide');
+  __expandedFieldId = fieldId;
 
-  // 常見輸入全都綁：桌機/手機/IME/日期選擇器都涵蓋
-  ['input','change','blur','compositionend'].forEach(ev => {
-    listen(map.section, ev);
-    listen(map.title,   ev);
-    listen(map.content, ev);
-    listen(map.date,    ev);
-    listen(map.note,    ev);
-    listen(map.important, ev);
-  });
+  // 雙向同步
+  if (src){
+    // 表單 -> 閱讀編輯器
+    src.__viewerSync = () => { vBody.value = src.value || ''; };
+    src.addEventListener('input', src.__viewerSync);
 
-  // 初次打開先同步一次，避免初值被覆蓋
-  apply();
+    // 閱讀編輯器 -> 表單
+    vBody.__formSync = () => { src.value = vBody.value || ''; };
+    vBody.addEventListener('input', vBody.__formSync);
+  }
 }
 
-function unbindDetailLiveSync() {
-  __detailUnbinders.forEach(off => { try { off(); } catch(_){} });
-  __detailUnbinders = [];
-}
+// === 安全 no-op，避免呼叫時炸掉 ===
+function bindDetailLiveSync(/* task */) { /* no-op: 先不做即時同步 */ }
+function unbindDetailLiveSync() { /* no-op */ }
 
   </script>
 
