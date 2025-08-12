@@ -1497,6 +1497,7 @@ function closeModal(id) {
   // 關掉詳情視窗時，解綁即時同步（加保險）
   if (id === 'detailModal' && typeof unbindDetailLiveSync === 'function') {
     unbindDetailLiveSync();
+resetDetailPanels();
   }
   document.getElementById(id).style.display = 'none';
 }
@@ -1632,6 +1633,8 @@ function sortTasks(section) {
   const task = tasks.find(t => t.id === id);
   if (!task) return;
 
+
+resetDetailPanels();
   document.getElementById('detailSection').value = task.section;
   document.getElementById('detailTitle').value   = task.title;
   document.getElementById('detailContent').value = task.content;
@@ -3354,6 +3357,40 @@ function toggleDetailExpand(fieldId, title){
 function bindDetailLiveSync(/* task */) { /* no-op: 先不做即時同步 */ }
 function unbindDetailLiveSync() { /* no-op */ }
 
+
+function resetDetailPanels(){
+  const form   = document.getElementById('detailForm');
+  const viewer = document.getElementById('detailViewer');
+  const vTitle = document.getElementById('viewerTitle');
+  const vBody  = document.getElementById('viewerBody');
+
+  // 解除先前展開狀態的雙向同步監聽
+  if (window.__expandedFieldId){
+    const prev = document.getElementById(__expandedFieldId);
+    if (prev && prev.__viewerSync){
+      prev.removeEventListener('input', prev.__viewerSync);
+      prev.__viewerSync = null;
+    }
+    if (vBody && vBody.__formSync){
+      vBody.removeEventListener('input', vBody.__formSync);
+      vBody.__formSync = null;
+    }
+  }
+
+  // 關閉閱讀視圖、恢復表單
+  viewer?.classList.remove('show');
+  form?.classList.remove('hide');
+
+  // 清空閱讀面板內容，避免殘留上一次的文字
+  if (vTitle) vTitle.textContent = '';
+  if (vBody)  vBody.value = '';
+
+  // 清掉展開中的欄位記錄
+  window.__expandedFieldId = null;
+
+  // 滑桿也回到初始（避免上次停在 done 狀態）
+  if (window.__resetSlideComplete) window.__resetSlideComplete();
+}
   </script>
 
 <div id="check-success">
