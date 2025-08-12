@@ -3007,12 +3007,17 @@ function bindSwipeToTasks() {
       dy = e.clientY - startY;
 
       // 明顯垂直 → 當捲動
-      if (Math.abs(dy) > V_CANCEL && Math.abs(dy) > Math.abs(dx) * (1 / DOMINANCE)) {
-        mode = 'scroll';
-        resetBars();
-        task.style.transform = '';
-        return;
-      }
+   // 只在「尚未決定」狀態才允許被判定成捲動；一旦進入 swipe 就不被縱向打斷
+if (mode === 'pending') {
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  // 縱向位移超過門檻，且斜率看起來比較像在垂直捲動，才切成 scroll
+  if (ady > V_CANCEL && ady > adx * V_SLOPE) {
+    mode = 'scroll';
+    resetBars();
+    task.style.transform = '';
+    return;
+  }
+}
 
       if (mode === 'pending') {
         // 還沒達到水平啟動距離
@@ -3240,6 +3245,5 @@ if (passed) {
 </div>
 </body>
 </html>
-
 
 
