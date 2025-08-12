@@ -1089,7 +1089,10 @@ button.palette-btn:active {
   outline: 3px solid #176dff;
   box-shadow: 0 0 0 3px rgba(23,109,255,.15) inset;
 }
-
+.filter-status .important-only{
+  display:inline-flex; align-items:center; gap:.25rem;
+  margin-left:.25rem; user-select:none; cursor:pointer;
+}
 
   </style>
 </head>
@@ -1301,7 +1304,7 @@ document.addEventListener('keydown', function(e){
   // top.querySelector('.confirm-btn')?.click();
 }, true); // 用捕獲階段，優先攔住
 
-
+let importantOnly = false; // ❗ 最後一層篩選（預設關）
 let isEditing = false;   // 目前是否在編輯分類模式
   // ✅ 分類在這裡維護（有順序）
 let categoriesLoaded = false;  // 分類是否已從雲端載入
@@ -1317,6 +1320,19 @@ function refreshCurrentView(){
   }
 }
 // ✅ 只存分類（不要再從 tasks 推回去）
+document.addEventListener('change', function(e){
+  if (e.target && e.target.id === 'importantOnly') {
+    importantOnly = !!e.target.checked;
+    // 關掉時：完全回到原本視圖（保持你原邏輯）
+    // 打開時：先跑完原本視圖 → 再套❗最後一層
+    if (!importantOnly) {
+      refreshCurrentView();
+    } else {
+      applyImportantFilter(); // 對「現有可見結果」做最後一層篩選
+    }
+  }
+});
+
 function saveCategoriesToFirebase(){
   if(!roomPath) return;
   db.ref(`${roomPath}/categories`).set(categories);
@@ -2020,35 +2036,26 @@ document.addEventListener("change", function(e) {
 function applyDayFilter() {
   const isDefault = (filterDay === 'default');
 
-  // 先決定每張任務卡是否顯示
+  // 先決定每張任務卡是否顯示（原本那段保留）
   document.querySelectorAll(".task").forEach(taskEl => {
     const task = tasks.find(t => t.id === taskEl.dataset.id);
     if (!task) return;
-
     let show = true;
     if (!isDefault && filterDay !== 'all') {
-      // 1 / 3 / 5：只顯示「有日期且 <= 指定天數」
       const days = getRemainingDays(task.date);
       const v = parseInt(filterDay, 10);
       show = (days !== null) && (days <= v);
     }
-    // 'all' 與 'default' 都不過濾任務卡
     taskEl.style.display = show ? "" : "none";
   });
 
-  // 再決定要不要藏空分類
-  if (statusFilter === 'done') {
-    // 已完成頁面：一律隱藏空分類
-    hideEmptySectionsAfterFilter();
+  // 分類顯示策略
+  if (statusFilter === 'done' || !isDefault) {
+    hideEmptySectionsAfterFilter();  // 1/3/5/不限/已完成 → 隱藏空分類
   } else {
-    if (isDefault) {
-      // 預設：所有分類都顯示（即使目前沒有任何任務）
-      document.querySelectorAll('#section-container .section')
-        .forEach(sec => sec.style.display = '');
-    } else {
-      // 非預設（包含「不限」與數字篩選）：才隱藏空分類
-      hideEmptySectionsAfterFilter();
-    }
+    // 預設 → 顯示全部分類
+    document.querySelectorAll('#section-container .section')
+      .forEach(sec => sec.style.display = '');
   }
 }
 
@@ -2198,6 +2205,7 @@ el.innerHTML = taskCardHTML(t, displayDays);
   // 進行中也要套用你目前的「剩餘天數」篩選
   applyDayFilter();
 bindSwipeToTasks(); 
+applyImportantFilter(); // ✅ 最後一層
 }
 
 // 轉民國年月（回傳如 "11407"）
@@ -2224,7 +2232,7 @@ function buildDoneMonthMenu() {
   recentBtn.textContent = '近5日';
   recentBtn.style.cssText = 'display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;font-weight:600;';
   recentBtn.onclick = () => {
-    completedMonthFilter = 'recent15';
+   completedMonthFilter = 'recent15';
     menu.style.display = 'none';
     renderCompletedTasks();
   };
@@ -2317,6 +2325,8 @@ if (completedMonthFilter === 'recent15') {
     if (sec) sec.appendChild(el);
   });
   hideEmptySectionsAfterFilter();   // ← 新增：完成視圖也隱藏空白分類
+applyImportantFilter(); // ✅ 最後一層
+
 }
 
 
@@ -2897,18 +2907,7 @@ document.addEventListener('keydown', function(e){
 
 function hideEmptySectionsAfterFilter(){
   const sections = document.querySelectorAll('#section-container .section');
-
-  // 當前畫面是否有任何「可見」任務
-  const anyVisibleTask = Array.from(document.querySelectorAll('#section-container .task'))
-    .some(el => getComputedStyle(el).display !== 'none');
-
   sections.forEach(sec => {
-    if (!anyVisibleTask) {
-      // 如果目前沒有任何任務可見 → 不要把分類藏起來（避免整頁空白）
-      sec.style.display = '';
-      return;
-    }
-    // 有任務可見時，才隱藏沒有任務的分類
     const hasVisibleTask = Array.from(sec.querySelectorAll('.task'))
       .some(el => getComputedStyle(el).display !== 'none');
     sec.style.display = hasVisibleTask ? '' : 'none';
@@ -3510,6 +3509,26 @@ document.addEventListener('click', function(e){
     closeModal('paletteModal');
   }
 });
+function applyImportantFilter(){
+  // 只在開啟時作用；關閉時一律由 refreshCurrentView 還原
+  if (!importantOnly) return;
+
+  // 逐張任務卡，看對應資料是不是 important
+  document.querySelectorAll('#section-container .task').forEach(el => {
+    const id = el.dataset.id;
+    // 先在進行中找，找不到再到完成清單找
+    let t = tasks.find(x => x.id === id);
+    if (!t) t = completedTasks.find(x => x.id === id);
+
+    const isImportant = !!(t && t.important);
+    // 只保留重要；非重要就隱藏（不動原本排序/顏色/天數）
+    el.style.display = isImportant ? '' : 'none';
+  });
+
+  // 套完最後一層後，把空分類藏起來（沿用你既有的規則）
+  hideEmptySectionsAfterFilter();
+}
+
   </script>
 
 <div id="check-success">
@@ -3586,6 +3605,10 @@ document.addEventListener('click', function(e){
 <div class="filter-status">
   <label><input type="radio" name="statusFilter" value="ongoing" checked> 進行中</label>
   <label><input type="radio" name="statusFilter" value="done"> 已完成</label>
+  <!-- ✅ 新增：重要開關（最後一層篩選） -->
+  <label class="important-only" title="只看❗重要">
+    <input type="checkbox" id="importantOnly"> ❗
+  </label>
 </div>
 <h3>天數設定</h3>
 <div class="filter-mode">
