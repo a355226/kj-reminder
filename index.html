@@ -1422,9 +1422,13 @@ function openModal(prefSectionId) {
 }
 
 
-    function closeModal(id) {
-      document.getElementById(id).style.display = 'none';
-    }
+function closeModal(id) {
+  // ⬇⬇⬇ 新增：關掉詳情視窗時，解綁即時同步
+  if (id === 'detailModal') unbindDetailLiveSync();
+
+  document.getElementById(id).style.display = 'none';
+}
+
 
 //剩餘天數邏輯
 // 2) 取代你目前的 getRemainingDays（支援兩種模式）
@@ -1551,23 +1555,26 @@ function sortTasks(section) {
 }
 
 
-    function openDetail(id) {
-      selectedTaskId = id;
-      const task = tasks.find(t => t.id === id);
-      if (!task) return;
+   function openDetail(id) {
+  selectedTaskId = id;
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
 
-      document.getElementById('detailSection').value = task.section;
-      document.getElementById('detailTitle').value = task.title;
-      document.getElementById('detailContent').value = task.content;
-      document.getElementById('detailDate').value = task.date;
-      document.getElementById('detailNote').value = task.note;
+  document.getElementById('detailSection').value = task.section;
+  document.getElementById('detailTitle').value   = task.title;
+  document.getElementById('detailContent').value = task.content;
+  document.getElementById('detailDate').value    = task.date;
+  document.getElementById('detailNote').value    = task.note;
 
-      document.getElementById('detailModal').style.display = 'flex';
-setDetailReadonly(false);   // 加在 openDetail() 填值後
-document.getElementById('detailImportant').checked = !!task.important;
-if (window.__resetSlideComplete) window.__resetSlideComplete();
+  document.getElementById('detailModal').style.display = 'flex';
+  setDetailReadonly(false);
+  document.getElementById('detailImportant').checked = !!task.important;
+  if (window.__resetSlideComplete) window.__resetSlideComplete();
 
-    }
+  // ⬇⬇⬇ 新增這行：詳情一開就即時同步
+  bindDetailLiveSync(task);
+}
+
 
 function syncEditsIntoTask(task) {
   if (task.id !== selectedTaskId) return task;
@@ -3220,6 +3227,57 @@ document.addEventListener('click', function(e){
     setAppBgColor(color);
   }
 });
+
+let __detailUnbinders = [];
+
+function bindDetailLiveSync(task) {
+  unbindDetailLiveSync();
+
+  const map = {
+    section:  document.getElementById('detailSection'),
+    title:    document.getElementById('detailTitle'),
+    content:  document.getElementById('detailContent'),
+    date:     document.getElementById('detailDate'),
+    note:     document.getElementById('detailNote'),
+    important:document.getElementById('detailImportant'),
+  };
+
+  const apply = () => {
+    if (!isModalOpen('detailModal')) return;
+    if (map.section)   task.section   = map.section.value;
+    if (map.title)     task.title     = map.title.value;
+    if (map.content)   task.content   = map.content.value;
+    if (map.date)      task.date      = map.date.value;
+    if (map.note)      task.note      = map.note.value;
+    if (map.important) task.important = !!map.important.checked;
+  };
+
+  const listen = (el, ev) => {
+    if (!el) return;
+    const h = () => setTimeout(apply, 0); // 保險：排到下一個 tick
+    el.addEventListener(ev, h);
+    __detailUnbinders.push(() => el.removeEventListener(ev, h));
+  };
+
+  // 常見輸入全都綁：桌機/手機/IME/日期選擇器都涵蓋
+  ['input','change','blur','compositionend'].forEach(ev => {
+    listen(map.section, ev);
+    listen(map.title,   ev);
+    listen(map.content, ev);
+    listen(map.date,    ev);
+    listen(map.note,    ev);
+    listen(map.important, ev);
+  });
+
+  // 初次打開先同步一次，避免初值被覆蓋
+  apply();
+}
+
+function unbindDetailLiveSync() {
+  __detailUnbinders.forEach(off => { try { off(); } catch(_){} });
+  __detailUnbinders = [];
+}
+
   </script>
 
 <div id="check-success">
