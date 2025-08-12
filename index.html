@@ -47,12 +47,13 @@ button {
       --white: #ffffff;
       --gray-text: #444;
       --urgent-color: #ffeaea;
+  --app-bg: var(--blue-light);
     }
     * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
     body {
-      margin: 0; padding: 1rem; background-color: var(--blue-light);
-      color: var(--gray-text); display: flex; justify-content: center;
-    }
+  margin: 0; padding: 1rem; background-color: var(--app-bg);
+  color: var(--gray-text); display: flex; justify-content: center;
+}
     .container { width: 100%; max-width: 480px; position: relative; }
     h1 { text-align: center; margin-bottom: 1rem; }
     .section {
@@ -939,6 +940,57 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 
 /* B. 非對稱 padding（右邊多 1px） */
 #today-badge{ padding-left: 9px; padding-right: 0px; }
+
+/* ===== 拉絲金屬（無斷層版）===== */
+body.bg-metal::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+
+  background-image:
+    linear-gradient(135deg,
+      rgba(255,255,255,.25) 0%,
+      rgba(255,255,255,.15) 50%,
+      rgba(255,255,255,.25) 100%
+    ),
+    repeating-linear-gradient(90deg,
+      rgba(255,255,255,.07) 0px,
+      rgba(255,255,255,.07) 0.5px,
+      rgba(0,0,0,.05) 0.5px,
+      rgba(0,0,0,.05) 1px
+    ),
+    repeating-linear-gradient(0deg,
+      rgba(0,0,0,.015) 0px,
+      rgba(0,0,0,.015) 2px,
+      rgba(255,255,255,.015) 2px,
+      rgba(255,255,255,.015) 3px
+    );
+
+  background-blend-mode: screen, normal, normal;
+
+  /* 關鍵：加大寬度並避免水平重複 */
+  background-size:
+    100% 100%,      /* 光澤覆蓋全畫面 */
+    2000px 100%,    /* 細絲橫向範圍超大 */
+    100% 240px;     /* 垂直細絲可重複 */
+
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-position: center center;
+
+  filter: contrast(104%) saturate(96%);
+}
+
+/* 高 DPI 螢幕微調：讓細絲更細，降低顆粒感 */
+@media (min-resolution: 2dppx){
+  body.bg-metal::before{
+    background-size:
+      100% 100%,
+      360px 100%,
+      100% 280px;
+  }
+}
   </style>
 </head>
 <body>
@@ -3137,6 +3189,37 @@ if (passed) {
   scheduleMidnightTick();
 })();
 
+function setAppBgColor(color) {
+  const body = document.body;
+
+  if (color === 'metal') {
+    // 套金屬：改用 class，紋理走 CSS ::before 疊加
+    body.classList.add('bg-metal');
+    document.documentElement.style.setProperty('--app-bg', '#ececec');
+  } else {
+    // 退出金屬：移除 class，直接用色碼
+    body.classList.remove('bg-metal');
+    document.documentElement.style.setProperty('--app-bg', color);
+  }
+
+  try { localStorage.setItem('app_bg_fixed', color); } catch(_){}
+}
+
+function applySavedBgColor() {
+  try {
+    const saved = localStorage.getItem('app_bg_fixed');
+    if (saved) setAppBgColor(saved);
+  } catch(_) {}
+}
+
+document.addEventListener('DOMContentLoaded', applySavedBgColor);
+
+document.addEventListener('click', function(e){
+  if (e.target.classList.contains('color-btn')) {
+    const color = e.target.dataset.color;
+    setAppBgColor(color);
+  }
+});
   </script>
 
 <div id="check-success">
@@ -3215,6 +3298,18 @@ if (passed) {
   <label><input type="radio" name="dayMode" value="work" checked> 工作天</label>
   <label><input type="radio" name="dayMode" value="calendar"> 日曆天</label>
 </div>
+<h3>更換底色</h3>
+<div class="color-options" style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+  <button class="color-btn" data-color="#f6fbfe" style="background:#f6fbfe;">預設</button>
+  <button class="color-btn" data-color="#f3fcf8" style="background:#f3fcf8;">淺綠</button>
+  <button class="color-btn" data-color="#fffcf3" style="background:#fffcf3;">淺黃</button>
+  <button class="color-btn" data-color="#fef6f9" style="background:#fef6f9;">淺粉</button>
+  <button class="color-btn" data-color="#f9f8fd" style="background:#f9f8fd;">淡紫</button>
+  <button class="color-btn" data-color="#ffeded" style="background:#ffeded;">淺棕</button>
+  <button class="color-btn" data-color="#fff8f5" style="background:#fff8f5;">淺橘</button>
+<button class="color-btn" data-color="#fdfcf9" style="background:#fdfcf9;">米白</button>
+  <button class="color-btn" data-color="metal" style="background:linear-gradient(135deg, #d7d7d7, #f0f0f0);">鐵灰</button>
+</div>
 <hr style="margin:1rem 0;border:none;border-top:1px solid #eee;">
 <button class="logout-btn" style="font-weight:bold;" onclick="openLogoutModal()">登出</button>
 
@@ -3245,5 +3340,3 @@ if (passed) {
 </div>
 </body>
 </html>
-
-
