@@ -1033,6 +1033,62 @@ body.bg-metal::before{
   font-size:.95rem;
   resize:vertical; /* 可以調整高度 */
 }
+/* 強制調色盤按鈕為小淺底樣式 */
+button.palette-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px !important;
+  font-size: 0.85rem !important;
+  font-weight: normal;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #f9f9f9 !important;
+  color: #333 !important;
+  width: auto !important;
+  min-width: unset !important;
+  margin-top: -3rem; /* 與「更換底色」的距離 */
+}
+button.palette-btn:hover {
+  background: #f1f1f1 !important;
+}
+button.palette-btn:active {
+  background: #e8e8e8 !important;
+}
+
+/* 調色盤九宮格 */
+.palette-grid{
+  display:grid; grid-template-columns: repeat(3, 1fr);
+  gap:.75rem;
+}
+.palette-choice{
+  position:relative;
+  width:100%; aspect-ratio:1/1; border-radius:12px; border:1px solid #e5e5e5;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06); cursor:pointer; overflow:hidden;
+}
+.palette-choice[data-color="#f6fbfe"]{ background:#f6fbfe; }
+.palette-choice[data-color="#f3fcf8"]{ background:#f3fcf8; }
+.palette-choice[data-color="#fffcf3"]{ background:#fffcf3; }
+.palette-choice[data-color="#fef6f9"]{ background:#fef6f9; }
+.palette-choice[data-color="#f9f8fd"]{ background:#f9f8fd; }
+.palette-choice[data-color="#ffeded"]{ background:#ffeded; }
+.palette-choice[data-color="#fff8f5"]{ background:#fff8f5; }
+.palette-choice[data-color="#fdfcf9"]{ background:#fdfcf9; }
+/* 金屬特效（看起來像金屬） */
+.palette-choice[data-color="metal"]{ background: #e5e5e5; }
+.palette-choice .metal-sheen{
+  position:absolute; inset:0;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.35), rgba(255,255,255,.1)),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0 1px, rgba(0,0,0,.04) 1px 2px);
+  mix-blend-mode: screen; pointer-events:none;
+}
+
+/* 選取狀態 */
+.palette-choice.selected{
+  outline: 3px solid #176dff;
+  box-shadow: 0 0 0 3px rgba(23,109,255,.15) inset;
+}
 
 
   </style>
@@ -3391,6 +3447,69 @@ function resetDetailPanels(){
   // 滑桿也回到初始（避免上次停在 done 狀態）
   if (window.__resetSlideComplete) window.__resetSlideComplete();
 }
+
+// —— 調色盤互動 —— //
+let pendingColor = null;
+
+function openPaletteModal(){
+  // 開啟前先清選取、並依目前設定預選
+  const modal = document.getElementById('paletteModal');
+  const tiles = modal.querySelectorAll('.palette-choice');
+  tiles.forEach(t => t.classList.remove('selected'));
+
+  // 讀已儲存顏色（與你 setAppBgColor 同步）
+  let cur = null;
+  try { cur = localStorage.getItem('app_bg_fixed') || null; } catch(_){}
+  // 金屬模式以 'metal' 存，其他為色碼；找得到就預選
+  if (cur){
+    const pre = Array.from(tiles).find(t => t.dataset.color === cur);
+    if (pre) { pre.classList.add('selected'); pendingColor = cur; }
+    else { pendingColor = cur; }
+  } else {
+    pendingColor = null;
+  }
+
+  modal.style.display = 'flex';
+}
+
+// 打開調色盤
+document.getElementById('openPaletteBtn')?.addEventListener('click', ()=>{
+  openPaletteModal();
+});
+
+// 點色塊：只切換選取，不立即套用
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('.palette-choice');
+  if (!btn) return;
+
+  // 互斥選取
+  const wrap = document.getElementById('paletteModal');
+  wrap.querySelectorAll('.palette-choice').forEach(t=>t.classList.remove('selected'));
+  btn.classList.add('selected');
+  pendingColor = btn.dataset.color || null;
+});
+
+// 確認：這時才套用顏色（復用你現成的 setAppBgColor）
+document.getElementById('paletteConfirmBtn')?.addEventListener('click', ()=>{
+  if (pendingColor){
+    setAppBgColor(pendingColor); // 你的函式已會同步記到 localStorage
+  }
+  closeModal('paletteModal');
+});
+
+// 用事件委派來綁（不怕元素還沒在 DOM 裡）
+document.addEventListener('click', function(e){
+  // 打開調色盤
+  if (e.target.id === 'openPaletteBtn') {
+    openPaletteModal();
+  }
+
+  // 確認選色
+  if (e.target.id === 'paletteConfirmBtn') {
+    if (pendingColor) setAppBgColor(pendingColor);
+    closeModal('paletteModal');
+  }
+});
   </script>
 
 <div id="check-success">
@@ -3474,17 +3593,7 @@ function resetDetailPanels(){
   <label><input type="radio" name="dayMode" value="calendar"> 日曆天</label>
 </div>
 <h3>更換底色</h3>
-<div class="color-options" style="display:flex; flex-wrap:wrap; gap:0.5rem;">
-  <button class="color-btn" data-color="#f6fbfe" style="background:#f6fbfe;">預設</button>
-  <button class="color-btn" data-color="#f3fcf8" style="background:#f3fcf8;">淺綠</button>
-  <button class="color-btn" data-color="#fffcf3" style="background:#fffcf3;">淺黃</button>
-  <button class="color-btn" data-color="#fef6f9" style="background:#fef6f9;">淺粉</button>
-  <button class="color-btn" data-color="#f9f8fd" style="background:#f9f8fd;">淡紫</button>
-  <button class="color-btn" data-color="#ffeded" style="background:#ffeded;">淺棕</button>
-  <button class="color-btn" data-color="#fff8f5" style="background:#fff8f5;">淺橘</button>
-<button class="color-btn" data-color="#fdfcf9" style="background:#fdfcf9;">米白</button>
-  <button class="color-btn" data-color="metal" style="background:linear-gradient(135deg, #d7d7d7, #f0f0f0);">鐵灰</button>
-</div>
+<button id="openPaletteBtn" class="palette-btn">🎨 調色盤</button>
 <hr style="margin:1rem 0;border:none;border-top:1px solid #eee;">
 <button class="logout-btn" style="font-weight:bold;" onclick="openLogoutModal()">登出</button>
 
@@ -3511,6 +3620,34 @@ function resetDetailPanels(){
 <li style="font-weight:bold; color:#007BFF;">新增第一個「分類」開始使用！</li>
     </ol>
     <button class="confirm-btn" style="margin-top:1rem; width:100%;" onclick="closeModal('welcomeModal')">我知道了</button>
+  </div>
+</div>
+
+<!-- 調色盤 Modal -->
+<div class="modal" id="paletteModal">
+  <div class="modal-content">
+    <button class="close-btn" onclick="closeModal('paletteModal')">✕</button>
+    <h3 style="text-align:center;">選擇底色</h3>
+
+    <div class="palette-grid" id="paletteGrid" style="margin-top:.5rem;">
+      <!-- 每個色塊用 data-color 標記 -->
+      <button class="palette-choice" data-color="#f6fbfe" title="預設"></button>
+      <button class="palette-choice" data-color="#f3fcf8" title="淺綠"></button>
+      <button class="palette-choice" data-color="#fffcf3" title="淺黃"></button>
+      <button class="palette-choice" data-color="#fef6f9" title="淺粉"></button>
+      <button class="palette-choice" data-color="#f9f8fd" title="淡紫"></button>
+      <button class="palette-choice" data-color="#ffeded" title="淺棕"></button>
+      <button class="palette-choice" data-color="#fff8f5" title="淺橘"></button>
+      <button class="palette-choice" data-color="#fdfcf9" title="米白"></button>
+      <button class="palette-choice" data-color="metal"  title="鐵灰（金屬）">
+        <span class="metal-sheen"></span>
+      </button>
+    </div>
+
+    <div class="confirm-buttons" style="margin-top:1rem;">
+      <button class="confirm-btn" id="paletteConfirmBtn">確認</button>
+      <button class="cancel-btn" onclick="closeModal('paletteModal')">取消</button>
+    </div>
   </div>
 </div>
 </body>
