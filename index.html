@@ -1222,7 +1222,12 @@ button.palette-btn:active {
   <div class="modal" id="detailModal">
     <div class="modal-content">
       <button class="close-btn" onclick="closeModal('detailModal')">✕</button>
-     <h3>任務內容</h3>
+    <h3 style="display:flex;align-items:center;gap:.5rem;">
+  <span>任務內容</span>
+  <small id="detailLastUpdate" style="font-size:.9rem;color:#666;white-space:nowrap;margin-left:.5rem;"></small>
+</h3>
+
+
 
 <!-- ▼ 表單視圖：預設顯示 -->
 <div id="detailForm">
@@ -1632,7 +1637,9 @@ function getRemainingDays(dateStr) {
   const important   = importantEl ? importantEl.checked : false;
 
   const id = `task-${Date.now()}`;
-  const task = { id, section, title, content, date, note, important };
+const now = Date.now();
+const task = { id, section, title, content, date, note, important, createdAt: now, updatedAt: now };
+
   tasks.push(task);
 
   const days = getRemainingDays(date);
@@ -1716,6 +1723,13 @@ resetDetailPanels();
   document.getElementById('detailModal').style.display = 'flex';
   setDetailReadonly(false);
   document.getElementById('detailImportant').checked = !!task.important;
+// 進行中：顯示最後儲存；若沒儲存過就顯示建立時間
+{
+  const last = task.updatedAt || task.createdAt || null;
+  const lbl  = document.getElementById('detailLastUpdate');
+  if (lbl) lbl.textContent = last ? ('更新：' + formatRocDateTime(last)) : '';
+}
+
   if (window.__resetSlideComplete) window.__resetSlideComplete();
 
   // ⬇⬇⬇ 新增這行：詳情一開就即時同步
@@ -1762,6 +1776,10 @@ function saveTask() {
   task.date = document.getElementById('detailDate').value;
   task.note = document.getElementById('detailNote').value;
 task.important = document.getElementById('detailImportant').checked;   // ★新增
+task.updatedAt = Date.now();
+const _lbl = document.getElementById('detailLastUpdate');
+if (_lbl) _lbl.textContent = '更新：' + formatRocDateTime(task.updatedAt);
+
 
   const oldEl = document.querySelector(`[data-id='${task.id}']`);
   if (oldEl) oldEl.remove();
@@ -2154,7 +2172,7 @@ function completeTask(id) {
     buildDoneMonthMenu();
     renderCompletedTasks();
   } else {
-    hideEmptySectionsAfterFilter();
+    applyDayFilter();   // ← 交給既有濾鏡：預設會顯示全部分類，不會把空的藏起來
   }
 }
 
@@ -2375,6 +2393,10 @@ function openCompletedDetail(id) {
   document.getElementById('detailContent').value = t.content || '';
   document.getElementById('detailDate').value    = t.date || '';
   document.getElementById('detailNote').value    = t.note || '';
+{
+  const lbl = document.getElementById('detailLastUpdate');
+  if (lbl) lbl.textContent = t.completedAt ? ('更新：' + formatRocDateTime(t.completedAt)) : '';
+}
 
   setDetailReadonly(true);
   document.getElementById('detailModal').style.display = 'flex';
@@ -2642,6 +2664,20 @@ if ('serviceWorker' in navigator) {
 function getTitleWithFlag(t){
   return (t.important ? '❗ ' : '') + (t.title || '');
 }
+
+// 轉民國 yyyy/m/d HH:mm（小時與分鐘補0）
+function formatRocDateTime(ts){
+  if (!ts && ts !== 0) return '';                 // 空字串＝不顯示
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  const y  = d.getFullYear() - 1911;
+  const m  = d.getMonth() + 1;                    // 不補0
+  const dd = d.getDate();                         // 不補0
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return `${y}/${m}/${dd} ${hh}:${mm}`;
+}
+
 
 function renderSections(list){
   const wrap = document.getElementById('section-container');
