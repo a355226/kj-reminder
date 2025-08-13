@@ -1094,6 +1094,26 @@ button.palette-btn:active {
   margin-left:.25rem; user-select:none; cursor:pointer;
 }
 
+/* 展開層工具列：小巧、不佔空間，但好按 */
+.viewer-toolbar{
+  display:flex;
+  gap:.4rem;
+  margin: .1rem 0 .4rem;
+}
+
+.vt-btn{
+  border:1px solid #ddd;
+  background:#f8f8f8;
+  border-radius:6px;
+  padding:.3rem .5rem;
+  font-size:1rem;
+  line-height:1;
+  cursor:pointer;
+  transition: background .15s ease, transform .02s ease, opacity .2s ease;
+}
+.vt-btn:hover{ background:#f1f1f1; }
+.vt-btn:active{ transform: translateY(1px); }
+.vt-btn[disabled]{ opacity:.45; cursor:not-allowed; }
   </style>
 </head>
 <body>
@@ -1279,7 +1299,14 @@ button.palette-btn:active {
 <div id="detailViewer">
   <div class="viewer-head">
     <div class="viewer-title" id="viewerTitle"></div>
-    <button type="button" class="viewer-close" onclick="toggleDetailExpand()">縮小</button>
+    <button type="button" class="viewer-close" onclick="toggleDetailExpand()">⤢</button>
+  </div>
+    <!-- ✅ 新增：展開層三鍵工具列 -->
+  <div class="viewer-toolbar">
+    <button class="vt-btn" title="還原" onclick="viewerUndo()">⤺</button>
+    <button class="vt-btn" title="復原" onclick="viewerRedo()">⤻</button>
+    <button class="vt-btn" title="複製" onclick="viewerCopy()">⧉
+</button>
   </div>
   <textarea class="viewer-body" id="viewerBody"></textarea>
 
@@ -1553,6 +1580,82 @@ function hydrateRoomPath(){
   } catch (e) {
     console.warn('hydrateRoomPath 失敗：', e);
   }
+}
+
+// ===== 展開層三鍵：歷程與操作 =====
+let __viewerHistory = [];
+let __viewerRedoStack = [];
+
+function getViewerBody(){
+  return document.getElementById('viewerBody');
+}
+function getExpandedSource(){
+  // 目前展開的是哪個欄位（detailContent 或 detailNote）
+  return window.__expandedFieldId
+    ? document.getElementById(window.__expandedFieldId)
+    : null;
+}
+function updateViewerToolbar(){
+  const undoBtn = document.querySelector('.viewer-toolbar .vt-btn[onclick="viewerUndo()"]');
+  const redoBtn = document.querySelector('.viewer-toolbar .vt-btn[onclick="viewerRedo()"]');
+  if (undoBtn) undoBtn.disabled = __viewerHistory.length <= 1; // 只有一個初始狀態時不可還原
+  if (redoBtn) redoBtn.disabled = __viewerRedoStack.length === 0;
+}
+
+function pushViewerHistory(nextValue){
+  // 連續相同不入堆，最多保留 100 筆
+  if (__viewerHistory.length === 0 || __viewerHistory[__viewerHistory.length-1] !== nextValue){
+    __viewerHistory.push(nextValue);
+    if (__viewerHistory.length > 100) __viewerHistory.shift();
+  }
+  // 一旦有輸入，redo 清空
+  __viewerRedoStack = [];
+  updateViewerToolbar();
+}
+
+function viewerUndo(){
+  const vBody = getViewerBody();
+  if (!vBody || __viewerHistory.length <= 1) return;
+  const cur = __viewerHistory.pop();              // 當前 -> 進 redo
+  __viewerRedoStack.push(cur);
+  const prev = __viewerHistory[__viewerHistory.length-1];
+  vBody.value = prev;
+
+  // 同步回表單欄位
+  if (vBody.__formSync) vBody.__formSync();
+  updateViewerToolbar();
+}
+
+function viewerRedo(){
+  const vBody = getViewerBody();
+  if (!vBody || __viewerRedoStack.length === 0) return;
+  const redoVal = __viewerRedoStack.pop();
+  vBody.value = redoVal;
+  if (vBody.__formSync) vBody.__formSync();
+
+  // redo 後也算新狀態
+  pushViewerHistory(vBody.value);
+  updateViewerToolbar();
+}
+
+function viewerCopy(){
+  const vBody = getViewerBody();
+  const text = vBody ? (vBody.value || '') : '';
+  if (!text) {
+    alert('沒有可複製的內容');
+    return;
+  }
+  // 優先用 Clipboard API，失敗則退回選取複製
+  navigator.clipboard?.writeText(text).then(()=>{
+    alert('已複製內容');
+  }).catch(()=>{
+    try{
+      const t = document.createElement('textarea');
+      t.value = text; document.body.appendChild(t);
+      t.select(); document.execCommand('copy'); document.body.removeChild(t);
+      alert('已複製內容');
+    }catch(_){ alert('複製失敗'); }
+  });
 }
 
 function openModal(prefSectionId) {
@@ -3442,6 +3545,19 @@ function toggleDetailExpand(fieldId, title){
     vBody.__formSync = () => { src.value = vBody.value || ''; };
     vBody.addEventListener('input', vBody.__formSync);
   }
+  // ★ 新增（歷程）：初始化 undo/redo 堆疊，並監聽輸入推入歷程
+  __viewerHistory = [vBody.value || ''];
+  __viewerRedoStack = [];
+  updateViewerToolbar();
+
+  // 去抖：避免每個 key 都 push（這裡用簡易版）
+  if (vBody.__histHandler) vBody.removeEventListener('input', vBody.__histHandler);
+  let __histTimer = null;
+  vBody.__histHandler = () => {
+    clearTimeout(__histTimer);
+    __histTimer = setTimeout(()=> pushViewerHistory(vBody.value || ''), 180);
+  };
+  vBody.addEventListener('input', vBody.__histHandler);
 }
 
 // === 安全 no-op，避免呼叫時炸掉 ===
@@ -3468,6 +3584,16 @@ function resetDetailPanels(){
     }
   }
 
+  // ★★★ 新增：把閱讀視圖的「歷程監聽」與堆疊一併清掉，並刷新工具列按鈕狀態
+  if (vBody && vBody.__histHandler){
+    vBody.removeEventListener('input', vBody.__histHandler);
+    vBody.__histHandler = null;
+  }
+  // 這兩個若沒宣告過，請見下方「小補充」
+  __viewerHistory = [];
+  __viewerRedoStack = [];
+  updateViewerToolbar?.();
+
   // 關閉閱讀視圖、恢復表單
   viewer?.classList.remove('show');
   form?.classList.remove('hide');
@@ -3482,7 +3608,6 @@ function resetDetailPanels(){
   // 滑桿也回到初始（避免上次停在 done 狀態）
   if (window.__resetSlideComplete) window.__resetSlideComplete();
 }
-
 // —— 調色盤互動 —— //
 let pendingColor = null;
 
