@@ -1595,6 +1595,21 @@ function getExpandedSource(){
     ? document.getElementById(window.__expandedFieldId)
     : null;
 }
+
+// 放在 getViewerBody / getExpandedSource 附近
+function flushViewerSync(){
+  try{
+    const vBody = (typeof getViewerBody === 'function') ? getViewerBody() : null;
+    const src   = (typeof getExpandedSource === 'function') ? getExpandedSource() : null;
+    if (vBody && src) {
+      src.value = vBody.value || '';
+      src.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }catch(_){}
+}
+
+
+
 function updateViewerToolbar(){
   const undoBtn = document.querySelector('.viewer-toolbar .vt-btn[onclick="viewerUndo()"]');
   const redoBtn = document.querySelector('.viewer-toolbar .vt-btn[onclick="viewerRedo()"]');
@@ -2236,21 +2251,37 @@ document.addEventListener("change", function(e){
 
 // 完成按鈕：改為歸檔（覆蓋你的 completeTask）
 function completeTask(id) {
-  commitActiveInput();
+  commitActiveInput();       // 原本就有：盡量收掉輸入法/觸發 change
+  flushViewerSync();         // 新增：若在展開閱讀視圖，先把文字回灌到來源欄位
 
-  // 允許傳入 id；若沒傳就吃 selectedTaskId
   const targetId = id || selectedTaskId;
   if (!targetId) return;
 
   const idx = tasks.findIndex(t => t.id === targetId);
   if (idx === -1) return;
 
-  // ⭐ 先把詳情視窗的最新值「塞回」這筆任務
   const t = tasks[idx];
 
-  syncEditsIntoTask(t);
+  // ★★★ 最小且關鍵的改動：不再仰賴 syncEditsIntoTask 的「modal 是否開啟」判斷，
+  // 只要欄位在 DOM，就直接把值覆寫回 task（桌機拖滑桿時就不會漏掉最後輸入）
+  (function harvestDetailFormIntoTask(task){
+    const secEl  = document.getElementById('detailSection');
+    const ttlEl  = document.getElementById('detailTitle');
+    const ctnEl  = document.getElementById('detailContent');
+    const dateEl = document.getElementById('detailDate');
+    const noteEl = document.getElementById('detailNote');
+    const impEl  = document.getElementById('detailImportant');
 
-  // 組成完成版本（帶時間戳）
+    if (secEl)  task.section   = secEl.value;
+    if (ttlEl)  task.title     = ttlEl.value;
+    if (ctnEl)  task.content   = ctnEl.value;
+    if (dateEl) task.date      = dateEl.value;
+    if (noteEl) task.note      = noteEl.value;
+    if (impEl)  task.important = !!impEl.checked;
+
+    task.updatedAt = Date.now();
+  })(t);
+
   const finished = { ...t, completedAt: Date.now() };
 
   // 從進行中移除 DOM + 陣列
