@@ -2517,7 +2517,9 @@ if (modal) modal.classList.toggle('readonly', !!ro);
 
 let selectedCompletedId = null;
 function openCompletedDetail(id) {
-  selectedCompletedId = id;
+ resetDetailPanels();
+
+   selectedCompletedId = id;
   const t = completedTasks.find(x => x.id === id);
   if (!t) return;
 
