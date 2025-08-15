@@ -1348,15 +1348,6 @@ let categoriesLoaded = false;  // 分類是否已從雲端載入
 let categories = [];
 let sectionSortable = null;  // 存住 Sortable 實例
 // ✅ 重新畫出所有分類區塊（依照 categories 順序）
-function computeRoomPath() {
-  const uid = auth.currentUser?.uid || "";
-  return uid ? `rooms/${uid}` : "";
-}
-function safeRef(path) {
-  if (!roomPath) throw new Error("NO_ROOMPATH");
-  return db.ref(`${roomPath}/${path}`);
-}
-
 function refreshCurrentView(){
   if (statusFilter === 'done') {
     buildDoneMonthMenu();
@@ -1364,23 +1355,7 @@ function refreshCurrentView(){
   } else {
     showOngoing();
   }
-}async function bootTask() {
-  // 讓同一「瀏覽器分頁」在切換頁面時保留同一個登入狀態（不寫 localStorage）
-  await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
-
-  await new Promise((resolve) => {
-    const off = auth.onAuthStateChanged(async (user) => {
-      off();
-      if (!user) { try { await auth.signInAnonymously(); } catch (_) {} }
-
-      roomPath = computeRoomPath();       // ← 用 uid
-      bindFirebaseForTask();              // ← 綁資料
-      document.getElementById("app").style.display = "block";
-      resolve();
-    });
-  });
 }
-document.addEventListener("DOMContentLoaded", bootTask);
 // ✅ 只存分類（不要再從 tasks 推回去）
 document.addEventListener('change', function(e){
   if (e.target && e.target.id === 'importantOnly') {
@@ -1601,17 +1576,16 @@ let dayMode = 'work'; // 'work' 工作天(預設) / 'calendar' 日曆天
     let tasks = [];
     let selectedTaskId = null;
 
-function hydrateRoomPath() {
+function hydrateRoomPath(){
+  // 從 localStorage 裡把房間資訊還原回 roomPath（如果有）
   try {
-    // 先試 localStorage（有勾自動登入時）
-    let saved = localStorage.getItem('todo_room_info');
-    // 沒有就退回 sessionStorage（本次登入有效）
-    if (!saved) saved = sessionStorage.getItem('todo_room_info');
+    const saved = localStorage.getItem('todo_room_info');
     if (!saved) return;
-
     const { username, password } = JSON.parse(saved);
     roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-  } catch (_) {}
+  } catch (e) {
+    console.warn('hydrateRoomPath 失敗：', e);
+  }
 }
 
 // ===== 展開層三鍵：歷程與操作 =====
@@ -2045,20 +2019,10 @@ function confirmDeleteCategory(id) {
   // 綁定按鈕事件
 confirmBox.querySelector('.confirm-btn').onclick = () => {
   // ✅ 先處理任務：把在這個分類的任務，移去一個安全分類
-// 直接刪掉該分類下的所有任務
-tasks = tasks.filter(t => t.section !== id);
-completedTasks = completedTasks.filter(t => t.section !== id);
-
-// 若剛好正在看被刪除的任務，清掉選取（有 selectedTaskId 的話）
-if (typeof selectedTaskId !== 'undefined') {
-  const stillExists = [...tasks, ...completedTasks].some(t => t.id === selectedTaskId);
-  if (!stillExists) {
-    selectedTaskId = null;
-    try { closeModal('detailModal'); } catch (_) {}
-  }
-}
-
-saveTasksToFirebase(); // 任務有動到就存一下
+  const fallback = categories.find(c => c !== id) || '其它';
+  tasks.forEach(t => { if (t.section === id) t.section = fallback; });
+  completedTasks.forEach(t => { if (t.section === id) t.section = fallback; });
+  saveTasksToFirebase(); // 任務有動到就存一下
 
   // ✅ 更新分類陣列
   categories = categories.filter(c => c !== id);
@@ -2678,15 +2642,11 @@ document.getElementById('login-btn').addEventListener('click', async function(){
   }
 
   roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-if (autoLogin){
-  // 既有：長期記住
-  localStorage.setItem('todo_room_info', JSON.stringify({ username, password }));
-} else {
-  // 既有：不長期記住
-  localStorage.removeItem('todo_room_info');
-}
-// ★ 新增：當次工作階段一定有（切到 MyMemo 也讀得到）
-sessionStorage.setItem('todo_room_info', JSON.stringify({ username, password }));
+  if(autoLogin){
+    localStorage.setItem('todo_room_info', JSON.stringify({username, password}));
+  } else {
+    localStorage.removeItem('todo_room_info');
+  }
 
   loggingIn = true;
   setLoginBusy(true);
@@ -2801,17 +2761,32 @@ function openLogoutModal(){
   document.getElementById('logoutModal').style.display = 'flex';
 }
 
-async function doLogout() {
-  try { tasksRef?.off(); categoriesRef?.off(); } catch(_){}
-  roomPath = "";
-  try { await auth.signOut(); } catch(_){}
-
-  // 以前用到的本地暫存清掉（有就清，沒有也沒關係）
+async function doLogout(){
+  // 關閉 DB 監聽
   try {
-    localStorage.removeItem("todo_room_info");
-  } catch(_){}
+    if (tasksRef) { tasksRef.off(); tasksRef = null; }
+    if (completedRef) { completedRef.off(); completedRef = null; }
+  } catch(e){ console.warn(e); }
 
-  location.replace("index.html");
+  // 清空本機資料
+  tasks = [];
+  completedTasks = [];
+  selectedTaskId = null;
+  clearAllSections();
+
+  // 清掉自動登入與房間
+  localStorage.removeItem('todo_room_info');
+  roomPath = "";
+
+  // 嘗試登出（若沒開 Auth 也沒關係）
+  try { if (firebase.auth) await auth.signOut(); } catch(e){ /* 忽略 */ }
+
+  // 切回登入頁
+document.documentElement.classList.remove('show-app');
+document.documentElement.classList.add('show-login');
+
+  closeModal('logoutModal');
+  closeModal('moreModal'); // 關掉「⋯」選單
 }
 
 
@@ -3751,36 +3726,7 @@ function applyImportantFilter(){
   // 套完最後一層後，把空分類藏起來（沿用你既有的規則）
   hideEmptySectionsAfterFilter();
 }
-let tasksRef = null, categoriesRef = null;
 
-function bindFirebaseForTask() {
-  // 你原本如果是 rooms/使用者-密碼… 全部改成：
-  tasksRef = safeRef("tasks");
-  categoriesRef = safeRef("taskCategories"); // 名稱自己定，但放 uid 底下
-
-  tasksRef.on("value", (snap) => {
-    const data = snap.val() || {};
-    // TODO: 把 data 轉成你的 tasks 陣列並 render
-  });
-
-  categoriesRef.on("value", (snap) => {
-    const data = snap.val() || [];
-    // TODO: 更新你的 categories 清單並 render
-  });
-}
-
-function saveTasks(tasks) {
-  if (!roomPath) return;
-  // 依你資料結構轉物件
-  const obj = {};
-  tasks.forEach(t => obj[t.id] = t);
-  safeRef("tasks").set(obj);
-}
-
-function saveTaskCategories(categories) {
-  if (!roomPath) return;
-  safeRef("taskCategories").set(categories);
-}
   </script>
 
 <div id="check-success">
@@ -3887,11 +3833,11 @@ function saveTaskCategories(categories) {
     <h3 style="text-align:center;">👋 歡迎使用 MyTask</h3>
     <ol style="padding-left:1.2rem; margin-top:0.8rem;">
       <li>右下「＋」新增任務或分類</li>
-      <li>長按分類空白處，可快速新增</li>
-      <li>點「任務」可查看/編輯內容</li>
-      <li>右滑「任務」快速完成/左滑移除</li>
-      <li>左上「⋯」可切換篩選條件等功能</li>
-      <li style="font-weight:bold; color:#ff5121;">點擊「MyTask」切換「備忘模式」</li>
+      <li>長按分類空白處快速新增任務</li>
+      <li>點「任務條」可編輯、完成或移除</li>
+      <li>右滑「任務條」快速完成；左滑快速移除</li>
+      <li>「＋」選「編輯分類」可排序、改名、刪除</li>
+      <li>右上「⋯」篩選天數、切換進行中/已完成、設定天數模式</li>
 <li style="font-weight:bold; color:#007BFF;">新增第一個「分類」開始使用！</li>
     </ol>
     <button class="confirm-btn" style="margin-top:1rem; width:100%;" onclick="closeModal('welcomeModal')">我知道了</button>
