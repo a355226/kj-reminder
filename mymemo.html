@@ -1325,6 +1325,29 @@ function hideEmptySectionsAfterFilter(){
 function openLogoutModal(){
   openModal('logoutModal');
 }
+
+      // 讀 room 資訊
+  function hydrateRoomPath(){
+    try{
+      const saved = localStorage.getItem('todo_room_info');
+      if (!saved) return;
+      const { username, password } = JSON.parse(saved);
+      roomPath = `rooms/${String(username).replace(/[.#$/\[\]\/]/g,'_')}-${String(password).replace(/[.#$/\[\]\/]/g,'_')}`;
+    }catch(_){}
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    hydrateRoomPath();
+
+    // 有記錄 → 直接嘗試自動登入（無縫）
+    if (roomPath) {
+      try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(_){}
+      if (!auth.currentUser) {
+        // 不用 alert、不用切畫面，靜默登入
+        auth.signInAnonymously().catch(()=>{ /* 忽略錯誤，onAuthStateChanged 會處理 */ });
+      }
+    }
+  });
   </script>
 </body>
 </html>
