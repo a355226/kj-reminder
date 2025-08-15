@@ -284,7 +284,7 @@ button.palette-btn:active { background: #e8e8e8 !important; }
     #loginPage{ display:flex; min-height:100vh; align-items:center; justify-content:center; background:#ebf5fc; }
     #loginCard{ background:#fff; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,.08); padding:24px; width:95%; max-width:450px; }
     .login-input{ width:100%; height:44px; padding:0 12px; border:1px solid #ccc; border-radius:8px; font-size:16px; margin:.6rem 0 1rem; }
-    .login-btn{ width:100%; height:46px; background:#00aaff; color:#fff; border:0; border-radius:8px; font-size:16px; cursor:pointer;margin-top: 1rem }
+    .login-btn{ width:100%; height:46px; background:#00aaff; color:#fff; border:0; border-radius:8px; font-size:16px; cursor:pointer; }
     .login-btn:hover{ background:#0791e6; }
 
 
@@ -390,6 +390,32 @@ button.palette-btn:active { background: #e8e8e8 !important; }
 .loading-text{ color:#444; font-weight:600; letter-spacing:.2px; }
 @keyframes spin{ to{ transform: rotate(360deg); } }
 
+/* 一開始兩個畫面都隱藏，避免閃爍 */
+#loginPage{ display:none; }
+.container{ display:none !important; }
+
+/* 由 JS 決定要顯示誰 */
+html.show-login #loginPage{ display:flex; }
+html.show-app   .container{ display:block !important; }
+
+/* 自動登入覆蓋層（預設不顯示） */
+#autologin-overlay{
+  position:fixed; inset:0; display:none;
+  align-items:center; justify-content:center;
+  background:rgba(255,255,255,.72);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  z-index:260;
+}
+#autologin-overlay.show{ display:flex; }
+.autologin-box{ padding:16px 18px; border-radius:14px; background:rgba(255,255,255,.9);
+  border:1px solid rgba(180,210,255,.35); box-shadow:0 12px 28px rgba(0,60,130,.12);
+  display:flex; flex-direction:column; gap:.75rem; align-items:center;}
+.autologin-loader{ width:42px; height:42px; border-radius:50%;
+  border:3px solid #e6f4ff; border-top-color:#00aaff; animation:al-spin .8s linear infinite;}
+.autologin-text{ font-weight:700; letter-spacing:.3px; color:#176dff; font-size:14px;}
+@keyframes al-spin{ to{ transform:rotate(360deg); } }
+
+
   </style>
 </head>
 <body>
@@ -397,12 +423,10 @@ button.palette-btn:active { background: #e8e8e8 !important; }
 
   <div id="loginPage">
     <div id="loginCard">
-      <h1 style="display:flex; justify-content:center; align-items:center; gap:10px;">
-  <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/mymemo.png" 
-       alt="icon" width="40" style="transform:translateY(2px);" />
-  MyMemo
-</h1>
-
+      <h1 style="justify-content:center;gap:10px;">
+        <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/mymemo.png" alt="icon" width="40" style="transform:translateY(2px);" />
+        MyMemo
+      </h1> 
 </br>
       <label>自訂帳號</label>
       <input type="text" id="login-username" class="login-input" placeholder="請輸入帳號" />
@@ -676,8 +700,6 @@ button.palette-btn:active { background: #e8e8e8 !important; }
     let memosRef = null, categoriesRef = null;
     let sectionSortable = null;
 let isEditing = false; // 是否在編輯分類模式（給長按行為判斷）
-// 放在 mymemo 的 <script> 最前面（全域）
-window.LOGOUT_REDIRECTING = false;
 
     let memoMonthFilter = 'all';   // 'all' | 'recent5' | '11407'（ROC 年月）
     
@@ -788,31 +810,30 @@ function openMemoModal(prefSectionId){
     auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
 
   auth.onAuthStateChanged(async (user)=>{
-  // 🚫 登出轉址進行中：完全不要切畫面，避免閃到 MyMemo 登入頁
-  if (window.LOGOUT_REDIRECTING) return;
-
   hydrateRoomPath();
 
   if (roomPath) {
     if (user) {
+      // 直接進 App
       showView('app');
       bindFirebase();
     } else {
+      // 還沒登入 → 顯示「切換中…」並嘗試匿名登入
       showView('loading');
       try {
         await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        await auth.signInAnonymously();
+        await auth.signInAnonymously(); // 成功會再進到上面分支
       } catch (e) {
         console.warn('Anonymous sign-in failed:', e);
-        showView('login');
+        showView('login'); // 失敗才顯示登入頁
       }
     }
   } else {
+    // 沒有 roomPath（沒有存帳密）→ 顯示登入
     showView('login');
     unbindFirebase();
   }
 });
-
 
 
 document.getElementById('login-btn').addEventListener('click', async ()=>{
@@ -850,11 +871,8 @@ document.getElementById('login-btn').addEventListener('click', async ()=>{
 
 
 
-  function doLogout(){
-  // 0) 標記正在登出且要轉址，讓 onAuthStateChanged 不再動 UI
-  window.LOGOUT_REDIRECTING = true;
-
-  // 1) 關掉 Firebase 監聽
+   function doLogout(){
+  // 1) 先關掉 Firebase 監聽
   try {
     if (memosRef) { memosRef.off(); memosRef = null; }
     if (categoriesRef) { categoriesRef.off(); categoriesRef = null; }
@@ -869,17 +887,18 @@ document.getElementById('login-btn').addEventListener('click', async ()=>{
   try { localStorage.removeItem('todo_room_info'); } catch (_) {}
   roomPath = "";
 
-  // 4) 嘗試登出 Firebase（不要等他完成，以免延遲）
+  // 4) 登出 Firebase 匿名會話（若存在）
   try { auth.signOut(); } catch (_) {}
 
-  // 5) 關彈窗（可有可無，反正要跳頁面了）
+  // 5) 關掉彈窗
   closeModal('logoutModal');
   closeModal('moreModal');
 
-  // 6) 直接轉到 MyTask 的登入頁（依實際檔名調整）
-  window.location.replace('index.html');   // 若 MyTask 檔名是 mytask.html 就改成 'mytask.html'
+  // 6) 直接導向 MyTask 的登入頁（依你的檔名調整）
+  //   - 若 MyTask 檔名是 index.html 就用下面這行
+  //   - 若是 mytask.html 請改成 'mytask.html'
+  window.location.replace('index.html');
 }
-
 
     /* ===== Firebase 綁定 ===== */
     function bindFirebase(){
@@ -1536,6 +1555,95 @@ function showView(view){
   container.addEventListener('touchcancel',pointerUpOrCancel, { passive:true });
 })();
 
+// 小工具：讀 localStorage 決定 roomPath（你已經有就沿用）
+function sanitizeKey(s){ return String(s||'').replace(/[.#$/\[\]\/]/g,'_'); }
+function hydrateRoomPath(){
+  try{
+    const saved = localStorage.getItem('todo_room_info');
+    if (!saved) return "";
+    const { username, password } = JSON.parse(saved);
+    return `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+  }catch(_){ return ""; }
+}
+
+// 覆蓋層開/關（避免一閃而過）
+let __autoLoginShownAt = 0;
+function showAutoLoginOverlay(){
+  const el = document.getElementById('autologin-overlay');
+  if (!el) return;
+  __autoLoginShownAt = performance.now();
+  el.classList.add('show'); el.setAttribute('aria-hidden','false');
+}
+function hideAutoLoginOverlay(){
+  const el = document.getElementById('autologin-overlay');
+  if (!el) return;
+  const elapsed = performance.now() - __autoLoginShownAt;
+  const delay = Math.max(0, 500 - elapsed);       // 最少顯示 0.5s，手感好看
+  setTimeout(()=>{ el.classList.remove('show'); el.setAttribute('aria-hidden','true'); }, delay);
+}
+
+// 啟動：完全不顯示登入頁，直到判定需要
+document.addEventListener('DOMContentLoaded', boot);
+
+async function boot(){
+  // 先都不顯示，避免閃
+  document.documentElement.classList.remove('show-login','show-app');
+
+  const handoff = new URLSearchParams(location.search).has('handoff');  // ?handoff=1
+  // 可選：把網址上的 handoff 拿掉（美觀）
+  if (handoff && history.replaceState) {
+    const url = new URL(location.href); url.searchParams.delete('handoff');
+    history.replaceState(null, '', url.toString());
+  }
+
+  // 讀 roomPath，決定是否能直上
+  window.roomPath = hydrateRoomPath();
+
+  // 沒帳密資訊 → 只有這種情況才顯示登入卡
+  if (!window.roomPath) {
+    document.documentElement.classList.add('show-login');
+    return;
+  }
+
+  // 有帳密資訊（=從 MyTask 來的典型狀況），試圖「靜默進入」
+  try{
+    // 1) 若已經有登入會話 → 直接進 App（這是最無縫的情況）
+    if (auth.currentUser) {
+      document.documentElement.classList.add('show-app');
+      bindFirebase();              // 你原本的資料綁定
+      return;
+    }
+
+    // 2) 還沒有 user → 顯示小覆蓋層，做匿名登入（不顯示登入卡）
+    showAutoLoginOverlay();
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(_){}
+    await auth.signInAnonymously();   // 成功會觸發 onAuthStateChanged
+  } catch(e){
+    // 自動登入失敗才退回登入卡（不中斷畫面）
+    document.documentElement.classList.add('show-login');
+  } finally {
+    // 交給 onAuthStateChanged 決定最後顯示誰，但保險起見先排程關掉 overlay
+    hideAutoLoginOverlay();
+  }
+}
+
+// 📌 非常重要：onAuthStateChanged 不要再 signOut！只負責切畫面
+auth.onAuthStateChanged((user)=>{
+  // 重新讀一次 roomPath
+  window.roomPath = window.roomPath || hydrateRoomPath();
+
+  if (user && window.roomPath) {
+    document.documentElement.classList.remove('show-login');
+    document.documentElement.classList.add('show-app');
+    bindFirebase();                 // 你原本的：memosRef / categoriesRef 監聽
+  } else {
+    // 沒登入或沒 roomPath → 才顯示登入頁
+    document.documentElement.classList.remove('show-app');
+    document.documentElement.classList.add('show-login');
+  }
+
+  hideAutoLoginOverlay();
+});
 
   </script>
 
