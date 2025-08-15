@@ -957,55 +957,36 @@ html.show-app   .container { display: block !important; } /* 顯示主畫面 */
 #today-badge{ padding-left: 9px; padding-right: 0px; }
 
 /* ===== 拉絲金屬（無斷層版）===== */
-body.bg-metal::before{
-  content:"";
+/* 無縫、穩定、不吃 DPI 的金屬底 */
+/* 平滑霧面金屬效果（無格線感） */
+body.bg-metal::before {
+  content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
 
+  /* 柔光高亮 + 垂直刷絲紋路（超細微） */
   background-image:
-    linear-gradient(135deg,
-      rgba(255,255,255,.25) 0%,
-      rgba(255,255,255,.15) 50%,
-      rgba(255,255,255,.25) 100%
-    ),
-    repeating-linear-gradient(90deg,
-      rgba(255,255,255,.07) 0px,
-      rgba(255,255,255,.07) 0.5px,
-      rgba(0,0,0,.05) 0.5px,
-      rgba(0,0,0,.05) 1px
-    ),
-    repeating-linear-gradient(0deg,
-      rgba(0,0,0,.015) 0px,
-      rgba(0,0,0,.015) 2px,
-      rgba(255,255,255,.015) 2px,
-      rgba(255,255,255,.015) 3px
+    linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.12)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255,255,255,0.03) 0px,
+      rgba(255,255,255,0.03) 1px,
+      rgba(0,0,0,0.02) 1px,
+      rgba(0,0,0,0.02) 2px
     );
 
-  background-blend-mode: screen, normal, normal;
+  background-blend-mode: screen, normal;
 
-  /* 關鍵：加大寬度並避免水平重複 */
-  background-size:
-    100% 100%,      /* 光澤覆蓋全畫面 */
-    2000px 100%,    /* 細絲橫向範圍超大 */
-    100% 240px;     /* 垂直細絲可重複 */
+  /* 讓紋理極度細緻，避免網格感 */
+  background-size: 100% 100%, 600px 100%;
+  background-repeat: no-repeat, repeat;
 
-  background-repeat: no-repeat, no-repeat, repeat;
-  background-position: center center;
-
-  filter: contrast(104%) saturate(96%);
+  /* 輕微對比與飽和度，保留金屬感 */
+  filter: contrast(103%) saturate(97%);
 }
 
-/* 高 DPI 螢幕微調：讓細絲更細，降低顆粒感 */
-@media (min-resolution: 2dppx){
-  body.bg-metal::before{
-    background-size:
-      100% 100%,
-      360px 100%,
-      100% 280px;
-  }
-}
 
 /* 展開圖示 */
 .expand-icon{
@@ -1162,14 +1143,17 @@ button.palette-btn:active {
 
 
   <div class="container" style="display:none">
-<a href="mymemo.html?handoff=1" class="page-title-link"
-   style="display:flex; justify-content:center; text-decoration:none; color:inherit;">
-  <h1 style="display:inline-flex; align-items:center; gap:10px; font-size:24px; padding:4px 10px; border-radius:8px; transition:background-color .2s, box-shadow .2s;">
-    <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png"
-         alt="icon" width="40" style="transform: translateY(2px);">
-    MyTask
-  </h1>
+<!-- 在這裡貼 ↓↓↓（把原本 <a href="mymemo.html" …> 改成這樣） -->
+  <a href="javascript:void(0)" class="page-title-link"
+  onclick="window.location.href='mymemo.html'"
+  style="display:flex; justify-content:center; text-decoration:none; color:inherit;">
+ <h1 style="display:inline-flex; align-items:center; gap:10px; font-size:24px; padding:4px 10px; border-radius:8px; transition:background-color .2s, box-shadow .2s;">
+   <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png"
+        alt="icon" width="40" style="transform: translateY(2px);">
+   MyTask
+ </h1>
 </a>
+
 
 
 <div id="today-badge" aria-label="今天日期"></div>
@@ -1561,6 +1545,7 @@ hideAutoLoginOverlay();
       try {
         if (auth.currentUser) await auth.signOut();
         await auth.signInAnonymously();
+        window.location.href = 'app.html#memo';
       } catch(e) {/* 忽略 */}
     }, AUTH_TIMEOUT_MS);
 
@@ -3522,20 +3507,18 @@ if (passed) {
 })();
 
 function setAppBgColor(color) {
-  const body = document.body;
-
-  if (color === 'metal') {
-    // 套金屬：改用 class，紋理走 CSS ::before 疊加
-    body.classList.add('bg-metal');
-    document.documentElement.style.setProperty('--app-bg', '#ececec');
-  } else {
-    // 退出金屬：移除 class，直接用色碼
-    body.classList.remove('bg-metal');
-    document.documentElement.style.setProperty('--app-bg', color);
-  }
-
-  try { localStorage.setItem('app_bg_fixed', color); } catch(_){}
-}
+        const body = document.body;
+        if (color === "metal") {
+          body.classList.add("bg-metal");
+          document.documentElement.style.setProperty("--app-bg", "#ececec");
+        } else {
+          body.classList.remove("bg-metal");
+          document.documentElement.style.setProperty("--app-bg", color);
+        }
+        try {
+          localStorage.setItem("app_bg_fixed", color);
+        } catch (_) {}
+      }
 
 function applySavedBgColor() {
   try {
