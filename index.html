@@ -2019,10 +2019,20 @@ function confirmDeleteCategory(id) {
   // 綁定按鈕事件
 confirmBox.querySelector('.confirm-btn').onclick = () => {
   // ✅ 先處理任務：把在這個分類的任務，移去一個安全分類
-  const fallback = categories.find(c => c !== id) || '其它';
-  tasks.forEach(t => { if (t.section === id) t.section = fallback; });
-  completedTasks.forEach(t => { if (t.section === id) t.section = fallback; });
-  saveTasksToFirebase(); // 任務有動到就存一下
+// 直接刪掉該分類下的所有任務
+tasks = tasks.filter(t => t.section !== id);
+completedTasks = completedTasks.filter(t => t.section !== id);
+
+// 若剛好正在看被刪除的任務，清掉選取（有 selectedTaskId 的話）
+if (typeof selectedTaskId !== 'undefined') {
+  const stillExists = [...tasks, ...completedTasks].some(t => t.id === selectedTaskId);
+  if (!stillExists) {
+    selectedTaskId = null;
+    try { closeModal('detailModal'); } catch (_) {}
+  }
+}
+
+saveTasksToFirebase(); // 任務有動到就存一下
 
   // ✅ 更新分類陣列
   categories = categories.filter(c => c !== id);
