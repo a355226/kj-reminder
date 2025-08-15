@@ -1357,7 +1357,7 @@ function closeFabMenu() {
 
         // 3) 清掉兩個 App 共用的自動登入資訊（讓回到 index 需要重新登入）
         try {
-          localStorage.removeItem("todo_room_info");
+          
         } catch (_) {}
         roomPath = "";
 
@@ -2301,20 +2301,6 @@ selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
         });
       })();
 
-      function sanitizeKey(s) {
-        return String(s || "").replace(/[.#$/\[\]\/]/g, "_");
-      }
-      function hydrateRoomPath() {
-        try {
-          const saved = localStorage.getItem("todo_room_info"); // MyTask 登入時寫入
-          if (!saved) return null;
-          const { username, password } = JSON.parse(saved);
-          roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-          return roomPath;
-        } catch (_) {
-          return null;
-        }
-      }
 
       function show(el) {
         if (el) el.style.display = "flex";
@@ -2322,6 +2308,37 @@ selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
       function hide(el) {
         if (el) el.style.display = "none";
       }
+      
+      async function bootFromTask() {
+  const overlay = document.getElementById("autologin-overlay");
+  const app = document.getElementById("app");
+  overlay.style.display = "flex";
+
+  try {
+    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+  } catch (_) {}
+
+  // 等待（或建立）同一個 Firebase 使用者
+  await new Promise((resolve) => {
+    const off = auth.onAuthStateChanged(async (user) => {
+      off();
+      try {
+        if (!user) {
+          await auth.signInAnonymously(); // 若 MyTask 已登入(含匿名)，這裡通常會直接拿到 user
+        }
+      } catch (_) {}
+      resolve();
+    });
+  });
+
+  // 用同一個 UID 當路徑 → 兩頁就共用同一份資料
+  roomPath = `rooms/${auth.currentUser.uid}`;
+
+  try { bindFirebase(); } catch (e) { console.error(e); }
+
+  overlay.style.display = "none";
+  app.style.display = "block";
+}
 
        document.getElementById("app");
       document.addEventListener("DOMContentLoaded", bootFromTask);
