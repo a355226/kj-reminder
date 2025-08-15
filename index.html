@@ -1323,6 +1323,24 @@ button.palette-btn:active {
   </div>
 
   <script>
+  // 與 index.html 一致
+function sanitizeKey(s) {
+  return String(s).replace(/[.#$/\[\]\/]/g, "_");
+}
+
+// 讀取 MyTask 登入時存的帳密
+function getSavedRoomPath() {
+  try {
+    const saved = localStorage.getItem("todo_room_info");
+    if (!saved) return "";
+    const { username, password } = JSON.parse(saved);
+    if (!username || !password) return "";
+    return `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+  } catch (_) {
+    return "";
+  }
+}
+  
 document.addEventListener('keydown', function(e){
   if (e.key !== 'Enter') return;
 
@@ -3735,6 +3753,42 @@ function applyImportantFilter(){
 
   // 套完最後一層後，把空分類藏起來（沿用你既有的規則）
   hideEmptySectionsAfterFilter();
+}
+
+async function bootFromTask() {
+  const overlay = document.getElementById("autologin-overlay");
+  const app = document.getElementById("app");
+  overlay.style.display = "flex";
+
+  try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
+
+  // 先等 Firebase Auth 狀態（匿名或既有狀態）
+  await new Promise((resolve) => {
+    const off = auth.onAuthStateChanged(async (user) => {
+      off();
+      try {
+        if (!user) await auth.signInAnonymously();
+      } catch (_) {}
+      resolve();
+    });
+  });
+
+  // ⚠️ 關鍵：用與 MyTask 相同的房間路徑（帳密）
+  const rp = getSavedRoomPath();
+  if (!rp) {
+    // 沒帳密 → 請先去 index.html 登入一次
+    overlay.style.display = "none";
+    // 你也可用 location.replace("index.html")
+    alert("請先在 MyTask 登入，才能同步 MyMemo 資料。");
+    // 顯示空畫面以免閃爍
+    return;
+  }
+  roomPath = rp;
+
+  try { bindFirebase(); } catch (e) { console.error(e); }
+
+  overlay.style.display = "none";
+  app.style.display = "block";
 }
 
   </script>
