@@ -2307,32 +2307,23 @@ selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
   const app = document.getElementById("app");
   overlay.style.display = "flex";
 
-  // 不用長期本機憑證
-  try { await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); } catch (_) {}
+  // 關鍵：跟 index 一樣都用 SESSION，跨頁仍然是同一個使用者（同一分頁）
+  await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
   await new Promise((resolve) => {
     const off = auth.onAuthStateChanged(async (user) => {
       off();
-      // 你要匿名可留著；若不想匿名，這行刪掉並導回登入頁
       if (!user) { try { await auth.signInAnonymously(); } catch (_) {} }
 
-      roomPath = computeRoomPath(); // ← 用 uid 當雲端路徑
-      if (!roomPath) {
-        overlay.style.display = "none";
-        alert("尚未登入，請先登入後再使用。");
-        return;
-      }
-      bindFirebase();
+      roomPath = computeRoomPath();       // ← 用 uid
+      bindFirebase();                     // ← 你原本的 MyMemo 綁定（記得用 safeRef）
       overlay.style.display = "none";
       app.style.display = "block";
       resolve();
     });
   });
 }
-
-       document.getElementById("app");
-      document.addEventListener("DOMContentLoaded", bootFromTask);
-      
+document.addEventListener("DOMContentLoaded", bootFromTask);
       // 與 index.html 一致
 
     </script>
