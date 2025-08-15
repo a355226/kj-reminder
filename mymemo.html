@@ -485,26 +485,17 @@
         padding: 14px;
         position: relative;
       }
-   .close-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: 50%;
-  background-color: #eee;
-  color: #333;
-  font-size: 16px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
+      .close-btn {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        width: 28px;
+        height: 28px;
+        border: 0;
+        border-radius: 50%;
+        background: #eee;
+        cursor: pointer;
+      }
 
       .modal-content label {
         display: block;
@@ -893,12 +884,22 @@
 
       <div class="fab" onclick="toggleMenu()">＋</div>
       <div class="menu" id="menu">
-      <button
-  onclick="openMemoModal()"
-  style="background:#e6f6fc; color:#0091cc; font-weight:600; padding:8px 16px; border:none; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,.08); cursor:pointer; margin-bottom:12px;"
->
-  新增備忘
-</button>
+        <button
+          onclick="openModal('memoModal')"
+          style="
+            background: #e6f6fc;
+            color: #0091cc;
+            font-weight: 600;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+            cursor: pointer;
+            margin-bottom: 12px;
+          "
+        >
+          新增備忘
+        </button>
 
         <button
           onclick="openCategoryModal()"
@@ -1312,30 +1313,33 @@
       function closeModal(id) {
         document.getElementById(id).style.display = "none";
       }
-function openMemoModal(prefSectionId) {
-  updateSectionOptions();
-  if (prefSectionId) {
-    const sel = document.getElementById("memoSection");
-    const opt = sel?.querySelector(`option[value="${prefSectionId}"]`);
-    if (opt) sel.value = prefSectionId;
-  }
-  closeFabMenu(); // 關掉＋選單
-  openModal("memoModal");
-}
+      function openMemoModal(prefSectionId) {
+        // 先把分類選單同步一次
+        updateSectionOptions();
+        if (prefSectionId) {
+          const sel = document.getElementById("memoSection");
+          const opt = sel?.querySelector(`option[value="${prefSectionId}"]`);
+          if (opt) sel.value = prefSectionId;
+        }
+        // 關掉右下選單（如果開著）
+        document.getElementById("menu")?.classList.remove("show");
+        document.querySelector(".fab")?.classList.remove("open");
 
+        openModal("memoModal");
+      }
 
-function toggleMenu() {
-  const m = document.getElementById("menu");
-  const fab = document.querySelector(".fab");
-  const willShow = !m.classList.contains("show");
-  m.classList.toggle("show", willShow);
-  fab?.classList.toggle("open", willShow);
-}
-
-function closeFabMenu() {
-  document.getElementById('menu')?.classList.remove('show');
-  document.querySelector('.fab')?.classList.remove('open');
-}
+      function toggleMenu() {
+        const m = document.getElementById("menu");
+        m.classList.toggle("show");
+      }
+      document.addEventListener("click", (e) => {
+        const menu = document.getElementById("menu");
+        if (menu.classList.contains("show")) {
+          const inside = menu.contains(e.target);
+          const onFab = document.querySelector(".fab").contains(e.target);
+          if (!inside && !onFab) menu.classList.remove("show");
+        }
+      });
 
       async function doLogout() {
         // 1) 關掉 Firebase 監聽
@@ -1513,8 +1517,7 @@ function closeFabMenu() {
 
       /* ===== 分類：新增/編輯/刪除/更名 ===== */
       function openCategoryModal() {
-        closeFabMenu();
-    document.getElementById("newCategoryName").value = "";
+        document.getElementById("newCategoryName").value = "";
         openModal("categoryModal");
       }
       function addCategory() {
@@ -1524,15 +1527,12 @@ function closeFabMenu() {
         categories.push(name);
         saveCategories();
         renderSections(categories);
-        memoMonthFilter = 'all';
-        renderAll();
         closeModal("categoryModal");
       }
       let pendingRenameId = null;
-      let pendingCategoryId = null; 
       function enterEditMode() {
         isEditing = true;
-  closeFabMenu();
+
         // 每個區塊套上編輯配件
         document.querySelectorAll(".section").forEach((sec) => {
           sec.classList.add("edit-mode");
@@ -1606,10 +1606,9 @@ function closeFabMenu() {
           categories.find((c) => c !== "其它" && c !== id) || "其它";
 
         // 把該分類下的 memo 移到 fallback
-memos = memos.filter(m => m.section !== id);
-if (selectedMemoId && !memos.find(x => x.id === selectedMemoId)) {
-selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
- }
+        memos.forEach((m) => {
+          if (m.section === id) m.section = fallback;
+        });
 
         // 刪掉分類
         categories = categories.filter((c) => c !== id);
