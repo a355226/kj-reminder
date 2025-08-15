@@ -30,7 +30,18 @@
       }
       * {
         box-sizing: border-box;
-        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        font-family: "Segoe UI", sans-serif;
+      }
+      /* 全域輸入元件字體大小 */
+      input,
+      select,
+      textarea,
+      option {
+        font-size: 16px; /* 推薦手機安全字體大小，避免 iOS 自動放大 */
+        line-height: 1.4; /* 行高稍微加高一點，閱讀更舒服 */
+      }
+      button {
+        font-size: 15px;
       }
       body {
         margin: 0;
@@ -56,6 +67,7 @@
         font-size: 24px;
         margin: 6px 0 10px;
         padding: 4px 10px;
+        color: #444;
         border-radius: 8px;
         transition: background-color 0.2s, box-shadow 0.2s;
       }
@@ -525,7 +537,7 @@
         background: #77d4bc;
         color: #fff;
         cursor: pointer;
-        font-weight: 900;
+        font-weight: 600;
         margin-top: 1rem;
         font-size: 16px;
       }
@@ -894,7 +906,7 @@
           style="
             background: #e9f9f1;
             color: #1fa87a;
-            font-weight: 600;
+            font-weight: 500;
             padding: 8px 16px;
             border: none;
             border-radius: 8px;
@@ -1441,7 +1453,7 @@
               <div id="memoMore" style="text-align:right; margin:0.25rem 0; position:relative;">
                 <button id="memoMoreBtn"
                         style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">
-                  更多…
+                        🗂️
                 </button>
                 <div id="memoMonthMenu"
                      style="display:none; position:absolute; right:0; background:#fff; border:1px solid #ddd;
