@@ -2322,11 +2322,11 @@ selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
   await new Promise((resolve) => {
     const off = auth.onAuthStateChanged(async (user) => {
       off();
-      try {
-        if (!user) {
-          await auth.signInAnonymously(); // 若 MyTask 已登入(含匿名)，這裡通常會直接拿到 user
-        }
-      } catch (_) {}
+     if (!user) {
+       location.replace("index.html"); // 你的登入頁
+       return; // 讓下面的程式不要繼續
+     }
+
       resolve();
     });
   });
