@@ -1576,16 +1576,17 @@ let dayMode = 'work'; // 'work' 工作天(預設) / 'calendar' 日曆天
     let tasks = [];
     let selectedTaskId = null;
 
-function hydrateRoomPath(){
-  // 從 localStorage 裡把房間資訊還原回 roomPath（如果有）
+function hydrateRoomPath() {
   try {
-    const saved = localStorage.getItem('todo_room_info');
+    // 先試 localStorage（有勾自動登入時）
+    let saved = localStorage.getItem('todo_room_info');
+    // 沒有就退回 sessionStorage（本次登入有效）
+    if (!saved) saved = sessionStorage.getItem('todo_room_info');
     if (!saved) return;
+
     const { username, password } = JSON.parse(saved);
     roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-  } catch (e) {
-    console.warn('hydrateRoomPath 失敗：', e);
-  }
+  } catch (_) {}
 }
 
 // ===== 展開層三鍵：歷程與操作 =====
@@ -2652,11 +2653,15 @@ document.getElementById('login-btn').addEventListener('click', async function(){
   }
 
   roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-  if(autoLogin){
-    localStorage.setItem('todo_room_info', JSON.stringify({username, password}));
-  } else {
-    localStorage.removeItem('todo_room_info');
-  }
+if (autoLogin){
+  // 既有：長期記住
+  localStorage.setItem('todo_room_info', JSON.stringify({ username, password }));
+} else {
+  // 既有：不長期記住
+  localStorage.removeItem('todo_room_info');
+}
+// ★ 新增：當次工作階段一定有（切到 MyMemo 也讀得到）
+sessionStorage.setItem('todo_room_info', JSON.stringify({ username, password }));
 
   loggingIn = true;
   setLoginBusy(true);
