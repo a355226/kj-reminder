@@ -2323,37 +2323,7 @@ selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
         if (el) el.style.display = "none";
       }
 
-      async function bootFromTask() {
-        const overlay = document.getElementById("autologin-overlay");
-        const app = document.getElementById("app");
-
-        // 先蓋住畫面，避免看到登入頁殘影
-        overlay.style.display = "flex";
-
-        try {
-          await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        } catch (_) {}
-
-        // 若目前還沒有使用者，用匿名登入一個
-        if (!auth.currentUser) {
-          try {
-            await auth.signInAnonymously();
-          } catch (e) {
-            console.warn("Anonymous sign-in failed", e);
-          }
-        }
-
-        // 能跑到這，通常已經有 user 了；直接綁 RTDB、顯示 App
-        try {
-          bindFirebase();
-        } catch (e) {
-          console.error(e); /* 綁失敗也別讓頁面卡住 */
-        }
-
-        overlay.style.display = "none";
-        app.style.display = "block";
-      }
-
+       document.getElementById("app");
       document.addEventListener("DOMContentLoaded", bootFromTask);
     </script>
 
