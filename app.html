@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>MyTasks + MyMemo（單頁殼）</title>
+    <style>
+      :root {
+        --bar-h: 48px;
+        --bg: #ebf5fc;
+      }
+      * {
+        box-sizing: border-box;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+      }
+      .bar {
+        position: fixed;
+        inset: 0 0 auto 0;
+        height: var(--bar-h);
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        border-bottom: 1px solid #e9e9e9;
+        z-index: 10;
+      }
+      .tab {
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+        border: 0;
+        background: #f6f8fb;
+      }
+      .tab.active {
+        background: #e6f0ff;
+        box-shadow: 0 0 0 2px rgba(23, 109, 255, 0.15) inset;
+      }
+      .stage {
+        position: fixed;
+        inset: var(--bar-h) 0 0 0;
+        background: var(--bg);
+      }
+      iframe.app {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        display: none;
+        background: transparent;
+      }
+      iframe.app.active {
+        display: block;
+      }
+
+      /* 切換中的遮罩（避免看到各自頁的登入卡片） */
+      #switchMask {
+        position: fixed;
+        inset: var(--bar-h) 0 0 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(6px);
+        z-index: 20;
+      }
+      #switchMask.show {
+        display: flex;
+      }
+      .mask-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(180, 210, 255, 0.35);
+        box-shadow: 0 12px 28px rgba(0, 60, 130, 0.12);
+        animation: pop 0.2s ease-out forwards;
+      }
+      .spinner {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 3px solid #e6f4ff;
+        border-top-color: #00aaff;
+        animation: spin 0.8s linear infinite;
+      }
+      .label {
+        font-weight: 700;
+        color: #176dff;
+        letter-spacing: 0.3px;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes pop {
+        from {
+          opacity: 0;
+          transform: translateY(6px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <button id="tab-task" class="tab active">MyTask</button>
+      <button id="tab-memo" class="tab">MyMemo</button>
+    </div>
+
+    <div class="stage">
+      <!-- 不改你原檔：直接載入現有頁面 -->
+      <iframe
+        id="app-task"
+        class="app active"
+        src="index.html"
+        title="MyTask"
+        loading="eager"
+      ></iframe>
+      <iframe
+        id="app-memo"
+        class="app"
+        src="mymemo.html"
+        title="MyMemo"
+        loading="lazy"
+      ></iframe>
+    </div>
+
+    <!-- 切換遮罩 -->
+    <div id="switchMask" aria-hidden="true">
+      <div class="mask-box">
+        <div class="spinner"></div>
+        <div class="label">切換中…</div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const tabTask = document.getElementById("tab-task");
+        const tabMemo = document.getElementById("tab-memo");
+        const ifTask = document.getElementById("app-task");
+        const ifMemo = document.getElementById("app-memo");
+        const mask = document.getElementById("switchMask");
+
+        const loaded = { task: false, memo: false };
+
+        ifTask.addEventListener(
+          "load",
+          () => {
+            loaded.task = true;
+            hideMaskSoon();
+          },
+          { once: true }
+        );
+        ifMemo.addEventListener(
+          "load",
+          () => {
+            loaded.memo = true;
+            hideMaskSoon();
+          },
+          { once: true }
+        );
+
+        function show(which) {
+          showMask();
+
+          if (which === "task") {
+            tabTask.classList.add("active");
+            tabMemo.classList.remove("active");
+            ifTask.classList.add("active");
+            ifMemo.classList.remove("active");
+            loaded.task ? hideMaskSoon() : null;
+          } else {
+            tabMemo.classList.add("active");
+            tabTask.classList.remove("active");
+            ifMemo.classList.add("active");
+            ifTask.classList.remove("active");
+            loaded.memo ? hideMaskSoon() : null;
+          }
+        }
+
+        let shownAt = 0;
+        function showMask() {
+          shownAt = performance.now();
+          mask.classList.add("show");
+          mask.setAttribute("aria-hidden", "false");
+        }
+        function hideMaskSoon() {
+          // 至少顯示 350ms，視覺比較順，也能遮掉內頁的登入閃屏
+          const elapsed = performance.now() - shownAt;
+          const delay = Math.max(0, 350 - elapsed);
+          setTimeout(() => {
+            mask.classList.remove("show");
+            mask.setAttribute("aria-hidden", "true");
+          }, delay);
+        }
+
+        tabTask.addEventListener("click", () => show("task"));
+        tabMemo.addEventListener("click", () => show("memo"));
+
+        // 若兩頁在同一網域同一 Firebase 專案，匿名/使用者登入狀態會自動共享
+        // 第一次進來就先讓 Task 先載，之後切到 Memo 時會很快
+      })();
+    </script>
+    <!-- 在這裡貼 ↓↓↓（放在 </body> 之前） -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+    <script>
+      // 1) 跟 index.html 一樣的設定（照貼）
+      const firebaseConfig = {
+        apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
+        authDomain: "kjreminder-24d74.firebaseapp.com",
+        projectId: "kjreminder-24d74",
+        storageBucket: "kjreminder-24d74.firebasestorage.app",
+        messagingSenderId: "176371952161",
+        appId: "1:176371952161:web:948121be209cd2e4181160",
+        databaseURL:
+          "https://kjreminder-24d74-default-rtdb.asia-southeast1.firebasedatabase.app/",
+      };
+      if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+      const auth = firebase.auth();
+      const db = firebase.database();
+
+      // 2) 這兩個跟 index 同步
+      function sanitizeKey(s) {
+        return String(s).replace(/[.#$/\[\]\/]/g, "_");
+      }
+      let roomPath = "";
+      function hydrateRoomPath() {
+        try {
+          const saved = localStorage.getItem("todo_room_info"); // ← index 登入時寫進來的
+          if (!saved) return;
+          const { username, password } = JSON.parse(saved);
+          roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+        } catch (_) {}
+      }
+
+      // 3) 開頁：如果有記住帳密 → 匿名登入；沒有 → 回 index.html
+      async function bootOnApp() {
+        hydrateRoomPath();
+
+        // 沒有記住的帳密：代表使用者還沒從 index 登入
+        if (!roomPath) {
+          // 在這裡貼 ↓↓↓（沒有帳密才回首頁）
+          window.location.href = "index.html";
+          return;
+        }
+
+        try {
+          // 儘量記住登入
+          try {
+            await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+          } catch (_) {}
+
+          // 先等 Auth 狀態回來
+          auth.onAuthStateChanged((user) => {
+            if (user) {
+              // ✅ 這一頁就「開始跑你的 app 畫面」，
+              // 例如：loadMemoFromFirebase(); renderXXX(); 之類的初始化
+              // 在這裡貼 ↓↓↓ 你自己的啟動程式
+              if (typeof loadMemoFromFirebase === "function")
+                loadMemoFromFirebase();
+            } else {
+              // 沒登入就匿名登入
+              auth.signInAnonymously().catch(() => {
+                // 匿名登入竟然失敗，就回首頁請他重新登入一次
+                window.location.href = "index.html";
+              });
+            }
+          });
+        } catch (e) {
+          // 出錯也回首頁
+          window.location.href = "index.html";
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", bootOnApp);
+    </script>
+    <!-- 以上整段貼完 -->
+  </body>
+</html>
