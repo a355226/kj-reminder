@@ -400,7 +400,8 @@ button.palette-btn:active { background: #e8e8e8 !important; }
       <h1 style="justify-content:center;gap:10px;">
         <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/mymemo.png" alt="icon" width="40" style="transform:translateY(2px);" />
         MyMemo
-      </h1>
+      </h1> 
+</br>
       <label>自訂帳號</label>
       <input type="text" id="login-username" class="login-input" placeholder="請輸入帳號" />
       <label>自訂密碼</label>
@@ -672,6 +673,9 @@ button.palette-btn:active { background: #e8e8e8 !important; }
     let selectedMemoId = null;
     let memosRef = null, categoriesRef = null;
     let sectionSortable = null;
+let isEditing = false; // 是否在編輯分類模式（給長按行為判斷）
+// 放在 mymemo 的 <script> 最前面（全域）
+window.LOGOUT_REDIRECTING = false;
 
     let memoMonthFilter = 'all';   // 'all' | 'recent5' | '11407'（ROC 年月）
     
@@ -749,6 +753,21 @@ function buildMemoMonthMenu(){
     }
     function openModal(id){ document.getElementById(id).style.display = 'flex'; }
     function closeModal(id){ document.getElementById(id).style.display = 'none'; }
+function openMemoModal(prefSectionId){
+  // 先把分類選單同步一次
+  updateSectionOptions();
+  if (prefSectionId){
+    const sel = document.getElementById('memoSection');
+    const opt = sel?.querySelector(`option[value="${prefSectionId}"]`);
+    if (opt) sel.value = prefSectionId;
+  }
+  // 關掉右下選單（如果開著）
+  document.getElementById('menu')?.classList.remove('show');
+  document.querySelector('.fab')?.classList.remove('open');
+
+  openModal('memoModal');
+}
+
     function toggleMenu(){
       const m = document.getElementById('menu');
       m.classList.toggle('show');
@@ -767,30 +786,31 @@ function buildMemoMonthMenu(){
     auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
 
   auth.onAuthStateChanged(async (user)=>{
+  // 🚫 登出轉址進行中：完全不要切畫面，避免閃到 MyMemo 登入頁
+  if (window.LOGOUT_REDIRECTING) return;
+
   hydrateRoomPath();
 
   if (roomPath) {
     if (user) {
-      // 直接進 App
       showView('app');
       bindFirebase();
     } else {
-      // 還沒登入 → 顯示「切換中…」並嘗試匿名登入
       showView('loading');
       try {
         await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        await auth.signInAnonymously(); // 成功會再進到上面分支
+        await auth.signInAnonymously();
       } catch (e) {
         console.warn('Anonymous sign-in failed:', e);
-        showView('login'); // 失敗才顯示登入頁
+        showView('login');
       }
     }
   } else {
-    // 沒有 roomPath（沒有存帳密）→ 顯示登入
     showView('login');
     unbindFirebase();
   }
 });
+
 
 
 document.getElementById('login-btn').addEventListener('click', async ()=>{
@@ -828,16 +848,36 @@ document.getElementById('login-btn').addEventListener('click', async ()=>{
 
 
 
-    function doLogout(){
-      try{ if (memosRef) memosRef.off(); if (categoriesRef) categoriesRef.off(); }catch(_){}
-      memos = []; categories = []; selectedMemoId = null;
-      try{ localStorage.removeItem('todo_room_info'); }catch(_){}
-      roomPath = "";
-      try{ auth.signOut(); }catch(_){}
-      closeModal('logoutModal'); closeModal('moreModal');
-      document.getElementById('app').style.display='none';
-      document.getElementById('loginPage').style.display='flex';
-    }
+  function doLogout(){
+  // 0) 標記正在登出且要轉址，讓 onAuthStateChanged 不再動 UI
+  window.LOGOUT_REDIRECTING = true;
+
+  // 1) 關掉 Firebase 監聽
+  try {
+    if (memosRef) { memosRef.off(); memosRef = null; }
+    if (categoriesRef) { categoriesRef.off(); categoriesRef = null; }
+  } catch (_) {}
+
+  // 2) 清空本機狀態
+  memos = [];
+  categories = [];
+  selectedMemoId = null;
+
+  // 3) 清掉【兩個 App 共用】的自動登入資訊
+  try { localStorage.removeItem('todo_room_info'); } catch (_) {}
+  roomPath = "";
+
+  // 4) 嘗試登出 Firebase（不要等他完成，以免延遲）
+  try { auth.signOut(); } catch (_) {}
+
+  // 5) 關彈窗（可有可無，反正要跳頁面了）
+  closeModal('logoutModal');
+  closeModal('moreModal');
+
+  // 6) 直接轉到 MyTask 的登入頁（依實際檔名調整）
+  window.location.replace('index.html');   // 若 MyTask 檔名是 mytask.html 就改成 'mytask.html'
+}
+
 
     /* ===== Firebase 綁定 ===== */
     function bindFirebase(){
@@ -1391,6 +1431,109 @@ function showView(view){
   app.style.display   = (view === 'app')     ? 'block' : 'none';
   load.style.display  = (view === 'loading') ? 'flex'  : 'none';
 }
+
+
+// ===== Section 空白處：長按新增備忘（不阻擋捲動）＋ 輕點彈跳 =====
+(function enableCleanLongPressNewMemo(){
+  const PRESS_MS = 900;      // 長按門檻
+  const MOVE_TOL = 10;       // 位移門檻
+  const PRESS_VISUAL_DELAY = 100; // 視覺壓下延遲
+
+  const container = document.getElementById('section-container');
+  if (!container) return;
+
+  let timer = null, visualTimer = null;
+  let startX = 0, startY = 0;
+  let moved = false, longPressed = false;
+  let pressSection = null;
+
+  function isEligibleTarget(e){
+    if (isEditing) return false;                          // 編輯分類時停用
+    const sec = e.target.closest('.section');             // 必須點在分類區塊裡
+    if (!sec) return false;
+    if (e.target.closest('.task')) return false;          // 不是點在卡片上
+    if (e.target.closest('.drag-handle')) return false;   // 不是把手
+    return sec;
+  }
+
+  function clearTimers(){
+    if (timer){ clearTimeout(timer); timer = null; }
+    if (visualTimer){ clearTimeout(visualTimer); visualTimer = null; }
+  }
+
+  function removePressVisual(){
+    if (pressSection) pressSection.classList.remove('__pressed');
+  }
+
+  function pointerDown(e){
+    const sec = isEligibleTarget(e);
+    if (!sec) return;
+
+    pressSection = sec;
+    longPressed = false;
+    moved = false;
+
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX; startY = p.clientY;
+
+    clearTimers();
+
+    // 視覺壓下（稍微延遲，避免一開始就縮小）
+    visualTimer = setTimeout(()=>{ pressSection && pressSection.classList.add('__pressed'); }, PRESS_VISUAL_DELAY);
+
+    // 長按計時：到時觸發新增備忘並預選該分類
+    timer = setTimeout(()=>{
+      longPressed = true;
+      removePressVisual();
+      clearTimers();
+      openMemoModal(pressSection?.id);
+    }, PRESS_MS);
+  }
+
+  function pointerMove(e){
+    if (!timer && !visualTimer) return;
+    const p = e.touches ? e.touches[0] : e;
+    const dx = Math.abs(p.clientX - startX);
+    const dy = Math.abs(p.clientY - startY);
+
+    // 移動太多或明顯垂直捲動 → 取消長按
+    const verticalIntent = dy > dx + 2;
+    if (dx > MOVE_TOL || dy > MOVE_TOL || verticalIntent){
+      moved = true;
+      clearTimers();
+      removePressVisual();
+    }
+  }
+
+  function pointerUpOrCancel(e){
+    const wasLong = longPressed;
+    clearTimers();
+
+    // 短按且沒移動 → 小彈跳回饋
+    if (pressSection && !wasLong && !moved){
+      const stillOk = isEligibleTarget(e) === pressSection;
+      if (stillOk){
+        pressSection.classList.add('__bump');
+        setTimeout(()=> pressSection && pressSection.classList.remove('__bump'), 200);
+      }
+    }
+    removePressVisual();
+    pressSection = null;
+    moved = false;
+    longPressed = false;
+  }
+
+  // 綁定（滑鼠 + 觸控）；觸控設為 passive 讓捲動順暢
+  container.addEventListener('mousedown', pointerDown);
+  container.addEventListener('mousemove', pointerMove);
+  document.addEventListener('mouseup', pointerUpOrCancel);
+
+  container.addEventListener('touchstart', pointerDown, { passive:true });
+  container.addEventListener('touchmove',  pointerMove,  { passive:true });
+  container.addEventListener('touchend',   pointerUpOrCancel, { passive:true });
+  container.addEventListener('touchcancel',pointerUpOrCancel, { passive:true });
+})();
+
 
   </script>
 
