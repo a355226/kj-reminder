@@ -55,7 +55,22 @@ button {
   color: var(--gray-text); display: flex; justify-content: center;
 }
     .container { width: 100%; max-width: 480px; position: relative; }
-    h1 { text-align: center; margin-bottom: 1rem; }
+h1 {
+  display: inline-flex;  /* 原本是 flex */
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 24px;
+  margin: 6px 0 10px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: background-color .2s, box-shadow .2s;
+}
+
+h1:hover {
+  background: rgba(0,0,0,.05);
+  box-shadow: 0 0 0 2px rgba(0,0,0,.08) inset;
+}
     .section {
       background-color: #ffffff; border-radius: 12px;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
@@ -1145,11 +1160,15 @@ button.palette-btn:active {
 
 
   <div class="container" style="display:none">
-    <h1 style="display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 24px;">
-  <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png"
-       alt="icon" width="40" style="transform: translateY(2px);">
-  MyTask
-</h1>
+<a href="mymemo.html" class="page-title-link" 
+   style="display:flex; justify-content:center; text-decoration:none; color:inherit;">
+  <h1 style="display:inline-flex; align-items:center; gap:10px; font-size:24px; padding:4px 10px; border-radius:8px; transition:background-color .2s, box-shadow .2s;">
+    <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png"
+         alt="icon" width="40" style="transform: translateY(2px);">
+    MyTask
+  </h1>
+</a>
+
 
 <div id="today-badge" aria-label="今天日期"></div>
 <!-- 右上角 ... 按鈕 -->
@@ -3123,151 +3142,68 @@ function hideAutoLoginOverlay(){
 }
 
 // ===== 自動登入看門狗：超時自救 =====
-// ===== 看門狗與救援：全域變數 =====
 let autoLoginWD = null;
-let rescueBusy = false;              // 防重入：救援執行中就不再進來
-const WATCHDOG_DELAY_MS = 6000;      // 你要 2 秒就改成 2000
 
-// （可選）統一算持久性模式
-async function chooseSafePersistenceMode(){
-  try {
-    const idbOK = await testIndexedDB();
-    return (isStandalone && idbOK)
-      ? firebase.auth.Auth.Persistence.LOCAL
-      : firebase.auth.Auth.Persistence.NONE;
-  } catch(_) {
-    return firebase.auth.Auth.Persistence.NONE;
-  }
-}
-
-// ===== 看門狗啟停 =====
 function startAutoLoginWatchdog(){
   stopAutoLoginWatchdog();
-  autoLoginWD = setTimeout(runAutoLoginRescue, WATCHDOG_DELAY_MS);
+  autoLoginWD = setTimeout(runAutoLoginRescue, 2000); // 8 秒還沒好就救援
 }
 
 function stopAutoLoginWatchdog(){
   if (autoLoginWD){ clearTimeout(autoLoginWD); autoLoginWD = null; }
 }
 
-// ===== Auth 監聽器去重封裝（只會綁一個）=====
-let __unbindAuth = null;
-function bindAuthListener(){
-  if (__unbindAuth) { try { __unbindAuth(); } catch(_){} __unbindAuth = null; }
-
-  __unbindAuth = auth.onAuthStateChanged(async (user) => {
-    try {
-      // 一進來就關 watchdog，避免在成功流程中又被救援打斷
-      stopAutoLoginWatchdog();
-
-      hydrateRoomPath();
-
-      // 清空顯示 class，稍後再決定要顯示哪一個
-      document.documentElement.classList.remove('show-login', 'show-app');
-
-      if (user && roomPath) {
-        // 顯示主畫面
-        document.documentElement.classList.add('show-app');
-
-        // 保險：把舊的 inline display 清掉（避免疊在 class 上）
-        const lp  = document.getElementById('loginPage');
-        const app = document.querySelector('.container');
-        if (lp)  lp.style.display  = '';
-        if (app) app.style.display = '';
-
-        // 初始化資料
-        loadTasksFromFirebase();
-        updateSectionOptions();
-      } else {
-        // 回登入頁
-        try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
-        document.documentElement.classList.add('show-login');
-      }
-    } catch (e) {
-      console.error('onAuthStateChanged 錯誤：', e);
-      alert('畫面初始化失敗：' + (e?.message || e));
-      try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
-      document.documentElement.classList.remove('show-app');
-      document.documentElement.classList.add('show-login');
-    } finally {
-      hideAutoLoginOverlay();   // 無論成功或失敗都關 overlay
-      setLoginBusy(false);
-    }
-  });
-}
-
-// 首次綁定（確保只呼叫一次）
-bindAuthListener();
-
-
-// ===== 救援流程（Soft → Hard），防重入 =====
 async function runAutoLoginRescue(){
-  if (rescueBusy) return;          // 防重入
-  rescueBusy = true;
-
   try {
     // === Soft retry（溫和重試）===
     await waitOnline();
-
-    // 先乾淨登出
     try { if (auth.currentUser) await auth.signOut(); } catch(_){}
-
-    // 安全設定持久性
     try {
-      await auth.setPersistence(await chooseSafePersistenceMode());
+      // 依當下環境安全設定持久性
+      const idbOK = await testIndexedDB();
+      const mode = (isStandalone && idbOK)
+        ? firebase.auth.Auth.Persistence.LOCAL
+        : firebase.auth.Auth.Persistence.NONE;
+      await auth.setPersistence(mode);
     } catch(_){}
-
-    // 設定 5 秒保護超時
+    // 5 秒保護超時
     await Promise.race([
       auth.signInAnonymously(),
       new Promise((_, rej)=>setTimeout(()=>rej(new Error('soft-timeout')), 5000))
     ]);
-
-    // 成功：交由 onAuthStateChanged 切畫面
-    return;
-
+    return; // 成功就交給 onAuthStateChanged 後續切畫面
   } catch(_e1) {
-    // 繼續 Hard reset
+    // 繼續下面 Hard reset
   }
 
   try {
-    // === Hard reset（重開 Firebase App）===
+    // === Hard reset（強制重開 Firebase App）===
     try { if (auth.currentUser) await auth.signOut(); } catch(_){}
-
-    // 解除舊監聽，避免殘留
-    if (__unbindAuth) { try { __unbindAuth(); } catch(_){} __unbindAuth = null; }
-
     try { await firebase.app().delete(); } catch(_){}
-
     // 重新初始化
     firebase.initializeApp(firebaseConfig);
     window.auth = firebase.auth();
     window.db   = firebase.database();
 
-    // 重新設定持久性
     try {
-      await auth.setPersistence(await chooseSafePersistenceMode());
+      const idbOK = await testIndexedDB();
+      const mode = (isStandalone && idbOK)
+        ? firebase.auth.Auth.Persistence.LOCAL
+        : firebase.auth.Auth.Persistence.NONE;
+      await auth.setPersistence(mode);
     } catch(_){}
 
-    // 重新綁定監聽
-    bindAuthListener();
-
-    // 再試一次匿名登入（5 秒保護）
     await Promise.race([
       auth.signInAnonymously(),
       new Promise((_, rej)=>setTimeout(()=>rej(new Error('hard-timeout')), 5000))
     ]);
-
-    return; // 成功就交給 onAuthStateChanged
-
+    return;
   } catch(_e2) {
-    // 最終保底：讓使用者手動登入
+    // === 最終保底：給使用者手動登入 ===
     hideAutoLoginOverlay();
     document.documentElement.classList.remove('show-app');
     document.documentElement.classList.add('show-login');
     alert('自動登入逾時，請手動登入一次（已自動重設連線）。');
-  } finally {
-    rescueBusy = false;
   }
 }
 
