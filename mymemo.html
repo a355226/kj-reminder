@@ -284,7 +284,7 @@ button.palette-btn:active { background: #e8e8e8 !important; }
     #loginPage{ display:flex; min-height:100vh; align-items:center; justify-content:center; background:#ebf5fc; }
     #loginCard{ background:#fff; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,.08); padding:24px; width:95%; max-width:450px; }
     .login-input{ width:100%; height:44px; padding:0 12px; border:1px solid #ccc; border-radius:8px; font-size:16px; margin:.6rem 0 1rem; }
-    .login-btn{ width:100%; height:46px; background:#00aaff; color:#fff; border:0; border-radius:8px; font-size:16px; cursor:pointer; }
+    .login-btn{ width:100%; height:46px; background:#00aaff; color:#fff; border:0; border-radius:8px; font-size:16px; cursor:pointer;margin-top: 1rem }
     .login-btn:hover{ background:#0791e6; }
 
 
@@ -397,10 +397,12 @@ button.palette-btn:active { background: #e8e8e8 !important; }
 
   <div id="loginPage">
     <div id="loginCard">
-      <h1 style="justify-content:center;gap:10px;">
-        <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/mymemo.png" alt="icon" width="40" style="transform:translateY(2px);" />
-        MyMemo
-      </h1> 
+      <h1 style="display:flex; justify-content:center; align-items:center; gap:10px;">
+  <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/mymemo.png" 
+       alt="icon" width="40" style="transform:translateY(2px);" />
+  MyMemo
+</h1>
+
 </br>
       <label>自訂帳號</label>
       <input type="text" id="login-username" class="login-input" placeholder="請輸入帳號" />
