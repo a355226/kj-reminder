@@ -744,33 +744,72 @@ function buildMemoMonthMenu(){
     function setLoginBusy(b){ const btn = document.getElementById('login-btn'); btn.disabled = b; btn.textContent = b ? '登入中…' : '登入'; }
     auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
 
-    auth.onAuthStateChanged(async (user)=>{
-      hydrateRoomPath();
-      document.getElementById('loginPage').style.display = user && roomPath ? 'none' : 'flex';
-      document.getElementById('app').style.display       = user && roomPath ? 'block' : 'none';
-      if (user && roomPath){ bindFirebase(); } else { unbindFirebase(); }
-      setLoginBusy(false);
-    });
+  auth.onAuthStateChanged(async (user)=>{
+  hydrateRoomPath();
 
-    document.getElementById('login-btn').addEventListener('click', async ()=>{
-      const u = document.getElementById('login-username').value.trim();
-      const p = document.getElementById('login-password').value.trim();
-      const auto = document.getElementById('auto-login').checked;
-      if (!u || !p) return alert('請輸入帳號與密碼');
-
-      roomPath = `rooms/${sanitizeKey(u)}-${sanitizeKey(p)}`;
-      if (auto) localStorage.setItem('todo_room_info', JSON.stringify({username:u,password:p}));
-      else localStorage.removeItem('todo_room_info');
-
-      try{
-        setLoginBusy(true);
-        if (auth.currentUser) await auth.signOut();
+  // 有房間資料
+  if (roomPath) {
+    if (user) {
+      // ✅ 已有登入會話 → 直接進 App（不再重登）
+      document.getElementById('loginPage').style.display = 'none';
+      document.getElementById('app').style.display       = 'block';
+      bindFirebase();
+    } else {
+      // ⚠️ 還沒登入 → 只在必要時做一次匿名登入
+      try {
+        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
         await auth.signInAnonymously();
-      }catch(e){
-        alert('登入失敗：' + (e?.message || e));
-        setLoginBusy(false);
+        // 成功後會再次觸發 onAuthStateChanged，上面分支會進 App
+      } catch (e) {
+        // 匿名登入失敗才顯示登入頁
+        console.warn('Anonymous sign-in failed:', e);
+        document.getElementById('loginPage').style.display = 'flex';
+        document.getElementById('app').style.display       = 'none';
       }
-    });
+    }
+  } else {
+    // 沒房間路徑 → 顯示登入頁
+    document.getElementById('loginPage').style.display = 'flex';
+    document.getElementById('app').style.display       = 'none';
+    unbindFirebase();
+  }
+});
+
+document.getElementById('login-btn').addEventListener('click', async ()=>{
+  const u = document.getElementById('login-username').value.trim();
+  const p = document.getElementById('login-password').value.trim();
+  const auto = document.getElementById('auto-login').checked;
+
+  if (!u || !p) { alert('請輸入帳號與密碼'); return; }
+
+  setLoginBusy(true);
+  try {
+    // 記住/清除房間資訊
+    const info = { username: u, password: p };
+    if (auto) localStorage.setItem('todo_room_info', JSON.stringify(info));
+    else      localStorage.removeItem('todo_room_info');
+
+    // 更新 roomPath（用來綁定資料路徑）
+    roomPath = `rooms/${sanitizeKey(u)}-${sanitizeKey(p)}`;
+
+    // 如果已經有匿名會話 → 直接綁新路徑
+    if (auth.currentUser) {
+      bindFirebase();                         // 立刻切到新房間
+      document.getElementById('loginPage').style.display = 'none';
+      document.getElementById('app').style.display       = 'block';
+    } else {
+      // 沒有會話 → 做一次匿名登入，onAuthStateChanged 會接手進 App
+      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      await auth.signInAnonymously();
+    }
+  } catch (e) {
+    alert('登入失敗：' + (e?.message || e));
+  } finally {
+    setLoginBusy(false);
+  }
+});
+
+
 
     function doLogout(){
       try{ if (memosRef) memosRef.off(); if (categoriesRef) categoriesRef.off(); }catch(_){}
@@ -1325,29 +1364,6 @@ function hideEmptySectionsAfterFilter(){
 function openLogoutModal(){
   openModal('logoutModal');
 }
-
-      // 讀 room 資訊
-  function hydrateRoomPath(){
-    try{
-      const saved = localStorage.getItem('todo_room_info');
-      if (!saved) return;
-      const { username, password } = JSON.parse(saved);
-      roomPath = `rooms/${String(username).replace(/[.#$/\[\]\/]/g,'_')}-${String(password).replace(/[.#$/\[\]\/]/g,'_')}`;
-    }catch(_){}
-  }
-
-  document.addEventListener('DOMContentLoaded', async () => {
-    hydrateRoomPath();
-
-    // 有記錄 → 直接嘗試自動登入（無縫）
-    if (roomPath) {
-      try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(_){}
-      if (!auth.currentUser) {
-        // 不用 alert、不用切畫面，靜默登入
-        auth.signInAnonymously().catch(()=>{ /* 忽略錯誤，onAuthStateChanged 會處理 */ });
-      }
-    }
-  });
   </script>
 </body>
 </html>
