@@ -369,6 +369,27 @@ button.palette-btn:active { background: #e8e8e8 !important; }
 }
 .section.__bump { animation: __bump .18s ease; }
 
+
+#loadingScreen{
+  position:fixed; inset:0; z-index:9999;
+  display:none; align-items:center; justify-content:center;
+  background:var(--app-bg);
+}
+#loadingScreen .loading-wrap{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  padding:16px 20px; border-radius:12px;
+  background:rgba(255,255,255,.7); backdrop-filter:blur(8px);
+  box-shadow:0 6px 18px rgba(0,0,0,.12);
+}
+.loading-spinner{
+  width:28px; height:28px; border-radius:50%;
+  border:3px solid rgba(0,0,0,.15);
+  border-top-color: rgba(0,0,0,.5);
+  animation: spin 0.9s linear infinite;
+}
+.loading-text{ color:#444; font-weight:600; letter-spacing:.2px; }
+@keyframes spin{ to{ transform: rotate(360deg); } }
+
   </style>
 </head>
 <body>
@@ -747,63 +768,58 @@ function buildMemoMonthMenu(){
   auth.onAuthStateChanged(async (user)=>{
   hydrateRoomPath();
 
-  // 有房間資料
   if (roomPath) {
     if (user) {
-      // ✅ 已有登入會話 → 直接進 App（不再重登）
-      document.getElementById('loginPage').style.display = 'none';
-      document.getElementById('app').style.display       = 'block';
+      // 直接進 App
+      showView('app');
       bindFirebase();
     } else {
-      // ⚠️ 還沒登入 → 只在必要時做一次匿名登入
+      // 還沒登入 → 顯示「切換中…」並嘗試匿名登入
+      showView('loading');
       try {
         await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        await auth.signInAnonymously();
-        // 成功後會再次觸發 onAuthStateChanged，上面分支會進 App
+        await auth.signInAnonymously(); // 成功會再進到上面分支
       } catch (e) {
-        // 匿名登入失敗才顯示登入頁
         console.warn('Anonymous sign-in failed:', e);
-        document.getElementById('loginPage').style.display = 'flex';
-        document.getElementById('app').style.display       = 'none';
+        showView('login'); // 失敗才顯示登入頁
       }
     }
   } else {
-    // 沒房間路徑 → 顯示登入頁
-    document.getElementById('loginPage').style.display = 'flex';
-    document.getElementById('app').style.display       = 'none';
+    // 沒有 roomPath（沒有存帳密）→ 顯示登入
+    showView('login');
     unbindFirebase();
   }
 });
+
 
 document.getElementById('login-btn').addEventListener('click', async ()=>{
   const u = document.getElementById('login-username').value.trim();
   const p = document.getElementById('login-password').value.trim();
   const auto = document.getElementById('auto-login').checked;
-
   if (!u || !p) { alert('請輸入帳號與密碼'); return; }
 
   setLoginBusy(true);
   try {
-    // 記住/清除房間資訊
     const info = { username: u, password: p };
     if (auto) localStorage.setItem('todo_room_info', JSON.stringify(info));
     else      localStorage.removeItem('todo_room_info');
 
-    // 更新 roomPath（用來綁定資料路徑）
     roomPath = `rooms/${sanitizeKey(u)}-${sanitizeKey(p)}`;
 
-    // 如果已經有匿名會話 → 直接綁新路徑
     if (auth.currentUser) {
-      bindFirebase();                         // 立刻切到新房間
-      document.getElementById('loginPage').style.display = 'none';
-      document.getElementById('app').style.display       = 'block';
+      // 已有會話：直接綁資料並進入 App
+      showView('loading');           // 小過場
+      bindFirebase();
+      showView('app');
     } else {
-      // 沒有會話 → 做一次匿名登入，onAuthStateChanged 會接手進 App
+      // 沒會話：顯示 loading，做一次匿名登入
+      showView('loading');
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-      await auth.signInAnonymously();
+      await auth.signInAnonymously(); // 成功後 onAuthStateChanged 會帶你進 App
     }
   } catch (e) {
     alert('登入失敗：' + (e?.message || e));
+    showView('login');
   } finally {
     setLoginBusy(false);
   }
@@ -1364,6 +1380,26 @@ function hideEmptySectionsAfterFilter(){
 function openLogoutModal(){
   openModal('logoutModal');
 }
+
+function showView(view){
+  const login = document.getElementById('loginPage');
+  const app   = document.getElementById('app');
+  const load  = document.getElementById('loadingScreen');
+
+  login.style.display = (view === 'login')   ? 'flex'  : 'none';
+  app.style.display   = (view === 'app')     ? 'block' : 'none';
+  load.style.display  = (view === 'loading') ? 'flex'  : 'none';
+}
+
   </script>
+
+<!-- Loading（切換中） -->
+<div id="loadingScreen" style="display:none;">
+  <div class="loading-wrap">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">切換中…</div>
+  </div>
+</div>
+
 </body>
 </html>
