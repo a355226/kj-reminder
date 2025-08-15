@@ -1222,18 +1222,6 @@
 
       let memoMonthFilter = "all"; // 'all' | 'recent5' | '11407'（ROC 年月）
 
-function computeRoomPath() {
-  const uid = auth.currentUser?.uid || "";
-  return uid ? `rooms/${uid}` : "";
-}
-
-// 任何要讀/寫資料都經過這個
-function safeRef(path) {
-  if (!roomPath) throw new Error("NO_ROOMPATH");
-  return db.ref(`${roomPath}/${path}`);
-}
-
-
       function buildMemoMonthMenu() {
         const menu = document.getElementById("memoMonthMenu");
         if (!menu) return;
@@ -1349,29 +1337,51 @@ function closeFabMenu() {
   document.querySelector('.fab')?.classList.remove('open');
 }
 
-    async function doLogout() {
-  try { memosRef?.off(); memosRef = null; categoriesRef?.off(); categoriesRef = null; } catch(_) {}
-  memos = []; categories = []; selectedMemoId = null;
-  roomPath = "";
+      async function doLogout() {
+        // 1) 關掉 Firebase 監聽
+        try {
+          if (memosRef) {
+            memosRef.off();
+            memosRef = null;
+          }
+          if (categoriesRef) {
+            categoriesRef.off();
+            categoriesRef = null;
+          }
+        } catch (_) {}
 
-  // 若你過去有存任何本地鍵值，這裡順便移除（沒有就沒關係）
-  try {
-    localStorage.removeItem("todo_room_info");
-    // 若不想讓底色存在本地，也一起移除
-    // localStorage.removeItem("app_bg_fixed");
-  } catch (_) {}
+        // 2) 清空本機狀態
+        memos = [];
+        categories = [];
+        selectedMemoId = null;
 
-  try { await auth.signOut(); } catch(_) {}
+        // 3) 清掉兩個 App 共用的自動登入資訊（讓回到 index 需要重新登入）
+        try {
+          localStorage.removeItem("todo_room_info");
+        } catch (_) {}
+        roomPath = "";
 
-  try { closeModal("logoutModal"); closeModal("moreModal"); } catch(_) {}
-  location.replace("index.html");
-}}
+        // 4) 登出 Firebase 匿名會話（若存在）
+        try {
+          await auth.signOut();
+        } catch (_) {}
+
+        // 5) 關掉彈窗（可有可無）
+        try {
+          closeModal("logoutModal");
+          closeModal("moreModal");
+        } catch (_) {}
+
+        // 6) 導回 MyTask 的登入頁
+        location.replace("index.html"); // 或 window.location.href = 'index.html';
+      }
 
       /* ===== Firebase 綁定 ===== */
       function bindFirebase() {
         unbindFirebase();
-        memosRef = safeRef("memos");
-categoriesRef = safeRef("memoCategories");
+        memosRef = db.ref(`${roomPath}/memos`);
+        categoriesRef = db.ref(`${roomPath}/memoCategories`);
+
         memosRef.on("value", (snap) => {
           const data = snap.val() || {};
           memos = Object.values(data);
@@ -1401,17 +1411,14 @@ categoriesRef = safeRef("memoCategories");
           categoriesRef && categoriesRef.off();
         } catch (_) {}
       }
-     function saveMemos() {
-  if (!roomPath) return; // 沒登入就不寫
-  const obj = {};
-  memos.forEach((m) => (obj[m.id] = m));
-  safeRef("memos").set(obj);
-}
-
-function saveCategories() {
-  if (!roomPath) return; // 沒登入就不寫
-  safeRef("memoCategories").set(categories);
-}
+      function saveMemos() {
+        const obj = {};
+        memos.forEach((m) => (obj[m.id] = m));
+        db.ref(`${roomPath}/memos`).set(obj);
+      }
+      function saveCategories() {
+        db.ref(`${roomPath}/memoCategories`).set(categories);
+      }
 
       /* ===== UI：今日徽章 ===== */
       (function () {
@@ -2294,6 +2301,20 @@ selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
         });
       })();
 
+      function sanitizeKey(s) {
+        return String(s || "").replace(/[.#$/\[\]\/]/g, "_");
+      }
+      function hydrateRoomPath() {
+        try {
+          const saved = localStorage.getItem("todo_room_info"); // MyTask 登入時寫入
+          if (!saved) return null;
+          const { username, password } = JSON.parse(saved);
+          roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+          return roomPath;
+        } catch (_) {
+          return null;
+        }
+      }
 
       function show(el) {
         if (el) el.style.display = "flex";
@@ -2301,31 +2322,39 @@ selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
       function hide(el) {
         if (el) el.style.display = "none";
       }
-      
- async function bootFromTask() {
-  const overlay = document.getElementById("autologin-overlay");
-  const app = document.getElementById("app");
-  overlay.style.display = "flex";
 
-  // 關鍵：跟 index 一樣都用 SESSION，跨頁仍然是同一個使用者（同一分頁）
-  await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+      async function bootFromTask() {
+        const overlay = document.getElementById("autologin-overlay");
+        const app = document.getElementById("app");
 
-  await new Promise((resolve) => {
-    const off = auth.onAuthStateChanged(async (user) => {
-      off();
-      if (!user) { try { await auth.signInAnonymously(); } catch (_) {} }
+        // 先蓋住畫面，避免看到登入頁殘影
+        overlay.style.display = "flex";
 
-      roomPath = computeRoomPath();       // ← 用 uid
-      bindFirebase();                     // ← 你原本的 MyMemo 綁定（記得用 safeRef）
-      overlay.style.display = "none";
-      app.style.display = "block";
-      resolve();
-    });
-  });
-}
-document.addEventListener("DOMContentLoaded", bootFromTask);
-      // 與 index.html 一致
+        try {
+          await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        } catch (_) {}
 
+        // 若目前還沒有使用者，用匿名登入一個
+        if (!auth.currentUser) {
+          try {
+            await auth.signInAnonymously();
+          } catch (e) {
+            console.warn("Anonymous sign-in failed", e);
+          }
+        }
+
+        // 能跑到這，通常已經有 user 了；直接綁 RTDB、顯示 App
+        try {
+          bindFirebase();
+        } catch (e) {
+          console.error(e); /* 綁失敗也別讓頁面卡住 */
+        }
+
+        overlay.style.display = "none";
+        app.style.display = "block";
+      }
+
+      document.addEventListener("DOMContentLoaded", bootFromTask);
     </script>
 
     <!-- Loading（切換中） -->
