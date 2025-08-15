@@ -1222,6 +1222,18 @@
 
       let memoMonthFilter = "all"; // 'all' | 'recent5' | '11407'（ROC 年月）
 
+function computeRoomPath() {
+  const uid = auth.currentUser?.uid || "";
+  return uid ? `rooms/${uid}` : "";
+}
+
+// 任何要讀/寫資料都經過這個
+function safeRef(path) {
+  if (!roomPath) throw new Error("NO_ROOMPATH");
+  return db.ref(`${roomPath}/${path}`);
+}
+
+
       function buildMemoMonthMenu() {
         const menu = document.getElementById("memoMonthMenu");
         if (!menu) return;
@@ -1337,51 +1349,29 @@ function closeFabMenu() {
   document.querySelector('.fab')?.classList.remove('open');
 }
 
-      async function doLogout() {
-        // 1) 關掉 Firebase 監聽
-        try {
-          if (memosRef) {
-            memosRef.off();
-            memosRef = null;
-          }
-          if (categoriesRef) {
-            categoriesRef.off();
-            categoriesRef = null;
-          }
-        } catch (_) {}
+    async function doLogout() {
+  try { memosRef?.off(); memosRef = null; categoriesRef?.off(); categoriesRef = null; } catch(_) {}
+  memos = []; categories = []; selectedMemoId = null;
+  roomPath = "";
 
-        // 2) 清空本機狀態
-        memos = [];
-        categories = [];
-        selectedMemoId = null;
+  // 若你過去有存任何本地鍵值，這裡順便移除（沒有就沒關係）
+  try {
+    localStorage.removeItem("todo_room_info");
+    // 若不想讓底色存在本地，也一起移除
+    // localStorage.removeItem("app_bg_fixed");
+  } catch (_) {}
 
-        // 3) 清掉兩個 App 共用的自動登入資訊（讓回到 index 需要重新登入）
-        try {
-          
-        } catch (_) {}
-        roomPath = "";
+  try { await auth.signOut(); } catch(_) {}
 
-        // 4) 登出 Firebase 匿名會話（若存在）
-        try {
-          await auth.signOut();
-        } catch (_) {}
-
-        // 5) 關掉彈窗（可有可無）
-        try {
-          closeModal("logoutModal");
-          closeModal("moreModal");
-        } catch (_) {}
-
-        // 6) 導回 MyTask 的登入頁
-        location.replace("index.html"); // 或 window.location.href = 'index.html';
-      }
+  try { closeModal("logoutModal"); closeModal("moreModal"); } catch(_) {}
+  location.replace("index.html");
+}}
 
       /* ===== Firebase 綁定 ===== */
       function bindFirebase() {
         unbindFirebase();
-        memosRef = db.ref(`${roomPath}/memos`);
-        categoriesRef = db.ref(`${roomPath}/memoCategories`);
-
+        memosRef = safeRef("memos");
+categoriesRef = safeRef("memoCategories");
         memosRef.on("value", (snap) => {
           const data = snap.val() || {};
           memos = Object.values(data);
@@ -1411,14 +1401,17 @@ function closeFabMenu() {
           categoriesRef && categoriesRef.off();
         } catch (_) {}
       }
-      function saveMemos() {
-        const obj = {};
-        memos.forEach((m) => (obj[m.id] = m));
-        db.ref(`${roomPath}/memos`).set(obj);
-      }
-      function saveCategories() {
-        db.ref(`${roomPath}/memoCategories`).set(categories);
-      }
+     function saveMemos() {
+  if (!roomPath) return; // 沒登入就不寫
+  const obj = {};
+  memos.forEach((m) => (obj[m.id] = m));
+  safeRef("memos").set(obj);
+}
+
+function saveCategories() {
+  if (!roomPath) return; // 沒登入就不寫
+  safeRef("memoCategories").set(categories);
+}
 
       /* ===== UI：今日徽章 ===== */
       (function () {
@@ -2309,62 +2302,39 @@ selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
         if (el) el.style.display = "none";
       }
       
-  async function bootFromTask() {
+ async function bootFromTask() {
   const overlay = document.getElementById("autologin-overlay");
   const app = document.getElementById("app");
   overlay.style.display = "flex";
 
-  try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
+  // 不用長期本機憑證
+  try { await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); } catch (_) {}
 
-  // 先等 Firebase Auth 狀態（匿名或既有狀態）
   await new Promise((resolve) => {
     const off = auth.onAuthStateChanged(async (user) => {
       off();
-      try {
-        if (!user) await auth.signInAnonymously();
-      } catch (_) {}
+      // 你要匿名可留著；若不想匿名，這行刪掉並導回登入頁
+      if (!user) { try { await auth.signInAnonymously(); } catch (_) {} }
+
+      roomPath = computeRoomPath(); // ← 用 uid 當雲端路徑
+      if (!roomPath) {
+        overlay.style.display = "none";
+        alert("尚未登入，請先登入後再使用。");
+        return;
+      }
+      bindFirebase();
+      overlay.style.display = "none";
+      app.style.display = "block";
       resolve();
     });
   });
-
-  // ⚠️ 關鍵：用與 MyTask 相同的房間路徑（帳密）
-  const rp = getSavedRoomPath();
-  if (!rp) {
-    // 沒帳密 → 請先去 index.html 登入一次
-    overlay.style.display = "none";
-    // 你也可用 location.replace("index.html")
-    alert("請先在 MyTask 登入，才能同步 MyMemo 資料。");
-    // 顯示空畫面以免閃爍
-    return;
-  }
-  roomPath = rp;
-
-  try { bindFirebase(); } catch (e) { console.error(e); }
-
-  overlay.style.display = "none";
-  app.style.display = "block";
 }
 
        document.getElementById("app");
       document.addEventListener("DOMContentLoaded", bootFromTask);
       
       // 與 index.html 一致
-function sanitizeKey(s) {
-  return String(s).replace(/[.#$/\[\]\/]/g, "_");
-}
 
-// 讀取 MyTask 登入時存的帳密
-function getSavedRoomPath() {
-  try {
-    const saved = localStorage.getItem("todo_room_info");
-    if (!saved) return "";
-    const { username, password } = JSON.parse(saved);
-    if (!username || !password) return "";
-    return `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-  } catch (_) {
-    return "";
-  }
-}
     </script>
 
     <!-- Loading（切換中） -->
