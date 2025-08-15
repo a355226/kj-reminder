@@ -1348,6 +1348,15 @@ let categoriesLoaded = false;  // 分類是否已從雲端載入
 let categories = [];
 let sectionSortable = null;  // 存住 Sortable 實例
 // ✅ 重新畫出所有分類區塊（依照 categories 順序）
+function computeRoomPath() {
+  const uid = auth.currentUser?.uid || "";
+  return uid ? `rooms/${uid}` : "";
+}
+function safeRef(path) {
+  if (!roomPath) throw new Error("NO_ROOMPATH");
+  return db.ref(`${roomPath}/${path}`);
+}
+
 function refreshCurrentView(){
   if (statusFilter === 'done') {
     buildDoneMonthMenu();
@@ -1355,7 +1364,23 @@ function refreshCurrentView(){
   } else {
     showOngoing();
   }
+}async function bootTask() {
+  // 讓同一「瀏覽器分頁」在切換頁面時保留同一個登入狀態（不寫 localStorage）
+  await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+  await new Promise((resolve) => {
+    const off = auth.onAuthStateChanged(async (user) => {
+      off();
+      if (!user) { try { await auth.signInAnonymously(); } catch (_) {} }
+
+      roomPath = computeRoomPath();       // ← 用 uid
+      bindFirebaseForTask();              // ← 綁資料
+      document.getElementById("app").style.display = "block";
+      resolve();
+    });
+  });
 }
+document.addEventListener("DOMContentLoaded", bootTask);
 // ✅ 只存分類（不要再從 tasks 推回去）
 document.addEventListener('change', function(e){
   if (e.target && e.target.id === 'importantOnly') {
@@ -2776,32 +2801,17 @@ function openLogoutModal(){
   document.getElementById('logoutModal').style.display = 'flex';
 }
 
-async function doLogout(){
-  // 關閉 DB 監聽
-  try {
-    if (tasksRef) { tasksRef.off(); tasksRef = null; }
-    if (completedRef) { completedRef.off(); completedRef = null; }
-  } catch(e){ console.warn(e); }
-
-  // 清空本機資料
-  tasks = [];
-  completedTasks = [];
-  selectedTaskId = null;
-  clearAllSections();
-
-  // 清掉自動登入與房間
-  localStorage.removeItem('todo_room_info');
+async function doLogout() {
+  try { tasksRef?.off(); categoriesRef?.off(); } catch(_){}
   roomPath = "";
+  try { await auth.signOut(); } catch(_){}
 
-  // 嘗試登出（若沒開 Auth 也沒關係）
-  try { if (firebase.auth) await auth.signOut(); } catch(e){ /* 忽略 */ }
+  // 以前用到的本地暫存清掉（有就清，沒有也沒關係）
+  try {
+    localStorage.removeItem("todo_room_info");
+  } catch(_){}
 
-  // 切回登入頁
-document.documentElement.classList.remove('show-app');
-document.documentElement.classList.add('show-login');
-
-  closeModal('logoutModal');
-  closeModal('moreModal'); // 關掉「⋯」選單
+  location.replace("index.html");
 }
 
 
@@ -3741,7 +3751,36 @@ function applyImportantFilter(){
   // 套完最後一層後，把空分類藏起來（沿用你既有的規則）
   hideEmptySectionsAfterFilter();
 }
+let tasksRef = null, categoriesRef = null;
 
+function bindFirebaseForTask() {
+  // 你原本如果是 rooms/使用者-密碼… 全部改成：
+  tasksRef = safeRef("tasks");
+  categoriesRef = safeRef("taskCategories"); // 名稱自己定，但放 uid 底下
+
+  tasksRef.on("value", (snap) => {
+    const data = snap.val() || {};
+    // TODO: 把 data 轉成你的 tasks 陣列並 render
+  });
+
+  categoriesRef.on("value", (snap) => {
+    const data = snap.val() || [];
+    // TODO: 更新你的 categories 清單並 render
+  });
+}
+
+function saveTasks(tasks) {
+  if (!roomPath) return;
+  // 依你資料結構轉物件
+  const obj = {};
+  tasks.forEach(t => obj[t.id] = t);
+  safeRef("tasks").set(obj);
+}
+
+function saveTaskCategories(categories) {
+  if (!roomPath) return;
+  safeRef("taskCategories").set(categories);
+}
   </script>
 
 <div id="check-success">
