@@ -1007,14 +1007,14 @@
           </div>
 
           <label>備忘標題</label>
-          <input type="text" id="detailTitle" />
+          <input type="text" id="detailTitle" style="margin-bottom: 10px" />
 
-          <label style="display: flex; align-items: center">
-            備忘內容
+          <div style="display: flex; align-items: center; gap: 0.4rem">
+            <label for="detailContent" style="margin: 0">備忘內容</label>
             <button
               type="button"
               class="expand-icon"
-              onclick="toggleDetailExpand('detailContent','備忘內容')"
+              onclick="event.stopPropagation(); toggleDetailExpand('detailContent','備忘內容')"
               title="展開"
               style="
                 display: inline-flex;
@@ -1033,7 +1033,7 @@
             >
               ⤢
             </button>
-          </label>
+          </div>
           <textarea id="detailContent"></textarea>
 
           <div class="row-btns">
@@ -1054,6 +1054,7 @@
               type="button"
               class="viewer-close"
               onclick="toggleDetailExpand()"
+              style="margin-top: 6px"
             >
               ⤢
             </button>
@@ -2014,7 +2015,7 @@
         const vTitle = document.getElementById("viewerTitle");
         const vBody = document.getElementById("viewerBody");
 
-        // 移除舊監聽
+        // 先移除舊監聽（原程式碼保留）
         if (__expandedFieldId) {
           const prev = document.getElementById(__expandedFieldId);
           if (prev?.__viewerSync) {
@@ -2031,8 +2032,12 @@
           }
         }
 
+        // ★ 強化：只有在 viewer 目前是打開狀態時，才把同一鍵當作「收合」
+        const isViewerOpen = viewer.classList.contains("show");
         const willCollapse =
-          __expandedFieldId && (!fieldId || fieldId === __expandedFieldId);
+          isViewerOpen &&
+          __expandedFieldId &&
+          (!fieldId || fieldId === __expandedFieldId);
         if (willCollapse) {
           form.classList.remove("hide");
           viewer.classList.remove("show");
@@ -2072,6 +2077,7 @@
         };
         vBody.addEventListener("input", vBody.__histHandler);
       }
+
       function resetDetailPanels() {
         const form = document.getElementById("detailForm"),
           viewer = document.getElementById("detailViewer");
@@ -2082,9 +2088,11 @@
         }
         __viewerHistory = [];
         __viewerRedoStack = [];
+        __expandedFieldId = null; // ★ 加這行：避免下一次點擊被誤判為「收合」
         viewer?.classList.remove("show");
         form?.classList.remove("hide");
       }
+
       function pushViewerHistory(v) {
         if (
           !__viewerHistory.length ||
