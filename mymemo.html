@@ -885,7 +885,7 @@
       <div class="fab" onclick="toggleMenu()">＋</div>
       <div class="menu" id="menu">
         <button
-          onclick="openModal('memoModal')"
+          onclick="openMemoModal()"
           style="
             background: #e6f6fc;
             color: #0091cc;
@@ -1314,24 +1314,24 @@
         document.getElementById(id).style.display = "none";
       }
       function openMemoModal(prefSectionId) {
-        // 先把分類選單同步一次
         updateSectionOptions();
         if (prefSectionId) {
           const sel = document.getElementById("memoSection");
           const opt = sel?.querySelector(`option[value="${prefSectionId}"]`);
           if (opt) sel.value = prefSectionId;
         }
-        // 關掉右下選單（如果開著）
-        document.getElementById("menu")?.classList.remove("show");
-        document.querySelector(".fab")?.classList.remove("open");
-
+        closeFabMenu(); // 關掉＋選單
         openModal("memoModal");
       }
 
       function toggleMenu() {
         const m = document.getElementById("menu");
-        m.classList.toggle("show");
+        const fab = document.querySelector(".fab");
+        const willShow = !m.classList.contains("show");
+        m.classList.toggle("show", willShow);
+        fab?.classList.toggle("open", willShow);
       }
+
       document.addEventListener("click", (e) => {
         const menu = document.getElementById("menu");
         if (menu.classList.contains("show")) {
@@ -1517,6 +1517,7 @@
 
       /* ===== 分類：新增/編輯/刪除/更名 ===== */
       function openCategoryModal() {
+        closeFabMenu(); // 關掉＋選單
         document.getElementById("newCategoryName").value = "";
         openModal("categoryModal");
       }
@@ -1527,11 +1528,16 @@
         categories.push(name);
         saveCategories();
         renderSections(categories);
+        memoMonthFilter = "all";
+        renderAll();
         closeModal("categoryModal");
       }
       let pendingRenameId = null;
+      let pendingCategoryId = null;
+
       function enterEditMode() {
         isEditing = true;
+        closeFabMenu(); // 關掉＋選單
 
         // 每個區塊套上編輯配件
         document.querySelectorAll(".section").forEach((sec) => {
@@ -1559,6 +1565,8 @@
 
         // 重新啟用拖拉
         initSectionSortable();
+        memoMonthFilter = "all";
+        renderAll();
 
         // 顯示底部 ✅ 鈕
         const exitBtn = document.getElementById("exitEditBtn");
@@ -1606,9 +1614,10 @@
           categories.find((c) => c !== "其它" && c !== id) || "其它";
 
         // 把該分類下的 memo 移到 fallback
-        memos.forEach((m) => {
-          if (m.section === id) m.section = fallback;
-        });
+        memos = memos.filter((m) => m.section !== id);
+        if (selectedMemoId && !memos.find((x) => x.id === selectedMemoId)) {
+          selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
+        }
 
         // 刪掉分類
         categories = categories.filter((c) => c !== id);
@@ -1622,6 +1631,13 @@
         // 收尾
         pendingCategoryId = null;
         closeModal("confirmCategoryModal");
+      }
+
+      function closeFabMenu() {
+        const m = document.getElementById("menu");
+        const fab = document.querySelector(".fab");
+        m?.classList.remove("show");
+        fab?.classList.remove("open");
       }
 
       function confirmRename() {
@@ -2300,21 +2316,6 @@
         });
       })();
 
-      function sanitizeKey(s) {
-        return String(s || "").replace(/[.#$/\[\]\/]/g, "_");
-      }
-      function hydrateRoomPath() {
-        try {
-          const saved = localStorage.getItem("todo_room_info"); // MyTask 登入時寫入
-          if (!saved) return null;
-          const { username, password } = JSON.parse(saved);
-          roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-          return roomPath;
-        } catch (_) {
-          return null;
-        }
-      }
-
       function show(el) {
         if (el) el.style.display = "flex";
       }
@@ -2326,34 +2327,81 @@
         const overlay = document.getElementById("autologin-overlay");
         const app = document.getElementById("app");
 
-        // 先蓋住畫面，避免看到登入頁殘影
+        // 蓋起來，避免殘影
         overlay.style.display = "flex";
 
         try {
-          await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        } catch (_) {}
-
-        // 若目前還沒有使用者，用匿名登入一個
-        if (!auth.currentUser) {
-          try {
-            await auth.signInAnonymously();
-          } catch (e) {
-            console.warn("Anonymous sign-in failed", e);
+          // 1) 先算出 roomPath，沒有就回登入
+          const rp = hydrateRoomPath();
+          if (!rp) {
+            location.replace("index.html");
+            return;
           }
-        }
+          roomPath = rp; // 全域只此一份
 
-        // 能跑到這，通常已經有 user 了；直接綁 RTDB、顯示 App
-        try {
+          // 2) 固定會話
+          try {
+            await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+          } catch (_) {}
+
+          // 3) 若沒有 user 就匿名登入
+          if (!auth.currentUser) {
+            try {
+              await auth.signInAnonymously();
+            } catch (e) {
+              console.warn("Anonymous sign-in failed", e);
+            }
+          }
+
+          // 4) 綁定 RTDB 路徑
           bindFirebase();
-        } catch (e) {
-          console.error(e); /* 綁失敗也別讓頁面卡住 */
-        }
 
-        overlay.style.display = "none";
-        app.style.display = "block";
+          // 5) 顯示 App
+          app.style.display = "block";
+        } catch (e) {
+          console.error(e);
+          alert("初始化失敗，請重新整理");
+        } finally {
+          // 收掉覆蓋層（就算失敗也收）
+          overlay.style.display = "none";
+        }
       }
 
       document.addEventListener("DOMContentLoaded", bootFromTask);
+      function sanitizeKey(s) {
+        return String(s).replace(/[.#$/\[\]\/]/g, "_");
+      }
+
+      function hydrateRoomPath() {
+        let saved = null;
+        try {
+          saved =
+            sessionStorage.getItem("todo_room_info") ||
+            localStorage.getItem("todo_room_info") ||
+            sessionStorage.getItem("todo_room_info_session") ||
+            localStorage.getItem("todo_room_info_session");
+        } catch (_) {}
+
+        if (!saved) return null;
+
+        try {
+          const { username, password } = JSON.parse(saved);
+          if (!username || !password) return null;
+          return `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      async function logout() {
+        try {
+          localStorage.removeItem("todo_room_info");
+        } catch (_) {}
+        try {
+          await auth.signOut();
+        } catch (_) {}
+        window.location.href = "index.html";
+      }
     </script>
 
     <!-- Loading（切換中） -->
