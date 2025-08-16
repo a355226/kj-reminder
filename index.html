@@ -1145,7 +1145,7 @@ button.palette-btn:active {
 <div class="container" style="display:flex; justify-content:center;">
 
 <div style="text-align:center">
-  <h1 class="app-title"> 
+  <h1 class="app-title">
     <a href="mymemo.html" class="title-link">
       <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png"
            alt="icon" width="40">
@@ -1155,12 +1155,21 @@ button.palette-btn:active {
 </div>
 
 <style>
-  .app-title{
+  /* 只保留 h1 的字級/間距，關掉外層 hover/陰影/圓角 */
+  h1.app-title{
     font-size:24px;
     margin:6px 0 10px;
-    color:#444;
+    padding:0;                 /* ← 取消外層內距 */
+    border-radius:0;           /* ← 取消外層圓角 */
+    background:transparent;
+    box-shadow:none;
   }
-  /* 把膠囊感與互動放在 <a> 上 */
+  h1.app-title:hover{          /* ← 擋掉全域 h1:hover */
+    background:transparent !important;
+    box-shadow:none !important;
+  }
+
+  /* 膠囊只套在 a，上下感完全一體 */
   .title-link{
     display:inline-flex;
     align-items:center;
@@ -1171,23 +1180,16 @@ button.palette-btn:active {
     color:inherit;
     cursor:pointer;
     line-height:1;
-    -webkit-tap-highlight-color: transparent; /* 手機點擊更一致 */
+    -webkit-tap-highlight-color: transparent; /* iOS 點擊別再出灰色塊 */
   }
   .title-link:hover{
-    background: rgba(0,0,0,.05);
-    box-shadow: 0 0 0 2px rgba(0,0,0,.08) inset;
+    background:rgba(0,0,0,.05);
+    box-shadow:0 0 0 2px rgba(0,0,0,.08) inset;
   }
-  .title-link:active{
-    transform: translateY(1px);
-  }
-  .title-link:focus-visible{
-    outline: 2px solid #176dff;
-    outline-offset: 2px;
-  }
-  .title-link img{
-    display:block;           /* 避免圖片行內基線縫隙 */
-    transform: translateY(2px);
-  }
+  .title-link:active{ transform: translateY(1px); }
+  .title-link:focus-visible{ outline:2px solid #176dff; outline-offset:2px; }
+
+  .title-link img{ display:block; transform: translateY(2px); }
 </style>
 
 
