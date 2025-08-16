@@ -1347,6 +1347,7 @@ let isEditing = false;   // 目前是否在編輯分類模式
 let categoriesLoaded = false;  // 分類是否已從雲端載入
 let categories = [];
 let sectionSortable = null;  // 存住 Sortable 實例
+let categoriesRef = null;
 // ✅ 重新畫出所有分類區塊（依照 categories 順序）
 function refreshCurrentView(){
   if (statusFilter === 'done') {
@@ -1503,61 +1504,33 @@ async function ensureSignedIn() {
   authBusy = true;
   setLoginBusy(true);
 
-  // 先從 localStorage 拿 saved（判斷是否有「自動登入」資料）
-  let saved = null;
-  try { saved = localStorage.getItem('todo_room_info'); } catch(_) {}
+  // 直接用你已寫好的邏輯：先看 sessionStorage，再看 localStorage
+  hydrateRoomPath();
 
-  // ✅ 情況 1：沒有儲存帳密 → 不要自動登入！直接顯示登入頁
-  if (!saved) {
+  // 兩邊都沒有 → 才顯示登入頁
+  if (!roomPath) {
     authBusy = false;
     setLoginBusy(false);
-    // 顯示登入頁
-document.documentElement.classList.remove('show-app');
-document.documentElement.classList.add('show-login');
-
-    // 為了保險：若瀏覽器還留著舊的匿名使用者，登出一次，避免之後 onAuthStateChanged 亂切畫面
+    document.documentElement.classList.remove('show-app');
+    document.documentElement.classList.add('show-login');
     try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
     return;
   }
 
-  // ✅ 情況 2：有儲存帳密 → 正常自動登入流程
-  hydrateRoomPath(); // 組好 roomPath
-
-showAutoLoginOverlay();
-startAutoLoginWatchdog();
-
+  // 有 roomPath（不論來自 session 或 local）→ 走自動簽入流程
+  showAutoLoginOverlay();
+  startAutoLoginWatchdog();
   try {
-    // A. 若已經有 user 且有 roomPath，直接進主畫面
-    if (auth.currentUser && roomPath) {
-      document.getElementById('loginPage').style.display = 'none';
-      document.querySelector('.container').style.display = 'block';
-      loadTasksFromFirebase();
-      updateSectionOptions();
-hideAutoLoginOverlay();
-      return;
-    }
-
-    // B. 確保乾淨狀態再登入（避免殘留 session）
     if (auth.currentUser) await auth.signOut();
-
-    // C. 加超時保護：6 秒還沒回應就重試一次匿名登入
-    authTimer = setTimeout(async () => {
-      try {
-        if (auth.currentUser) await auth.signOut();
-        await auth.signInAnonymously();
-        window.location.href = 'app.html#memo';
-      } catch(e) {/* 忽略 */}
-    }, AUTH_TIMEOUT_MS);
-
     await auth.signInAnonymously();
   } catch (e) {
     alert('自動登入失敗：' + (e?.message || e));
-hideAutoLoginOverlay();
+    hideAutoLoginOverlay();
   } finally {
     authBusy = false;
-    // 其餘切畫面由 onAuthStateChanged 統一處理
   }
 }
+
 
 let roomPath = ""; // ← 放這裡！全檔只出現一次
 let tasksRef = null;
@@ -1576,21 +1549,36 @@ let dayMode = 'work'; // 'work' 工作天(預設) / 'calendar' 日曆天
     let tasks = [];
     let selectedTaskId = null;
 
-function hydrateRoomPath(){
-  // 從 localStorage 裡把房間資訊還原回 roomPath（如果有）
+    function hydrateRoomPath() {
+  let saved = null;
+
+  // 先讀 sessionStorage（同分頁切換最常用）
   try {
-    const saved = localStorage.getItem('todo_room_info');
-    if (!saved) return;
+    saved =
+      sessionStorage.getItem("todo_room_info") ||
+      sessionStorage.getItem("todo_room_info_session");
+  } catch (_) {}
+
+  // 沒有再讀 localStorage（勾了自動登入的情況）
+  if (!saved) {
+    try {
+      saved =
+        localStorage.getItem("todo_room_info") ||
+        localStorage.getItem("todo_room_info_session");
+    } catch (_) {}
+  }
+
+  if (!saved) return null;
+
+  try {
     const { username, password } = JSON.parse(saved);
-    roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-  } catch (e) {
-    console.warn('hydrateRoomPath 失敗：', e);
+    if (!username || !password) return null;
+    return `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+  } catch (_) {
+    return null;
   }
 }
 
-// ===== 展開層三鍵：歷程與操作 =====
-let __viewerHistory = [];
-let __viewerRedoStack = [];
 
 function getViewerBody(){
   return document.getElementById('viewerBody');
@@ -2008,44 +1996,56 @@ function confirmDeleteCategory(id) {
   confirmBox.style.display = 'flex';
   confirmBox.innerHTML = `
     <div class="modal-content">
-      <h3 style="text-align: center;">是否確認刪除此分類？</h3>
-      <div class="confirm-buttons">
-        <button class="confirm-btn">確認</button>
-        <button class="cancel-btn">取消</button>
+      <h3 style="text-align:center;">是否確認刪除此分類？（此分類內的所有任務將一併刪除）</h3>
+      <div class="confirm-buttons" style="display:flex;gap:.75rem;margin-top:1rem;">
+        <button class="confirm-btn btn-half btn-del">確認</button>
+        <button class="cancel-btn btn-half btn-save">取消</button>
       </div>
     </div>
   `;
 
   // 綁定按鈕事件
-confirmBox.querySelector('.confirm-btn').onclick = () => {
-  // ✅ 先處理任務：把在這個分類的任務，移去一個安全分類
-  const fallback = categories.find(c => c !== id) || '其它';
-  tasks.forEach(t => { if (t.section === id) t.section = fallback; });
-  completedTasks.forEach(t => { if (t.section === id) t.section = fallback; });
-  saveTasksToFirebase(); // 任務有動到就存一下
+  confirmBox.querySelector('.confirm-btn').onclick = () => {
+    // 1) 刪除該分類底下的所有任務（進行中 + 已完成）
+    const delInSection = (arr) => arr.filter(t => t.section !== id);
+    tasks = delInSection(tasks);
+    completedTasks = delInSection(completedTasks);
 
-  // ✅ 更新分類陣列
-  categories = categories.filter(c => c !== id);
-  saveCategoriesToFirebase();
+    // 2) 移除分類本身
+    categories = categories.filter(c => c !== id);
 
-  // ✅ 重畫分類與任務
-  renderSections(categories);
-  if (statusFilter === 'done') renderCompletedTasks(); else showOngoing();
+    // 3) 存檔（雲端/Firebase）
+    saveTasksToFirebase();        // 你原本的儲存函式
+    saveCategoriesToFirebase();   // 你原本的儲存函式
 
-  confirmBox.remove();
-};
+    // 4) 重畫 UI
+    renderSections(categories);
+    if (statusFilter === 'done') {
+      renderCompletedTasks();
+    } else {
+      showOngoing();
+    }
+
+    // 5) 關閉確認視窗
+    confirmBox.remove();
+
+    // 6) 從所有 select 中移除這個分類選項（避免殘留）
+    const selects = [
+      document.getElementById('taskSection'),
+      document.getElementById('detailSection')
+    ];
+    selects.forEach(select => {
+      if (!select) return;
+      const option = select.querySelector(`option[value="${id}"]`);
+      if (option) option.remove();
+    });
+  };
+
   confirmBox.querySelector('.cancel-btn').onclick = () => {
     confirmBox.remove();
   };
 
   document.body.appendChild(confirmBox);
-
-// ✅ 同步從所有 select 中移除這個分類選項
-const selects = [document.getElementById('taskSection'), document.getElementById('detailSection')];
-selects.forEach(select => {
-  const option = select.querySelector(`option[value="${id}"]`);
-  if (option) option.remove();
-});
 }
 
 
@@ -2636,17 +2636,17 @@ document.getElementById('login-btn').addEventListener('click', async function(){
   const password = document.getElementById('login-password').value.trim();
   const autoLogin = document.getElementById('auto-login').checked;
 
-  if(!username || !password){
-    alert('請輸入帳號與密碼');
-    return;
-  }
+// 本次工作階段一定保存，讓不勾自動登入也能在本分頁 & 其他站內頁面使用
+sessionStorage.setItem('todo_room_info_session', JSON.stringify({ username, password }));
 
-  roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-  if(autoLogin){
-    localStorage.setItem('todo_room_info', JSON.stringify({username, password}));
-  } else {
-    localStorage.removeItem('todo_room_info');
-  }
+roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
+
+// 只有勾選自動登入時，才長期保存到 localStorage
+if (autoLogin) {
+  localStorage.setItem('todo_room_info', JSON.stringify({ username, password }));
+} else {
+  localStorage.removeItem('todo_room_info');
+}
 
   loggingIn = true;
   setLoginBusy(true);
