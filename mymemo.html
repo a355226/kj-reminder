@@ -1448,33 +1448,59 @@
       function renderSections(list) {
         const wrap = document.getElementById("section-container");
 
-        // 先畫出「更多…」 + 下拉清單
+        // 先畫「更多…」 + 清單
         wrap.innerHTML = `
-              <div id="memoMore" style="text-align:right; margin:0.25rem 0; position:relative;">
-                <button id="memoMoreBtn"
-                        style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">
-                        🗂️
-                </button>
-                <div id="memoMonthMenu"
-                     style="display:none; position:absolute; right:0; background:#fff; border:1px solid #ddd;
-                            border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;">
-                </div>
-              </div>
-            `;
+    <div id="memoMore" style="text-align:right; margin:0.25rem 0; position:relative;">
+      <button id="memoMoreBtn"
+              style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">
+        🗂️
+      </button>
+      <div id="memoMonthMenu"
+           style="display:none; position:absolute; right:0; background:#fff; border:1px solid #ddd;
+                  border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;">
+      </div>
+    </div>
+  `;
 
-        // 依分類畫區塊
+        // 依分類畫區塊（若正在編輯，直接帶入把手/鉛筆/刪除）
         list.forEach((name) => {
           const sec = document.createElement("div");
-          sec.className = "section";
+          sec.className = "section" + (isEditing ? " edit-mode" : "");
           sec.id = name;
-          sec.innerHTML = `<div class="section-title">${name}</div>`;
+
+          if (isEditing) {
+            sec.innerHTML = `
+        <div class="section-title">
+          <span class="drag-handle">☰</span>
+          <span class="section-name">${name}</span>
+          <button class="rename-btn" title="重命名">✎</button>
+          <button class="delete-btn" title="刪除此分類">✕</button>
+        </div>
+      `;
+          } else {
+            sec.innerHTML = `<div class="section-title">${name}</div>`;
+          }
+
           wrap.appendChild(sec);
+
+          // 編輯模式下掛事件
+          if (isEditing) {
+            const bar = sec.querySelector(".section-title");
+            bar.querySelector(".rename-btn").onclick = () => {
+              pendingRenameId = sec.id;
+              document.getElementById("renameInput").value = sec.id;
+              openModal("renameModal");
+            };
+            bar.querySelector(".delete-btn").onclick = () =>
+              confirmDeleteCategory(sec.id);
+          }
         });
 
+        // 更新下拉選單與拖拉（把手只在編輯模式存在）
         updateSectionOptions();
         initSectionSortable?.();
 
-        // 重新掛「更多…」按鈕
+        // 「更多…」按鈕行為
         document
           .getElementById("memoMoreBtn")
           ?.addEventListener("click", () => {
@@ -1484,9 +1510,14 @@
               menu.style.display === "block" ? "none" : "block";
           });
 
-        // 依目前 memos 建一次月份清單
+        // 依目前 memos 重建月份清單
         buildMemoMonthMenu();
+
+        // ✅ 按鈕顯示與否：編輯中就顯示
+        const exitBtn = document.getElementById("exitEditBtn");
+        if (exitBtn) exitBtn.style.display = isEditing ? "block" : "none";
       }
+
       function updateSectionOptions() {
         const opts = (categories || [])
           .map((c) => `<option value="${c}">${c}</option>`)
