@@ -1111,6 +1111,15 @@ button.palette-btn:active {
 .vt-btn:active{ transform: translateY(1px); }
 .vt-btn[disabled]{ opacity:.45; cursor:not-allowed; }
 
+/* 編輯分類時，任務卡不可互動/不可滑動 */
+.section.edit-mode .task,
+.section.edit-mode .task * {
+  pointer-events: none !important;
+}
+/* 順便把滑動指示條藏起來，避免視覺干擾 */
+.section.edit-mode .task .swipe-bar {
+  display: none !important;
+}
 
   </style>
 </head>
@@ -1861,6 +1870,7 @@ function sortTasks(section) {
 
 
    function openDetail(id) {
+    if (isEditing) return;   // ← 編輯分類時不開詳情
   selectedTaskId = id;
   const task = tasks.find(t => t.id === id);
   if (!task) return;
@@ -2019,12 +2029,20 @@ refreshCurrentView();
 
 let pendingRenameId = null;
 
+let __savedFilters = null;
+
 function enterEditMode() {
   isEditing = true;
-  decorateSectionsForEdit();
-  closeFabMenu();
-  const exitBtn = document.getElementById('exitEditBtn');
-if (exitBtn) exitBtn.style.display = 'block';
+  // 暫存目前濾鏡
+  __savedFilters = { filterDay, importantOnly, statusFilter };
+  // 編輯時強制顯示進行中視圖 & 關所有濾鏡
+  statusFilter = 'ongoing';
+  filterDay = 'default';
+  importantOnly = false;
+
+  showOngoing();    
+  closeFabMenu();          // 重畫（全部分類會露出）
+  decorateSectionsForEdit();  // 你原本的
 }
 // 刪除分類彈窗
 function confirmDeleteCategory(id) {
@@ -2094,35 +2112,37 @@ function confirmDeleteCategory(id) {
 
 //確認完成編輯
 function exitEditMode() {
-  // 關閉編輯狀態
   isEditing = false;
 
-  // 清掉編輯配件與樣式
+  // 收掉編輯配件
   document.querySelectorAll('.section').forEach(section => {
     section.classList.remove('edit-mode');
-
     const titleBar = section.querySelector('.section-title');
-    if (titleBar) {
-      // 還原只顯示名稱
-      titleBar.innerHTML = section.id;
-    }
+    if (titleBar) titleBar.textContent = section.id; // 只留名稱
   });
 
-  // 隱藏底部「完成編輯」鈕
   const exitBtn = document.getElementById('exitEditBtn');
   if (exitBtn) exitBtn.style.display = 'none';
 
-  // （可選）確保拖拉實例乾淨
+  // 乾淨銷毀拖拉
   if (sectionSortable && sectionSortable.destroy) {
     sectionSortable.destroy();
     sectionSortable = null;
   }
-  // 重新初始化拖拉（非編輯模式下有把手就能拖，沒把手就不會動）
-  initSectionSortable();
 
-  // 編輯結束後，更新下拉選單
+  // ✅ 無論如何都要還原濾鏡與重畫
+  if (__savedFilters){
+    statusFilter  = __savedFilters.statusFilter;
+    filterDay     = __savedFilters.filterDay;
+    importantOnly = __savedFilters.importantOnly;
+    __savedFilters = null;
+  }
+
+  refreshCurrentView();   // 依目前頁籤重畫（這步也會做空白隱藏）
+  initSectionSortable();  // 非編輯模式下不會有把手，拖不動，OK
   updateSectionOptions();
 }
+
 
 //手機拖拉
 function initSectionSortable(){
@@ -2564,6 +2584,7 @@ if (modal) modal.classList.toggle('readonly', !!ro);
 
 let selectedCompletedId = null;
 function openCompletedDetail(id) {
+  if (isEditing) return;   // ← 編輯分類時不開詳情
  resetDetailPanels();
 
    selectedCompletedId = id;
@@ -3122,6 +3143,13 @@ document.addEventListener('keydown', function(e){
 });
 
 function hideEmptySectionsAfterFilter(){
+  if (isEditing) {
+    // 編輯時全部顯示，避免排序歪掉
+    document.querySelectorAll('#section-container .section')
+      .forEach(sec => sec.style.display = '');
+    return;
+  }
+  // ↓ 原本的隱藏邏輯保留
   const sections = document.querySelectorAll('#section-container .section');
   sections.forEach(sec => {
     const hasVisibleTask = Array.from(sec.querySelectorAll('.task'))
@@ -3129,6 +3157,7 @@ function hideEmptySectionsAfterFilter(){
     sec.style.display = hasVisibleTask ? '' : 'none';
   });
 }
+
 
 
 
@@ -3392,7 +3421,7 @@ function bindSwipeToTasks() {
     }, true);
 
     function onDown(e){
-      if (statusFilter === 'done') return;
+      if (statusFilter === 'done' || isEditing) return;  // ← 編輯分類不啟動滑動
       if (e.target.closest('button, input, select, textarea')) return;
 
       isDown = true;
