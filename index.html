@@ -1144,28 +1144,49 @@ button.palette-btn:active {
 
 <div class="container" style="display:flex; justify-content:center;">
 
-<!-- 在這裡貼 ↓↓↓（把原本 <a href="mymemo.html" …> 改成這樣） -->
-<!-- 置中容器可留著 -->
 <div style="text-align:center">
-  <h1 class="app-title"
-      style="display:inline-flex; align-items:center; justify-content:center; gap:10px;
-             font-size:24px; margin:6px 0 10px; padding:4px 10px; border-radius:8px;
-             transition:background-color .2s, box-shadow .2s;">
-    <!-- 只有這個 <a>（含圖＋字）可點 -->
-    <a href="mymemo.html"
-       style="display:inline-flex; align-items:center; gap:10px; text-decoration:none; color:inherit; cursor:pointer;">
+  <h1 class="app-title"> 
+    <a href="mymemo.html" class="title-link">
       <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png"
-           alt="icon" width="40" style="transform: translateY(2px);">
+           alt="icon" width="40">
       <span>MyTask</span>
     </a>
   </h1>
 </div>
 
-<!-- 可選：保留你喜歡的 hover 視覺（範圍只包住圖＋字的區塊） -->
 <style>
-  .app-title:hover{
+  .app-title{
+    font-size:24px;
+    margin:6px 0 10px;
+    color:#444;
+  }
+  /* 把膠囊感與互動放在 <a> 上 */
+  .title-link{
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    padding:4px 10px;
+    border-radius:8px;
+    text-decoration:none;
+    color:inherit;
+    cursor:pointer;
+    line-height:1;
+    -webkit-tap-highlight-color: transparent; /* 手機點擊更一致 */
+  }
+  .title-link:hover{
     background: rgba(0,0,0,.05);
     box-shadow: 0 0 0 2px rgba(0,0,0,.08) inset;
+  }
+  .title-link:active{
+    transform: translateY(1px);
+  }
+  .title-link:focus-visible{
+    outline: 2px solid #176dff;
+    outline-offset: 2px;
+  }
+  .title-link img{
+    display:block;           /* 避免圖片行內基線縫隙 */
+    transform: translateY(2px);
   }
 </style>
 
