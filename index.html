@@ -1142,7 +1142,7 @@ button.palette-btn:active {
 
 
 
-  <div class="container" style="display:none">
+  <div class="container" style="display:flex">
 <!-- 在這裡貼 ↓↓↓（把原本 <a href="mymemo.html" …> 改成這樣） -->
   <a href="javascript:void(0)" class="page-title-link"
   onclick="window.location.href='mymemo.html'"
@@ -1504,30 +1504,32 @@ async function ensureSignedIn() {
   authBusy = true;
   setLoginBusy(true);
 
-  // 直接用你已寫好的邏輯：先看 sessionStorage，再看 localStorage
-  hydrateRoomPath();
+  // 讀憑證（要把回傳值接到全域）
+  roomPath = hydrateRoomPath();
 
-  // 兩邊都沒有 → 才顯示登入頁
+  // 沒有任何帳密 → 顯示登入頁（但不要 signOut！）
   if (!roomPath) {
     authBusy = false;
     setLoginBusy(false);
     document.documentElement.classList.remove('show-app');
     document.documentElement.classList.add('show-login');
-    try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
     return;
   }
 
-  // 有 roomPath（不論來自 session 或 local）→ 走自動簽入流程
+  // 有帳密 → 自動登入（只有「尚未登入」才登入，不要先登出）
   showAutoLoginOverlay();
   startAutoLoginWatchdog();
   try {
-    if (auth.currentUser) await auth.signOut();
-    await auth.signInAnonymously();
+    if (!auth.currentUser) {
+      await auth.signInAnonymously();
+    }
+    // 這裡不切畫面，交給 onAuthStateChanged
   } catch (e) {
     alert('自動登入失敗：' + (e?.message || e));
     hideAutoLoginOverlay();
   } finally {
     authBusy = false;
+    setLoginBusy(false);
   }
 }
 
@@ -2592,43 +2594,40 @@ auth.onAuthStateChanged(async (user) => {
   try {
     if (authTimer) { clearTimeout(authTimer); authTimer = null; }
 
-    hydrateRoomPath();
+    // 一進來就把 roomPath 接好（很關鍵）
+    roomPath = hydrateRoomPath();
 
-    // 先清乾淨
     document.documentElement.classList.remove('show-login', 'show-app');
 
     if (user && roomPath) {
-      // 顯示主畫面（用 class）
-    // 顯示主畫面（用 class）
-document.documentElement.classList.add('show-app');
+      document.documentElement.classList.add('show-app');
 
-// 🔧 重要：把舊的 inline 顯示值清掉，避免重疊
-const lp  = document.getElementById('loginPage');
-const app = document.querySelector('.container');
-if (lp)  lp.style.display  = '';   // 清除 "display:flex"
-if (app) app.style.display = '';   // 清除任何 inline display
+      // 清掉任何內聯 display，避免閃爍
+      const lp  = document.getElementById('loginPage');
+      const app = document.querySelector('.container');
+      if (lp)  lp.style.display  = '';
+      if (app) app.style.display = '';
 
-      // 初始化資料
       loadTasksFromFirebase();
       updateSectionOptions();
     } else {
-      // 沒登入或沒 roomPath -> 回登入頁
-      try { if (auth.currentUser) await auth.signOut(); } catch(e) {}
+      // ⚠️ 不要在這裡 signOut()！只切畫面回登入即可
       document.documentElement.classList.add('show-login');
     }
   } catch (e) {
     console.error('onAuthStateChanged 錯誤：', e);
     alert('畫面初始化失敗：' + (e?.message || e));
-    try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
+    // 退回登入頁
     document.documentElement.classList.remove('show-app');
     document.documentElement.classList.add('show-login');
   } finally {
-hideAutoLoginOverlay();
-stopAutoLoginWatchdog();    // ← 新增：登入完成或切頁都關掉看門狗
-setLoginBusy(false);
+    hideAutoLoginOverlay();
+    stopAutoLoginWatchdog();
+    setLoginBusy(false);
     loggingIn = false;
   }
 });
+
 
 document.getElementById('login-btn').addEventListener('click', async function(){
   if (loggingIn) return; // 防止重複點
