@@ -1818,7 +1818,7 @@ function ensureDetailInlineUI(){
     row.appendChild(dateEl);
 
     const btn = document.createElement('button');
-    btn.id='recurrenceBtnCreate'; btn.type='button'; btn.title='定期排程'; btn.textContent='🗓️';
+    btn.id='recurrenceBtnCreate'; btn.type='button'; btn.title='定期排程'; btn.textContent='🗓️排程';
     btn.style.cssText='padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer;';
     btn.onclick = ()=>openRecurrenceModal(TARGET_CREATE);
     row.appendChild(btn);
