@@ -800,6 +800,28 @@
       #app {
         display: none;
       } /* 等驗證完再顯示 */
+      /* 讓卡片只移動內容層，底下 swipe-bar 穩定不抖 */
+.task-content{
+  position: relative;
+  z-index: 2;
+  will-change: transform;
+  /* 回彈動畫交給 JS 控制；這裡先不設 transition 以免和 JS 打架 */
+}
+
+/* 讓進度條在內容層底下且不吃事件 */
+.swipe-bar{
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* 小幅優化文字與透明度動畫的流暢度 */
+.swipe-bar .label{
+  will-change: opacity, transform;
+}
+
+/* 輕微啟用 GPU 合成，減少抖動 */
+.task{ transform: translateZ(0); }
+      
     </style>
   </head>
   <body>
@@ -1867,7 +1889,7 @@
           if (task.dataset.swipeBound === "1") return;
           task.dataset.swipeBound = "1";
           task.onclick = null;
-
+const card = task.querySelector('.task-content');
           const barL = task.querySelector(".swipe-bar.left");
           const labL = barL?.querySelector(".label");
 
@@ -1910,7 +1932,7 @@
             dx = dy = 0;
             width = task.offsetWidth || 1;
             mode = "pending";
-            task.style.transition = "none";
+            card.style.transition = “none”;
             try {
               task.setPointerCapture(e.pointerId);
             } catch (_) {}
@@ -1944,7 +1966,7 @@
             const adx = Math.abs(dx);
             const pct = Math.min(1, adx / width);
             const tilt = (dx / width) * MAX_TILT;
-            task.style.transform = `translateX(${Math.round(
+            card.style.transform = `translateX(${Math.round(
               dx
             )}px) rotate(${tilt}deg)`;
             if (dx < 0) {
@@ -1968,8 +1990,8 @@
             mode = "pending";
             isDown = false;
             activeId = null;
-            task.style.transition = "transform .18s";
-            task.style.transform = "";
+            card.style.transition = "transform .18s";
+            card.style.transform = "";
             resetBars();
 
             if (!wasSwipe && !cancel && tapLike) {
