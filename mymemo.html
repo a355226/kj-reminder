@@ -108,6 +108,8 @@
         margin: 0.2rem 0 0.6rem;
         font-size: 1.1rem;
       }
+      
+      
 
       /* row 佈局：左文右鈕 */
       .more-row {
@@ -800,28 +802,21 @@
       #app {
         display: none;
       } /* 等驗證完再顯示 */
-      /* 讓卡片只移動內容層，底下 swipe-bar 穩定不抖 */
-.task-content{
-  position: relative;
-  z-index: 2;
-  will-change: transform;
-  /* 回彈動畫交給 JS 控制；這裡先不設 transition 以免和 JS 打架 */
-}
-
-/* 讓進度條在內容層底下且不吃事件 */
-.swipe-bar{
-  z-index: 1;
-  pointer-events: none;
-}
-
-/* 小幅優化文字與透明度動畫的流暢度 */
-.swipe-bar .label{
-  will-change: opacity, transform;
-}
-
-/* 輕微啟用 GPU 合成，減少抖動 */
-.task{ transform: translateZ(0); }
       
+      /* 讓進度條內部不會因寬度變動而換行/跳動 */
+.swipe-bar { 
+  overflow: hidden;            /* 寬度不夠時把左側超出部分裁掉 */
+}
+
+
+
+.swipe-bar .label{
+  white-space: nowrap;         /* 禁止換行（CJK 也不換） */
+  flex: 0 0 auto;              /* 不要被壓縮 */
+  width: 72px;                 /* 固定一個寬度：🗑 +「移除」剛好單行 */
+  text-align: right;           /* 文字靠右對齊，視覺上貼近右邊 */
+  letter-spacing: 0.02em;      /* 可有可無：微調字距 */
+}
     </style>
   </head>
   <body>
@@ -1889,7 +1884,7 @@
           if (task.dataset.swipeBound === "1") return;
           task.dataset.swipeBound = "1";
           task.onclick = null;
-const card = task.querySelector('.task-content');
+
           const barL = task.querySelector(".swipe-bar.left");
           const labL = barL?.querySelector(".label");
 
@@ -1932,7 +1927,7 @@ const card = task.querySelector('.task-content');
             dx = dy = 0;
             width = task.offsetWidth || 1;
             mode = "pending";
-            card.style.transition = “none”;
+            task.style.transition = "none";
             try {
               task.setPointerCapture(e.pointerId);
             } catch (_) {}
@@ -1966,7 +1961,7 @@ const card = task.querySelector('.task-content');
             const adx = Math.abs(dx);
             const pct = Math.min(1, adx / width);
             const tilt = (dx / width) * MAX_TILT;
-            card.style.transform = `translateX(${Math.round(
+            task.style.transform = `translateX(${Math.round(
               dx
             )}px) rotate(${tilt}deg)`;
             if (dx < 0) {
@@ -1990,8 +1985,8 @@ const card = task.querySelector('.task-content');
             mode = "pending";
             isDown = false;
             activeId = null;
-            card.style.transition = "transform .18s";
-            card.style.transform = "";
+            task.style.transition = "transform .18s";
+            task.style.transform = "";
             resetBars();
 
             if (!wasSwipe && !cancel && tapLike) {
