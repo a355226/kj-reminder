@@ -1351,13 +1351,13 @@
       }
 
       document.addEventListener("click", (e) => {
-        const menu = document.getElementById("menu");
-        if (menu.classList.contains("show")) {
-          const inside = menu.contains(e.target);
-          const onFab = document.querySelector(".fab").contains(e.target);
-          if (!inside && !onFab) menu.classList.remove("show");
-        }
-      });
+  const menu = document.getElementById("menu");
+  if (!menu || !menu.classList.contains("show")) return;
+  const fab = document.querySelector(".fab");
+  const inside = menu.contains(e.target);
+  const onFab  = fab && fab.contains(e.target);
+  if (!inside && !onFab) closeFabMenu();                    // ← 同步關 & 還原「＋」
+});
 
       async function doLogout() {
         // 1) 關掉 Firebase 監聽
@@ -2209,13 +2209,14 @@
         if (!content || !content.contains(e.target)) closeModal(modal.id);
       });
       // Esc 關閉
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") {
-          document.querySelectorAll(".modal").forEach((m) => {
-            if (getComputedStyle(m).display !== "none") closeModal(m.id);
-          });
-        }
-      });
+     document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    document.querySelectorAll(".modal").forEach((m) => {
+      if (getComputedStyle(m).display !== "none") closeModal(m.id);
+    });
+    closeFabMenu();   // ← 新增：若 menu 展開也一併收
+  }
+});
 
       /* ===== 其他 ===== */
       function formatRocDateTime(ts) {
