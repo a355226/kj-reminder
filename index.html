@@ -1120,6 +1120,24 @@ button.palette-btn:active {
 .section.edit-mode .task .swipe-bar {
   display: none !important;
 }
+/* ===== Recurrence picker (inline + modal) ===== */
+.rec-mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-top:.5rem}
+.rec-bigbtn{padding:.6rem .8rem;border:1px solid #ddd;border-radius:8px;background:#f7fbff;cursor:pointer;font-weight:700}
+.rec-bigbtn:hover{background:#eef6ff}
+.rec-chiprow{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0}
+.rec-chip{min-width:35px;padding:.45rem .6rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;text-align:center}
+.rec-chip.selected{background:#176dff22;border-color:#176dff}
+.rec-footer{display:flex;gap:.75rem;margin-top:1rem}
+.rec-footer button{flex:1;padding:.6rem;border:none;border-radius:8px;cursor:pointer}
+.btn-light{background:#f2f2f2}
+.btn-primary{background:#176dff;color:#fff}
+.rec-cal-head{display:flex;align-items:center;justify-content:space-between;margin:.25rem 0 .5rem}
+.rec-nav{display:flex;gap:.4rem}
+.rec-nav button{padding:.25rem .5rem;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer}
+.rec-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:.35rem}
+.rec-dayname{font-size:.8rem;color:#666;text-align:center}
+.rec-date{aspect-ratio:1/1;border:1px solid #eee;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.rec-date.selected{outline:3px solid #176dff55;border-color:#176dff}
 
   </style>
 </head>
@@ -1599,6 +1617,517 @@ let dayMode = 'work'; // 'work' 工作天(預設) / 'calendar' 日曆天
     let tasks = [];
     let selectedTaskId = null;
 
+    (function(){
+  // ------ utils ------
+  const pad2 = n => String(n).padStart(2,'0');
+  const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+  const parseISO = s => { const d = new Date(s); d.setHours(0,0,0,0); return d; };
+  const today0 = () => { const d=new Date(); d.setHours(0,0,0,0); return d; };
+  const addDays = (d, n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+  const jsDowTo1234567 = dow => (dow===0?7:dow);
+  const mDays = (y,m) => new Date(y,m+1,0).getDate();
+  const uniqSorted = arr => Array.from(new Set(arr)).sort();
+  const isValidISO = s => !!s && !isNaN(new Date(s).getTime()) && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const deepcopy = obj => JSON.parse(JSON.stringify(obj||null));
+  const setText = (id, txt) => { const el=document.getElementById(id); if(el) el.textContent = txt||''; };
+
+  // ------ state ------
+  const TARGET_DETAIL = 'detail';
+  const TARGET_CREATE = 'create';
+  let currentTarget = null;
+  let createDraft = null; // 新增用排程草稿
+
+  // ------ helpers ------
+
+  // ===== A) 日期 vs 排程：互斥 + 即時摘要更新 + 精準 log =====
+// （把這段貼進你原本的 recurrence IIFE 內）
+
+// 兩個旗標：使用者是否在「詳情/新增」手動改過日期
+let manualDateEditedDetail = false;
+let manualDateEditedCreate = false;
+
+// 綁定日期輸入與排程的互斥規則
+function wireDateVsRecurrenceInterlock(target){
+  const id    = (target===TARGET_DETAIL) ? 'detailDate' : 'taskDate';
+  const sumId = (target===TARGET_DETAIL) ? 'recurrenceSummary' : 'recurrenceSummaryCreate';
+  const el = document.getElementById(id);
+  if (!el || el.__wired) return;
+
+  const onManual = () => {
+    if (target===TARGET_DETAIL){
+      manualDateEditedDetail = true;
+      const t = curTask?.();
+      if (t && t.recurrence){
+        delete t.recurrence;                  // 直接取消所有排程
+        setText(sumId, '');
+        console.warn('[recurrence/detail] 手動改日期 → 取消排程', {taskId: t.id, date: el.value});
+      } else {
+        console.log('[recurrence/detail] 手動改日期（本來就沒有排程）', {date: el.value});
+      }
+    } else {
+      manualDateEditedCreate = true;
+      if (createDraft){
+        createDraft = null;                   // 新增視窗：清掉草稿排程
+        setText(sumId, '');
+        console.warn('[recurrence/create] 手動改日期 → 取消排程草稿', {date: el.value});
+      } else {
+        console.log('[recurrence/create] 手動改日期（本來就沒有排程草稿）', {date: el.value});
+      }
+    }
+  };
+
+  el.addEventListener('input', onManual);
+  el.addEventListener('change', onManual);
+  el.__wired = true;
+}
+
+// 覆寫套用排程的總入口：先清手動旗標，再委派
+const __origApplyRecurrence = applyRecurrence;
+applyRecurrence = function(rec){
+  if (currentTarget===TARGET_DETAIL){
+    manualDateEditedDetail = false;    // 使用者選了排程 → 以排程為準
+    console.info('[recurrence/detail] 套用排程', rec);
+  } else {
+    manualDateEditedCreate = false;
+    console.info('[recurrence/create] 套用排程', rec);
+  }
+  return __origApplyRecurrence(rec);
+};
+
+// 把旗標暴露出去，給外層 saveTask/addTask 使用
+if (!window.__recurrenceCoreEx){
+  window.__recurrenceCoreEx = {
+    manualDetailDateEdit: () => manualDateEditedDetail,
+    manualCreateDateEdit: () => manualDateEditedCreate,
+    clearManualDetailDateEdit: () => { manualDateEditedDetail = false; },
+    clearManualCreateDateEdit: () => { manualDateEditedCreate = false; },
+  };
+}
+  function summaryFromRecurrence(rec){
+    if(!rec || !rec.type) return '';
+    if(rec.type==='weekly'){
+      const arr = (rec.days||[]).slice().sort((a,b)=>a-b);
+      return arr.length?`每週排程：${arr.join('、')}`:'（每週：尚未選擇）';
+    }
+    if(rec.type==='monthly'){
+      const arr = (rec.monthdays||[]).slice().sort((a,b)=>a-b);
+      return arr.length?`每月排程：${arr.join('、')}號`:'（每月：尚未選擇）';
+    }
+    if(rec.type==='custom'){
+      const arr = (rec.dates||[]).filter(isValidISO).map(parseISO).sort((a,b)=>a-b);
+      if(!arr.length) return '（自訂：尚未選擇）';
+      const parts=[]; let curY=null, buf=[];
+      for(const d of arr){
+        const R = d.getFullYear()-1911, md=`${d.getMonth()+1}/${d.getDate()}`;
+        if(curY===null){ curY=R; buf.push(`${R}/${md}`); }
+        else if(R===curY){ buf.push(md); }
+        else { parts.push(buf.join('、')); curY=R; buf=[`${R}/${md}`]; }
+      }
+      if(buf.length) parts.push(buf.join('、'));
+      return `自訂排程：${parts.join('；')}`;
+    }
+    return '';
+  }
+
+  function computeNext(rec, fromDate){
+    if(!rec||!rec.type) return null;
+    const base = new Date(fromDate); base.setHours(0,0,0,0);
+    if(rec.type==='weekly'){
+      const set = new Set(rec.days||[]); if(!set.size) return null;
+      for(let i=0;i<14;i++){ const d=addDays(base,i); if(set.has(jsDowTo1234567(d.getDay()))) return d; }
+      return null;
+    }
+    if(rec.type==='monthly'){
+      const arr=(rec.monthdays||[]).slice().sort((a,b)=>a-b).filter(x=>x>=1&&x<=31);
+      if(!arr.length) return null;
+      let y=base.getFullYear(), m=base.getMonth();
+      for(let k=0;k<48;k++){
+        const days=mDays(y,m);
+        for(const dd of arr){ if(dd>days) continue; const cand=new Date(y,m,dd); cand.setHours(0,0,0,0); if(cand>=base) return cand; }
+        if(m===11){m=0;y++;} else m++;
+      }
+      return null;
+    }
+    if(rec.type==='custom'){
+      const arr=(rec.dates||[]).filter(isValidISO).map(parseISO).sort((a,b)=>a-b);
+      for(const d of arr){ if(d>=base) return d; }
+      return null;
+    }
+    return null;
+  }
+  function matches(d, rec){
+    if(!rec||!rec.type||!d) return false;
+    if(rec.type==='weekly')  return (rec.days||[]).includes(jsDowTo1234567(d.getDay()));
+    if(rec.type==='monthly') return (rec.monthdays||[]).includes(d.getDate());
+    if(rec.type==='custom')  return (rec.dates||[]).includes(ymd(d));
+    return false;
+  }
+
+  // ------ inline UI (detail/create) ------
+function ensureDetailInlineUI(){
+  const dateEl = document.getElementById('detailDate'); 
+  if (!dateEl) return;
+  if (dateEl.parentElement.querySelector('#recurrenceBtn')) return;
+
+  const labels = Array.from(document.querySelectorAll('#detailForm label'))
+    .filter(l => l.textContent.trim().startsWith('預定完成日'));
+  if (labels[0]) {
+    labels[0].innerHTML = `<span>預定完成日</span><span id="recurrenceSummary" style="font-size:.85rem;color:#666;margin-left:.5rem;"></span>`;
+  }
+
+  // 建 row，但讓日期保持全寬（不要加 .half）
+  const row = document.createElement('div');
+  row.className = 'inline-row';
+  dateEl.classList.remove('half');           // 保險：移除可能存在的 .half
+  dateEl.parentElement.insertBefore(row, dateEl);
+  row.appendChild(dateEl);
+
+  // 建立按鈕，但直接隱藏（保留節點，其他程式仍可取得到 #recurrenceBtn）
+  const btn = document.createElement('button');
+  btn.id = 'recurrenceBtn';
+  btn.type = 'button';
+  btn.title = '定期排程';
+  btn.textContent = '🗓️';
+  btn.style.cssText = 'padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer;';
+  btn.onclick = () => openRecurrenceModal(TARGET_DETAIL);
+  row.appendChild(btn);
+
+  // 讓 📅 從版面消失，但不影響邏輯或其他程式碼的存取
+  btn.style.display = 'none';
+  btn.tabIndex = -1;
+  btn.setAttribute('aria-hidden', 'true');
+
+  // 互斥監聽照常綁
+  wireDateVsRecurrenceInterlock(TARGET_DETAIL);
+}
+
+  function ensureCreateInlineUI(){
+    const dateEl = document.getElementById('taskDate'); if(!dateEl) return;
+    if (dateEl.parentElement.querySelector('#recurrenceBtnCreate')) return;
+
+    const labels = Array.from(document.querySelectorAll('#taskModal .modal-content label'))
+      .filter(l=>l.textContent.trim().startsWith('預定完成日'));
+    if(labels[0]){
+      labels[0].innerHTML = `<span>預定完成日</span><span id="recurrenceSummaryCreate" style="font-size:.85rem;color:#666;margin-left:.5rem;"></span>`;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'inline-row';
+    dateEl.classList.add('half');
+    dateEl.parentElement.insertBefore(row, dateEl);
+    row.appendChild(dateEl);
+
+    const btn = document.createElement('button');
+    btn.id='recurrenceBtnCreate'; btn.type='button'; btn.title='定期排程'; btn.textContent='🗓️';
+    btn.style.cssText='padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer;';
+    btn.onclick = ()=>openRecurrenceModal(TARGET_CREATE);
+    row.appendChild(btn);
+    wireDateVsRecurrenceInterlock(TARGET_CREATE);
+  }
+
+  // ------ modal skins ------
+  function injectRecCSS(){ /* 已在 <style> 放了，不重複注入 */ }
+  function ensureModal(id, title, inner){
+    let m = document.getElementById(id);
+    if(!m){
+      m = document.createElement('div'); m.className='modal'; m.id=id;
+      m.innerHTML = `<div class="modal-content">
+        <button class="close-btn" onclick="closeModal('${id}')">✕</button>
+        <h3>${title}</h3><div class="rec-body">${inner||''}</div>
+      </div>`;
+      document.body.appendChild(m);
+    }
+    return m;
+  }
+  function openRecurrenceModal(target){
+    currentTarget = target||TARGET_DETAIL;
+    injectRecCSS();
+    const m = ensureModal('recurrenceModal','定期排程', `
+      <div class="rec-mode-grid">
+        <button class="rec-bigbtn" id="recModeWeekly">每週</button>
+        <button class="rec-bigbtn" id="recModeMonthly">每月</button>
+        <button class="rec-bigbtn" id="recModeCustom">自訂</button>
+      </div>`);
+    m.style.display='flex';
+    document.getElementById('recModeWeekly').onclick = ()=>{ closeModal('recurrenceModal'); openWeekly(); };
+    document.getElementById('recModeMonthly').onclick = ()=>{ closeModal('recurrenceModal'); openMonthly(); };
+    document.getElementById('recModeCustom').onclick = ()=>{ closeModal('recurrenceModal'); openCustom(); };
+  }
+
+  // ------ apply (detail/create) ------
+  function curTask(){
+    if(!window.selectedTaskId) return null;
+    return (Array.isArray(window.tasks)?window.tasks:[]).find(t=>t.id===window.selectedTaskId) || null;
+  }
+  function applyRecurrence(rec){
+    if(currentTarget===TARGET_CREATE) return applyCreate(rec);
+    return applyDetail(rec);
+  }
+  function applyDetail(rec){
+  const t = curTask(); if(!t) return;
+  t.recurrence = deepcopy(rec);
+  t.updatedAt = Date.now();
+
+  const base = today0();
+  // 有設定排程：一律以排程算「下一次」，忽略原本的預定完成日
+  if (rec && rec.type) {
+    const next = computeNext(rec, base);
+    if (next) {
+      const iso = ymd(next);
+      const dateEl = document.getElementById('detailDate');
+      if (dateEl) dateEl.value = iso;
+      t.date = iso;
+    }
+  }
+
+  setText('recurrenceSummary', summaryFromRecurrence(t.recurrence));
+  try{
+    if(typeof saveTasksToFirebase==='function') saveTasksToFirebase();
+    const lbl = document.getElementById('detailLastUpdate');
+    if(lbl && typeof formatRocDateTime==='function') lbl.textContent = '更新：' + formatRocDateTime(t.updatedAt);
+  }catch(_){}
+}
+
+function applyCreate(rec){
+  createDraft = deepcopy(rec);
+
+  const base = today0();
+  // 有設定排程：一律以排程算「下一次」，忽略目前輸入的日期
+  if (rec && rec.type) {
+    const next = computeNext(rec, base);
+    const dateEl = document.getElementById('taskDate');
+    if (next && dateEl) dateEl.value = ymd(next);
+  }
+
+  setText('recurrenceSummaryCreate', summaryFromRecurrence(createDraft));
+}
+
+
+  // ------ pickers ------
+  function currentRec(){
+    if(currentTarget===TARGET_CREATE) return createDraft||null;
+    const t = curTask(); return (t && t.recurrence) ? t.recurrence : null;
+  }
+  function openWeekly(){
+    const curr = currentRec();
+    const sel = new Set((curr && curr.type==='weekly')?(curr.days||[]):[]);
+    const m = ensureModal('recWeekly','每週',`
+      <div class="rec-chiprow" id="recWeekRow"></div>
+      <div class="rec-footer">
+        <button class="btn-light" onclick="closeModal('recWeekly')">取消</button>
+        <button class="btn-primary" id="recWeekOk">確認</button>
+      </div>`);
+    const row = m.querySelector('#recWeekRow'); row.innerHTML='';
+    [['一',1],['二',2],['三',3],['四',4],['五',5],['六',6],['日',7]].forEach(([txt,v])=>{
+      const b=document.createElement('button'); b.className='rec-chip'+(sel.has(v)?' selected':''); b.textContent=txt;
+      b.onclick=()=>{ sel.has(v)?sel.delete(v):sel.add(v); b.classList.toggle('selected'); };
+      row.appendChild(b);
+    });
+    m.style.display='flex';
+    m.querySelector('#recWeekOk').onclick=()=>{ applyRecurrence({type:'weekly', days:Array.from(sel).sort((a,b)=>a-b)}); closeModal('recWeekly'); };
+  }
+  function openMonthly(){
+    const curr = currentRec();
+    const sel = new Set((curr && curr.type==='monthly')?(curr.monthdays||[]):[]);
+    const m = ensureModal('recMonthly','每月',`
+      <div class="rec-chiprow" id="recMonRow"></div>
+      <div class="rec-footer">
+        <button class="btn-light" onclick="closeModal('recMonthly')">取消</button>
+        <button class="btn-primary" id="recMonOk">確認</button>
+      </div>`);
+    const row = m.querySelector('#recMonRow'); row.innerHTML='';
+    for(let i=1;i<=31;i++){
+      const b=document.createElement('button'); b.className='rec-chip'+(sel.has(i)?' selected':''); b.textContent=i;
+      b.onclick=()=>{ sel.has(i)?sel.delete(i):sel.add(i); b.classList.toggle('selected'); };
+      row.appendChild(b);
+    }
+    m.style.display='flex';
+    m.querySelector('#recMonOk').onclick=()=>{ applyRecurrence({type:'monthly', monthdays:Array.from(sel).sort((a,b)=>a-b)}); closeModal('recMonthly'); };
+  }
+  function openCustom(){
+    const curr = currentRec();
+    const selected = new Set((curr && curr.type==='custom')?(curr.dates||[]):[]);
+    const now=today0(); let y=now.getFullYear(), m=now.getMonth();
+    const M = ensureModal('recCustom','自訂',`
+      <div class="rec-cal-head">
+        <div class="rec-nav">
+          <button id="recPrev">&lt;</button>
+          <button id="recToday">今</button>
+          <button id="recNext">&gt;</button>
+        </div>
+        <div id="recYM"></div>
+      </div>
+      <div class="rec-cal-grid" id="recCalNames"></div>
+      <div class="rec-cal-grid" id="recCalGrid"></div>
+      <div class="rec-footer">
+        <button class="btn-light" onclick="closeModal('recCustom')">取消</button>
+        <button class="btn-primary" id="recCusOk">確認</button>
+      </div>`);
+    M.querySelector('#recCalNames').innerHTML=['一','二','三','四','五','六','日'].map(n=>`<div class="rec-dayname">${n}</div>`).join('');
+    function draw(){
+      M.querySelector('#recYM').textContent = `${y} 年 ${m+1} 月`;
+      const grid = M.querySelector('#recCalGrid'); grid.innerHTML='';
+      let lead = jsDowTo1234567(new Date(y,m,1).getDay())-1; if(lead<0) lead+=7;
+      const days=mDays(y,m);
+      for(let i=0;i<lead;i++) grid.appendChild(document.createElement('div'));
+      for(let d=1; d<=days; d++){
+        const cell=document.createElement('button'); cell.className='rec-date'; cell.textContent=d;
+        const iso=`${y}-${pad2(m+1)}-${pad2(d)}`;
+        if(selected.has(iso)) cell.classList.add('selected');
+        cell.onclick=()=>{ if(selected.has(iso)){selected.delete(iso);cell.classList.remove('selected');} else {selected.add(iso);cell.classList.add('selected');} };
+        grid.appendChild(cell);
+      }
+    }
+    M.querySelector('#recPrev').onclick=()=>{ if(m===0){m=11;y--;} else m--; draw(); };
+    M.querySelector('#recNext').onclick=()=>{ if(m===11){m=0;y++;} else m++; draw(); };
+    M.querySelector('#recToday').onclick=()=>{ const n=today0(); y=n.getFullYear(); m=n.getMonth(); draw(); };
+    M.style.display='flex'; draw();
+    M.querySelector('#recCusOk').onclick=()=>{ applyRecurrence({type:'custom', dates: uniqSorted(Array.from(selected)).filter(isValidISO)}); closeModal('recCustom'); };
+  }
+
+  // ------ self-heal + next spawn ------
+  function healEmptyDates(){
+    const list = Array.isArray(window.tasks)?window.tasks:[]; const base=today0(); let changed=false;
+    for(const t of list){
+      if(t && t.recurrence && (!t.date || !isValidISO(t.date))){
+        const next = computeNext(t.recurrence, base);
+        if(next){ t.date = ymd(next); t.updatedAt = Date.now(); changed=true; }
+      }
+    }
+    if(changed && typeof saveTasksToFirebase==='function') saveTasksToFirebase();
+  }
+  function spawnNextIfNeeded(template, completedAt){
+  if (!template || !template.recurrence || !template.recurrence.type) return;
+
+  // 今天 00:00
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // 本次被「消耗」的發生日期（以預定完成日為主）
+  let occISO = null;
+  if (template.date && /^\d{4}-\d{2}-\d{2}$/.test(template.date) && !isNaN(new Date(template.date).getTime())) {
+    occISO = template.date;
+  }
+
+  // 從「本次預定日 + 1」開始找；若沒有預定日，就用完成時間 +1
+  const from = new Date( occISO ? new Date(occISO).getTime() : (completedAt || Date.now()) );
+  from.setHours(0,0,0,0);
+  from.setDate(from.getDate() + 1);
+
+  // 複製一份 recurrence（避免直接改到原物件）
+  const nextRec = deepcopy(template.recurrence) || {};
+
+  // 自訂日期：把「剛完成的那一天」移除，避免再被算到
+  if (nextRec.type === 'custom' && occISO) {
+    nextRec.dates = Array.isArray(nextRec.dates)
+      ? nextRec.dates.filter(d => d !== occISO)
+      : [];
+  }
+
+  // 先找一次
+  let next = null;
+  try {
+    next = computeNext(nextRec, from);
+  } catch (e) {
+    console.error('[recurrence] computeNext 失敗：', e);
+    return;
+  }
+
+  // ★ 你新增的條件：若找到的 next 仍「早於今天」，就一路跳過到 >= 今天
+  while (next && next < today) {
+    const bump = new Date(next); bump.setDate(bump.getDate() + 1);
+    next = computeNext(nextRec, bump);
+  }
+  if (!next) return;
+
+  const now = Date.now();
+  const t = {
+    id:`task-${now}`,
+    section: template.section,
+    title: template.title,
+    content: template.content,
+    date: ymd(next),                // ← 已確保 >= 今天的下一次
+    note: template.note,
+    important: !!template.important,
+    createdAt: now,
+    updatedAt: now,
+    recurrence: nextRec
+  };
+
+  // 小保險：避免同分類/同標題/同日期重複
+  try {
+    if (Array.isArray(window.tasks) && window.tasks.some(x =>
+      x.section === t.section && x.title === t.title && x.date === t.date
+    )) {
+      return;
+    }
+  } catch(_) {}
+
+  // 若會被目前濾鏡藏住 → 切回進行中並清濾鏡（缺函式就用 fallback）
+  let willBeHidden = false;
+  try {
+    if (typeof isTaskVisibleUnderCurrentFilters === 'function') {
+      willBeHidden = !isTaskVisibleUnderCurrentFilters(t);
+    }
+  } catch(_) {}
+  if (willBeHidden) {
+    try {
+      if (typeof ensureOngoingVisible === 'function') {
+        ensureOngoingVisible();
+      } else {
+        statusFilter  = 'ongoing';
+        filterDay     = 'default';
+        importantOnly = false;
+        if (typeof showOngoing === 'function') showOngoing();
+      }
+    } catch (_) {
+      statusFilter  = 'ongoing';
+      filterDay     = 'default';
+      importantOnly = false;
+      if (typeof showOngoing === 'function') showOngoing();
+    }
+  }
+
+  // 推進資料 & 畫面 & 儲存
+  try {
+    (Array.isArray(window.tasks) ? window.tasks : tasks).push(t);
+
+    const days = (typeof getRemainingDays==='function') ? getRemainingDays(t.date) : null;
+    const bg   = (typeof getColorByDays==='function') ? getColorByDays(days) : '#e6f9f0';
+    const disp = (days==null)?'無':days;
+
+    const el = document.createElement('div');
+    el.className = 'task';
+    el.dataset.id = t.id;
+    el.style.backgroundColor = bg;
+    if (typeof taskCardHTML==='function') el.innerHTML = taskCardHTML(t, disp);
+    applyIconsToCard(el, t);
+    
+
+    const sec = document.getElementById(t.section); if (sec) sec.appendChild(el);
+    if (typeof sortTasks==='function') sortTasks(t.section);
+    if (typeof bindSwipeToTasks==='function') bindSwipeToTasks();
+    if (typeof applyDayFilter==='function') applyDayFilter();
+    if (typeof saveTasksToFirebase==='function') saveTasksToFirebase();
+    if (typeof showOngoing === 'function') showOngoing();
+  } catch(e){
+    console.error('[recurrence] 渲染/儲存新卡失敗：', e);
+  }
+}
+
+
+
+  // ------ 對外：給主程式用的小鉤子 ------
+  window.__recurrenceCore = {
+    ensureDetailInlineUI, ensureCreateInlineUI,
+    summaryFromRecurrence, computeNext, matches,
+    healEmptyDates, spawnNextIfNeeded,
+    get createDraft(){ return createDraft; },
+    set createDraft(v){ createDraft = v; },
+    applyDetail, applyCreate,
+    TARGET_DETAIL, TARGET_CREATE
+  };
+})();
+
     function hydrateRoomPath() {
   let saved = null;
 
@@ -1728,6 +2257,12 @@ function openModal(prefSectionId) {
     }
   }
   document.getElementById('taskModal').style.display = 'flex';
+  if (window.__recurrenceCore) {
+  const { ensureCreateInlineUI } = window.__recurrenceCore;
+  window.__recurrenceCore.createDraft = null;
+  ensureCreateInlineUI();
+  const sumEl = document.getElementById('recurrenceSummaryCreate'); if (sumEl) sumEl.textContent = '';
+}
   closeFabMenu();
 }
 
@@ -1786,25 +2321,78 @@ function getRemainingDays(dateStr) {
     }
 
     function addTask() {
+  // 先看是否有 Recurrence 草稿，必要時把日期校正到「下一個」規則日（預先幫使用者補合理日期）
+  try {
+    if (window.__recurrenceCore && window.__recurrenceCore.createDraft) {
+      const { createDraft, computeNext, matches } = window.__recurrenceCore;
+      const dateEl = document.getElementById('taskDate');
+      const base = new Date(); base.setHours(0,0,0,0);
+      const curISO = dateEl && dateEl.value ? dateEl.value : '';
+      const cur = curISO ? new Date(curISO) : null;
+      if (!curISO || isNaN(cur) || !matches(cur, createDraft) || cur < base) {
+        const next = computeNext(createDraft, base);
+        if (next && dateEl) {
+          const iso = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+          dateEl.value = iso;
+        }
+      }
+    }
+  } catch (_) {}
+
   const section = document.getElementById('taskSection').value;
   const title   = document.getElementById('taskTitle').value;
   const content = document.getElementById('taskContent').value;
   const date    = document.getElementById('taskDate').value;
   const note    = document.getElementById('taskNote').value;
+  if (!title) {
+    console.warn('[addTask] 未輸入標題，取消新增');
+    return;
+  }
 
-  if (!title) return;
-
-  // 讀「重要」勾選（沒有這個欄位就先設 false）
   const importantEl = document.getElementById('taskImportant');
   const important   = importantEl ? importantEl.checked : false;
 
-  const id = `task-${Date.now()}`;
-const now = Date.now();
-const task = { id, section, title, content, date, note, important, createdAt: now, updatedAt: now };
+  const id  = `task-${Date.now()}`;
+  const now = Date.now();
+  const task = { id, section, title, content, date, note, important, createdAt: now, updatedAt: now };
+
+  // ===== 互斥規則：手動日期 vs 排程草稿（含精準 log）=====
+  (function applyRecurrenceDraftWithMutex(){
+    try {
+      const rc  = window.__recurrenceCore;
+      const rce = window.__recurrenceCoreEx;
+
+      // 使用者在「新增視窗」手動改過日期 → 不套用排程草稿
+      if (rce?.manualCreateDateEdit?.()) {
+        console.warn('[addTask] 手動日期優先 → 不套用排程草稿', { date: task.date });
+        const sumEl = document.getElementById('recurrenceSummaryCreate');
+        if (sumEl) sumEl.textContent = '';
+        rce.clearManualCreateDateEdit?.();
+        return;
+      }
+
+      // 沒手動改日期且有草稿 → 套用排程，並把日期改成「下一次」
+      if (rc && rc.createDraft) {
+        task.recurrence = JSON.parse(JSON.stringify(rc.createDraft));
+        console.info('[addTask] 已套用排程草稿', { recurrence: task.recurrence });
+        const base = new Date(); base.setHours(0,0,0,0);
+        const next = rc.computeNext?.(task.recurrence, base);
+        if (next) {
+          const iso = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+          console.info('[addTask] 以排程為準 → 改寫日期', { dateFrom: task.date, dateTo: iso });
+          task.date = iso;
+        } else {
+          console.warn('[addTask] createDraft 存在但算不出下一次，保留目前日期', { date: task.date, rec: task.recurrence });
+        }
+      }
+    } catch (e) {
+      console.error('[addTask] 套用排程草稿失敗', e);
+    }
+  })();
 
   tasks.push(task);
 
-  const days = getRemainingDays(date);
+  const days = getRemainingDays(task.date);       // ← 用「最後決定」的日期
   const bg = getColorByDays(days);
   const displayDays = (days == null) ? '無' : days;
 
@@ -1812,26 +2400,32 @@ const task = { id, section, title, content, date, note, important, createdAt: no
   el.className = 'task';
   el.dataset.id = id;
   el.style.backgroundColor = bg;
-el.innerHTML = taskCardHTML(task, displayDays);
-
-
+  el.innerHTML = taskCardHTML(task, displayDays);
+  applyIconsToCard(el, task);
   document.getElementById(section).appendChild(el);
   sortTasks(section);
 
-// 關閉視窗（加回這行）
-closeModal('taskModal');
+  console.log('[addTask] 已新增並渲染', {
+    id: task.id, section: task.section, date: task.date, important: task.important, recurrence: task.recurrence || null
+  });
+
+  closeModal('taskModal');
 
   // 清空表單
   document.getElementById('taskTitle').value = '';
   document.getElementById('taskContent').value = '';
   document.getElementById('taskDate').value = '';
   document.getElementById('taskNote').value = '';
-  if (importantEl) importantEl.checked = false;   // ← 把「重要」勾選清掉
+  if (importantEl) importantEl.checked = false;
+
+  // 新任務成立後才清草稿
+  if (window.__recurrenceCore) window.__recurrenceCore.createDraft = null;
 
   applyDayFilter();
   saveTasksToFirebase();
   bindSwipeToTasks();
 }
+
 
 // 強制提交目前正在輸入（收合輸入法、觸發 compositionend / blur）
 function commitActiveInput() {
@@ -1894,7 +2488,27 @@ resetDetailPanels();
 }
 
   if (window.__resetSlideComplete) window.__resetSlideComplete();
-
+// Recurrence：插入內嵌按鈕與摘要、必要時校正日期
+if (window.__recurrenceCore) {
+  const { ensureDetailInlineUI, summaryFromRecurrence, computeNext } = window.__recurrenceCore;
+  ensureDetailInlineUI();
+  const t = task;                          // 你前面就有 const task = ...
+  if (t && t.recurrence) {
+    const base = new Date(); base.setHours(0,0,0,0);
+    const curISO = document.getElementById('detailDate')?.value || t.date || '';
+    const cur = curISO ? new Date(curISO) : null;
+    if (!curISO || isNaN(cur) || cur < base) {
+      const next = computeNext(t.recurrence, base);
+      if (next) {
+        const iso = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+        const de = document.getElementById('detailDate'); if (de) de.value = iso;
+        t.date = iso; t.updatedAt = Date.now();
+      }
+    }
+  }
+  const sum = t ? summaryFromRecurrence(t.recurrence) : '';
+  const elSum = document.getElementById('recurrenceSummary'); if (elSum) elSum.textContent = sum || '';
+}
   // ⬇⬇⬇ 新增這行：詳情一開就即時同步
   bindDetailLiveSync(task);
 }
@@ -1933,17 +2547,64 @@ function saveTask() {
   const task = tasks.find(t => t.id === selectedTaskId);
   if (!task) return;
 
-  task.section = document.getElementById('detailSection').value;
-  task.title = document.getElementById('detailTitle').value;
-  task.content = document.getElementById('detailContent').value;
-  task.date = document.getElementById('detailDate').value;
-  task.note = document.getElementById('detailNote').value;
-task.important = document.getElementById('detailImportant').checked;   // ★新增
-task.updatedAt = Date.now();
-const _lbl = document.getElementById('detailLastUpdate');
-if (_lbl) _lbl.textContent = '更新：' + formatRocDateTime(task.updatedAt);
+  // 先收集表單值
+  task.section   = document.getElementById('detailSection').value;
+  task.title     = document.getElementById('detailTitle').value;
+  task.content   = document.getElementById('detailContent').value;
+  task.date      = document.getElementById('detailDate').value;
+  task.note      = document.getElementById('detailNote').value;
+  task.important = document.getElementById('detailImportant').checked;
+  task.updatedAt = Date.now();
 
+  const _lbl = document.getElementById('detailLastUpdate');
+  if (_lbl) _lbl.textContent = '更新：' + formatRocDateTime(task.updatedAt);
 
+  // ===== 互斥規則：手動日期 vs 排程（含精準 log）=====
+  try {
+    const rc  = window.__recurrenceCore;
+    const rce = window.__recurrenceCoreEx;
+
+    // 使用者剛在詳情中「手動改了日期」→ 取消所有排程
+    if (rce?.manualDetailDateEdit?.()) {
+      if (task.recurrence) {
+        console.warn('[saveTask] 手動日期優先 → 取消原排程', {
+          id: task.id, date: task.date, oldRecurrence: task.recurrence
+        });
+      } else {
+        console.log('[saveTask] 手動日期（本來就無排程）', { id: task.id, date: task.date });
+      }
+      delete task.recurrence;
+      const sumEl = document.getElementById('recurrenceSummary');
+      if (sumEl) sumEl.textContent = '';
+      rce.clearManualDetailDateEdit?.();
+    }
+    // 沒有手動改日期，且任務有排程 → 以排程邏輯覆寫日期為「下一次」
+    else if (task.recurrence?.type && rc?.computeNext) {
+      const base = new Date(); base.setHours(0,0,0,0);
+      const next = rc.computeNext(task.recurrence, base);
+      if (next) {
+        const iso = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+        console.info('[saveTask] 以排程為準 → 改寫日期', {
+          id: task.id, dateFrom: task.date, dateTo: iso, recurrence: task.recurrence
+        });
+        task.date = iso;
+        const dateEl = document.getElementById('detailDate');
+        if (dateEl) dateEl.value = iso;  // 讓畫面同步顯示
+      } else {
+        console.warn('[saveTask] 有排程但算不出下一次，保留既有日期', {
+          id: task.id, date: task.date, recurrence: task.recurrence
+        });
+      }
+      // 即時更新排程摘要
+      const sum = rc?.summaryFromRecurrence?.(task.recurrence) || '';
+      const sumEl = document.getElementById('recurrenceSummary');
+      if (sumEl) sumEl.textContent = sum;
+    }
+  } catch (e) {
+    console.error('[saveTask] 互斥規則套用失敗', e);
+  }
+
+  // 重新渲染該卡片
   const oldEl = document.querySelector(`[data-id='${task.id}']`);
   if (oldEl) oldEl.remove();
 
@@ -1955,20 +2616,22 @@ if (_lbl) _lbl.textContent = '更新：' + formatRocDateTime(task.updatedAt);
   el.className = 'task';
   el.dataset.id = task.id;
   el.style.backgroundColor = bg;
-el.innerHTML = taskCardHTML(task, displayDays);
-
+  el.innerHTML = taskCardHTML(task, displayDays);
+  applyIconsToCard(el, task);
 
   document.getElementById(task.section).appendChild(el);
   sortTasks(task.section);
-  
   bindSwipeToTasks();
 
-  closeModal('detailModal'); // ✅ 新增這一行
-applyDayFilter();
-saveTasksToFirebase();
+  console.log('[saveTask] 已儲存並重新渲染', {
+    id: task.id, section: task.section, date: task.date, important: task.important
+  });
 
-
+  closeModal('detailModal');
+  applyDayFilter();
+  saveTasksToFirebase();
 }
+
 
 function isModalOpen(id){
   const m = document.getElementById(id);
@@ -2362,6 +3025,11 @@ function completeTask(id) {
   // 推進已完成並存雲
   completedTasks.push(finished);
   saveTasksToFirebase();
+  try{
+  if (window.__recurrenceCore) {
+    window.__recurrenceCore.spawnNextIfNeeded(t, finished.completedAt);
+  }
+}catch(_){}
 
   // 動畫
   const checkmark = document.getElementById('check-success');
@@ -2388,6 +3056,8 @@ function clearAllSections() {
 }
 
 function showOngoing() {
+  if (window.__recurrenceCore) window.__recurrenceCore.healEmptyDates();
+
   clearAllSections();
 // 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
 // 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
@@ -2412,6 +3082,7 @@ if (merged.length !== (categories || []).length) {
     el.dataset.id = t.id;
     el.style.backgroundColor = bg;
 el.innerHTML = taskCardHTML(t, displayDays);
+applyIconsToCard(el, t); 
 
     const sec = document.getElementById(t.section);
     if (sec) sec.appendChild(el);
@@ -2531,9 +3202,10 @@ if (completedMonthFilter === 'recent15') {
     el.className = 'task';
     el.dataset.id = t.id;
     el.style.backgroundColor = 'var(--green-light)'; // 完成用淡綠色背景
+    const prefix = getTaskIconsPrefix(t);
     el.innerHTML = `
       <div class="task-content">
-        <div class="task-title">✅ ${t.important ? '❗ ' : ''}${t.title}</div>
+        <div class="task-title">✅ ${prefix}${t.title}</div>
       </div>
       <div class="task-days">完</div>
     `;
@@ -2579,6 +3251,9 @@ if (modal) modal.classList.toggle('readonly', !!ro);
   // ★ 新增：鎖住/解鎖「重要」checkbox
   const importantEl = document.getElementById('detailImportant');
   if (importantEl) importantEl.disabled = ro;
+
+  const btn = document.getElementById('recurrenceBtn');
+if (btn) btn.disabled = !!ro;
 
 }
 
@@ -3794,7 +4469,59 @@ function applyImportantFilter(){
   hideEmptySectionsAfterFilter();
 }
 
+// 判斷在目前的濾鏡/頁籤下，這張卡是否會被顯示
+function isTaskVisibleUnderCurrentFilters(t){
+  // 在「已完成」頁籤永遠不會顯示進行中卡
+  if (statusFilter === 'done') return false;
+
+  // 重要篩選
+  if (importantOnly && !t.important) return false;
+
+  // 剩餘日篩選：default/all 都視為不篩
+  if (filterDay !== 'default' && filterDay !== 'all') {
+    const days = getRemainingDays(t.date);
+    const v = parseInt(filterDay, 10);
+    if (days == null || days > v) return false;
+  }
+  return true;
+}
+
+// 需要的話，把畫面切回「進行中」並清掉濾鏡，讓新卡看得到
+function ensureOngoingVisible(){
+  if (statusFilter === 'done') {
+    statusFilter = 'ongoing';
+    const dm = document.getElementById('doneMore');
+    if (dm) dm.style.display = 'none';
+  }
+  // 關掉「只看重要」
+  const chk = document.getElementById('importantOnly');
+  if (chk) chk.checked = false;
+  importantOnly = false;
+
+  // 清「剩餘日」濾鏡
+  filterDay = 'default';
+}
+
+// === 圖示前綴（❗️ / 📅）統一處理 ===
+function getTaskIconsPrefix(t){
+  let p = '';
+  if (t?.important) p += '❗️';
+  if (t?.recurrence && t.recurrence.type) p += '🗓️\u202F'; // 小空格（窄不換行）
+  return p;
+}
+
+// 把卡片內的標題改成「[圖示][標題]」
+function applyIconsToCard(el, t){
+  const titleEl = el?.querySelector?.('.task-title');
+  if (!titleEl) return;
+  // 直接覆寫 textContent，避免舊的 ❗️ 重複
+  titleEl.textContent = `${getTaskIconsPrefix(t)}${t.title || ''}`;
+}
+
   </script>
+
+ 
+
 
 <div id="check-success">
   <svg viewBox="0 0 52 52">
@@ -3938,5 +4665,8 @@ function applyImportantFilter(){
     </div>
   </div>
 </div>
+
+
+
 </body>
 </html>
