@@ -421,48 +421,45 @@ let completedLoaded = false;
         },
       };
     }
-    function summaryFromRecurrence(rec) {
-      if (!rec || !rec.type) return "";
-      if (rec.type === "weekly") {
-        const arr = (rec.days || []).slice().sort((a, b) => a - b);
-        return arr.length
-          ? `每週排程：${arr.join("、")}`
-          : "（每週：尚未選擇）";
-      }
-      if (rec.type === "monthly") {
-        const arr = (rec.monthdays || []).slice().sort((a, b) => a - b);
-        return arr.length
-          ? `每月排程：${arr.join("、")}號`
-          : "（每月：尚未選擇）";
-      }
-      if (rec.type === "custom") {
-        const arr = (rec.dates || [])
-          .filter(isValidISO)
-          .map(parseISO)
-          .sort((a, b) => a - b);
-        if (!arr.length) return "（自訂：尚未選擇）";
-        const parts = [];
-        let curY = null,
-          buf = [];
-        for (const d of arr) {
-          const R = d.getFullYear() - 1911,
-            md = `${d.getMonth() + 1}/${d.getDate()}`;
-          if (curY === null) {
-            curY = R;
-            buf.push(`${R}/${md}`);
-          } else if (R === curY) {
-            buf.push(md);
-          } else {
-            parts.push(buf.join("、"));
-            curY = R;
-            buf = [`${R}/${md}`];
-          }
-        }
-        if (buf.length) parts.push(buf.join("、"));
-        return `自訂排程：${parts.join("；")}`;
-      }
-      return "";
+  // --- 放在 recurrence IIFE 裡（summaryFromRecurrence 附近）---
+
+// 民國年 yyyy/m/d（不補0）
+function __rocYmd(d) {
+  return `${d.getFullYear() - 1911}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+// 只給「自訂排程」用的固定摘要建構器：114/8/20、114/9/30...
+function __buildCustomSummaryFixed(rec) {
+  const arr = (rec?.dates || [])
+    .filter(isValidISO)
+    .map(parseISO)
+    .sort((a, b) => a - b);
+  if (!arr.length) return "（自訂：尚未選擇）";
+  return `自訂排程：${arr.map(__rocYmd).join("、")}`;
+}
+
+// ⚠️ 改寫你原本的 summaryFromRecurrence（只動 custom 區塊就好）
+function summaryFromRecurrence(rec) {
+  if (!rec || !rec.type) return "";
+  if (rec.type === "weekly") {
+    const arr = (rec.days || []).slice().sort((a, b) => a - b);
+    return arr.length ? `每週排程：${arr.join("、")}` : "（每週：尚未選擇）";
+  }
+  if (rec.type === "monthly") {
+    const arr = (rec.monthdays || []).slice().sort((a, b) => a - b);
+    return arr.length ? `每月排程：${arr.join("、")}號` : "（每月：尚未選擇）";
+  }
+  if (rec.type === "custom") {
+    // ✅ 固定摘要：若已有就直接用；沒有就生成並回填到物件上
+    if (rec.summaryFixed && typeof rec.summaryFixed === "string") {
+      return rec.summaryFixed;
     }
+    const txt = __buildCustomSummaryFixed(rec);
+    try { rec.summaryFixed = txt; } catch (_) {}
+    return txt;
+  }
+  return "";
+}
 
     function computeNext(rec, fromDate) {
       if (!rec || !rec.type) return null;
@@ -655,6 +652,10 @@ let completedLoaded = false;
       const t = curTask();
       if (!t) return;
       t.recurrence = deepcopy(rec);
+        if (t.recurrence && t.recurrence.type === "custom") {
+    t.recurrence.summaryFixed = __buildCustomSummaryFixed(t.recurrence);
+  }
+
       t.updatedAt = Date.now();
 
       const base = today0();
@@ -680,6 +681,10 @@ let completedLoaded = false;
 
     function applyCreate(rec) {
       createDraft = deepcopy(rec);
+        if (createDraft && createDraft.type === "custom") {
+    createDraft.summaryFixed = __buildCustomSummaryFixed(createDraft);
+  }
+
 
       const base = today0();
       // 有設定排程：一律以排程算「下一次」，忽略目前輸入的日期
