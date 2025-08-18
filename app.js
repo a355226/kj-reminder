@@ -112,8 +112,53 @@ function saveCategoriesToFirebase() {
   };
 
   firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.database();
+ // 這兩行原本是 const
+let auth = firebase.auth();
+let db = firebase.database();
+
+// 新增：保存/重綁 onAuthStateChanged
+let offAuth = null;
+function attachAuthObserver() {
+  if (offAuth) { try { offAuth(); } catch (_) {} }
+  offAuth = auth.onAuthStateChanged(async (user) => {
+    try {
+      if (authTimer) {
+        clearTimeout(authTimer);
+        authTimer = null;
+      }
+
+      // 你原本 onAuthStateChanged 裡的內容，原封不動貼進來 ↓↓↓
+      // （這段我不重貼，直接把你原本的 finally: hideAutoLoginOverlay... 都放進來）
+
+      roomPath = hydrateRoomPath();
+      document.documentElement.classList.remove("show-login", "show-app");
+      if (user && roomPath) {
+        document.documentElement.classList.add("show-app");
+        const lp = document.getElementById("loginPage");
+        const app = document.querySelector(".container");
+        if (lp) lp.style.display = "";
+        if (app) app.style.display = "";
+        loadTasksFromFirebase();
+        updateSectionOptions();
+      } else {
+        document.documentElement.classList.add("show-login");
+      }
+    } catch (e) {
+      console.error("onAuthStateChanged 錯誤：", e);
+      alert("畫面初始化失敗：" + (e?.message || e));
+      document.documentElement.classList.remove("show-app");
+      document.documentElement.classList.add("show-login");
+    } finally {
+      hideAutoLoginOverlay();
+      stopAutoLoginWatchdog();
+      setLoginBusy(false);
+      loggingIn = false;
+    }
+  });
+}
+
+// 初始化完 Firebase 之後，馬上呼叫一次
+attachAuthObserver();
 
   // 建議：明確指定持久性（iOS/Safari 比較不會怪）
   auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
@@ -243,39 +288,47 @@ function saveCategoriesToFirebase() {
   let authBusy = false;
   let authTimer = null;
 
-  async function ensureSignedIn() {
-    if (authBusy) return;
-    authBusy = true;
-    setLoginBusy(true);
+async function ensureSignedIn() {
+  if (authBusy) return;
+  authBusy = true;
+  setLoginBusy(true);
 
-    // 讀憑證（要把回傳值接到全域）
-    roomPath = hydrateRoomPath();
+  roomPath = hydrateRoomPath();
 
-    // 沒有任何帳密 → 顯示登入頁（但不要 signOut！）
-    if (!roomPath) {
-      authBusy = false;
-      setLoginBusy(false);
-      document.documentElement.classList.remove("show-app");
-      document.documentElement.classList.add("show-login");
-      return;
-    }
-
-    // 有帳密 → 自動登入（只有「尚未登入」才登入，不要先登出）
-    showAutoLoginOverlay();
-    startAutoLoginWatchdog();
-    try {
-      if (!auth.currentUser) {
-        await auth.signInAnonymously();
-      }
-      // 這裡不切畫面，交給 onAuthStateChanged
-    } catch (e) {
-      alert("自動登入失敗：" + (e?.message || e));
-      hideAutoLoginOverlay();
-    } finally {
-      authBusy = false;
-      setLoginBusy(false);
-    }
+  if (!roomPath) {
+    authBusy = false;
+    setLoginBusy(false);
+    document.documentElement.classList.remove("show-app");
+    document.documentElement.classList.add("show-login");
+    return;
   }
+
+  // ★ 先暖機（iOS PWA 會比較穩）
+  if (isStandalone) {
+    try { await pwaAuthWarmup(); } catch (_) {}
+  } else {
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
+  }
+
+  // ★ 確保有網路
+  await waitOnline();
+
+  showAutoLoginOverlay();
+  startAutoLoginWatchdog();
+
+  try {
+    if (!auth.currentUser) {
+      await auth.signInAnonymously();
+    }
+    // 成功後交由 onAuthStateChanged 收尾（會關 overlay）
+  } catch (e) {
+    alert("自動登入失敗：" + (e?.message || e));
+    hideAutoLoginOverlay();
+  } finally {
+    authBusy = false;
+    setLoginBusy(false);
+  }
+}
 
   let roomPath = ""; // ← 放這裡！全檔只出現一次
   let tasksRef = null;
@@ -2979,7 +3032,7 @@ function saveTasksToFirebase() {
 
   function startAutoLoginWatchdog() {
     stopAutoLoginWatchdog();
-    autoLoginWD = setTimeout(runAutoLoginRescue, 2000); // 8 秒還沒好就救援
+    autoLoginWD = setTimeout(runAutoLoginRescue, 6000); // 6 秒還沒好就救援
   }
 
   function stopAutoLoginWatchdog() {
@@ -2989,71 +3042,64 @@ function saveTasksToFirebase() {
     }
   }
 
-  async function runAutoLoginRescue() {
+ async function runAutoLoginRescue() {
+  try {
+    // ---- Soft retry ----
+    await waitOnline();
+    try { if (auth.currentUser) await auth.signOut(); } catch (_) {}
     try {
-      // === Soft retry（溫和重試）===
-      await waitOnline();
-      try {
-        if (auth.currentUser) await auth.signOut();
-      } catch (_) {}
-      try {
-        // 依當下環境安全設定持久性
-        const idbOK = await testIndexedDB();
-        const mode =
-          isStandalone && idbOK
-            ? firebase.auth.Auth.Persistence.LOCAL
-            : firebase.auth.Auth.Persistence.NONE;
-        await auth.setPersistence(mode);
-      } catch (_) {}
-      // 5 秒保護超時
-      await Promise.race([
-        auth.signInAnonymously(),
-        new Promise((_, rej) =>
-          setTimeout(() => rej(new Error("soft-timeout")), 5000)
-        ),
-      ]);
-      return; // 成功就交給 onAuthStateChanged 後續切畫面
-    } catch (_e1) {
-      // 繼續下面 Hard reset
-    }
-
-    try {
-      // === Hard reset（強制重開 Firebase App）===
-      try {
-        if (auth.currentUser) await auth.signOut();
-      } catch (_) {}
-      try {
-        await firebase.app().delete();
-      } catch (_) {}
-      // 重新初始化
-      firebase.initializeApp(firebaseConfig);
-      window.auth = firebase.auth();
-      window.db = firebase.database();
-
-      try {
-        const idbOK = await testIndexedDB();
-        const mode =
-          isStandalone && idbOK
-            ? firebase.auth.Auth.Persistence.LOCAL
-            : firebase.auth.Auth.Persistence.NONE;
-        await auth.setPersistence(mode);
-      } catch (_) {}
-
-      await Promise.race([
-        auth.signInAnonymously(),
-        new Promise((_, rej) =>
-          setTimeout(() => rej(new Error("hard-timeout")), 5000)
-        ),
-      ]);
-      return;
-    } catch (_e2) {
-      // === 最終保底：給使用者手動登入 ===
-      hideAutoLoginOverlay();
-      document.documentElement.classList.remove("show-app");
-      document.documentElement.classList.add("show-login");
-      alert("自動登入逾時，請手動登入一次（已自動重設連線）。");
-    }
+      const idbOK = await testIndexedDB();
+      const mode = isStandalone && idbOK
+        ? firebase.auth.Auth.Persistence.LOCAL
+        : firebase.auth.Auth.Persistence.NONE;
+      await auth.setPersistence(mode);
+    } catch (_) {}
+    await Promise.race([
+      auth.signInAnonymously(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("soft-timeout")), 5000))
+    ]);
+    return; // 成功 → 交給 onAuthStateChanged 收尾（會關 overlay）
+  } catch (_e1) {
+    // 繼續 Hard reset
   }
+
+  try {
+    // ---- Hard reset ----
+    try { if (auth.currentUser) await auth.signOut(); } catch (_) {}
+    try { await firebase.app().delete(); } catch (_) {}
+
+    // 重新初始化
+    firebase.initializeApp(firebaseConfig);
+
+    // ★★★ 重新指向新實例（注意：前面已改成 let）
+    auth = firebase.auth();
+    db   = firebase.database();
+
+    // ★★★ 重新綁 onAuthStateChanged
+    attachAuthObserver();
+
+    // 依環境設定持久性
+    try {
+      const idbOK = await testIndexedDB();
+      const mode = isStandalone && idbOK
+        ? firebase.auth.Auth.Persistence.LOCAL
+        : firebase.auth.Auth.Persistence.NONE;
+      await auth.setPersistence(mode);
+    } catch (_) {}
+
+    await Promise.race([
+      auth.signInAnonymously(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("hard-timeout")), 5000))
+    ]);
+    return; // 成功 → 一樣交給 onAuthStateChanged
+  } catch (_e2) {
+    // 全部失敗 → 關 overlay、回登入頁，讓使用者手動登入
+    hideAutoLoginOverlay();
+    document.documentElement.classList.remove("show-app");
+    document.documentElement.classList.add("show-login");
+    alert("自動登入逾時，請手動登入一次（已自動重設連線）。");
+  }
+}
 
   // ===== Section 空白處：長按新增（不阻擋捲動）＋ 輕點彈跳 =====
   (function enableCleanLongPressNewTask() {
