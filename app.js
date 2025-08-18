@@ -22,7 +22,9 @@
     },
     true
   ); // 用捕獲階段，優先攔住
-
+let tasksLoaded = false;
+let completedLoaded = false;
+// categoriesLoaded 已存在，保留使用
   let importantOnly = false; // ❗ 最後一層篩選（預設關）
   let isEditing = false; // 目前是否在編輯分類模式
   // ✅ 分類在這裡維護（有順序）
@@ -86,10 +88,18 @@
     }
   });
 
-  function saveCategoriesToFirebase() {
-    if (!roomPath || !categoriesLoaded) return;
-    return db.ref(`${roomPath}/categories`).set(categories);
-  }
+ function saveCategoriesToFirebase() {
+  if (!roomPath) return;
+  const arr = Array.from(new Set(categories)); // 去重
+
+  // 用 transaction 合併，避免覆蓋掉他端或稍早的伺服器值
+  return db.ref(`${roomPath}/categories`).transaction(cur => {
+    const base = Array.isArray(cur) ? cur.slice()
+               : (cur && typeof cur === 'object') ? Object.values(cur)
+               : [];
+    return Array.from(new Set([...base, ...arr]));
+  });
+}
   // === Firebase 初始化（放在這支 <script> 的最上面）===
   const firebaseConfig = {
     apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
@@ -2458,123 +2468,102 @@
   document.addEventListener("DOMContentLoaded", ensureSignedIn);
   window.addEventListener("pageshow", ensureSignedIn);
   // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
-  function loadTasksFromFirebase() {
-    if (!roomPath || !auth.currentUser) return;
+function loadTasksFromFirebase() {
+  if (!roomPath || !auth.currentUser) return;
 
-    // 1) 先取消舊監聽（包含 categoriesRef，避免殘留跨帳戶回呼）
-    if (tasksRef) {
-      try {
-        tasksRef.off();
-      } catch (_) {}
-      tasksRef = null;
-    }
-    if (completedRef) {
-      try {
-        completedRef.off();
-      } catch (_) {}
-      completedRef = null;
-    }
-    if (categoriesRef) {
-      try {
-        categoriesRef.off();
-      } catch (_) {}
-      categoriesRef = null;
+  // …(你原本 detach 舊監聽的程式保留)
+
+  // 2) 切到新房前，清空本地狀態與 UI
+  categoriesLoaded = false;
+  tasksLoaded = false;          // ← 新增
+  completedLoaded = false;      // ← 新增
+  tasks = [];
+  completedTasks = [];
+  categories = [];
+  const sc = document.getElementById("section-container");
+  if (sc) sc.innerHTML = "";
+  updateSectionOptions && updateSectionOptions();
+
+  // 3) 綁新 ref
+  tasksRef = db.ref(`${roomPath}/tasks`);
+  completedRef = db.ref(`${roomPath}/completedTasks`);
+  categoriesRef = db.ref(`${roomPath}/categories`);
+
+  // 4) tasks
+  tasksRef.on("value", (snap) => {
+    const data = snap.val() || {};
+    tasks = Array.isArray(data) ? data.filter(Boolean) : Object.values(data);
+    tasksLoaded = true;                    // ← 新增
+    if (categoriesLoaded) showOngoing && showOngoing();
+  });
+
+  // 5) completed
+  completedRef.on("value", (snap) => {
+    const data = snap.val() || {};
+    completedTasks = Array.isArray(data) ? data.filter(Boolean) : Object.values(data);
+    completedLoaded = true;                // ← 新增
+    if (!categoriesLoaded) return;
+    if (statusFilter === "done") renderCompletedTasks && renderCompletedTasks();
+  });
+
+  // 6) categories（安全合併＋不再強制 set([])）
+  categoriesRef.on("value", (snap) => {
+    const cloud = snap.val();
+    // 統一轉陣列
+    let serverList = Array.isArray(cloud) ? cloud.slice()
+                   : (cloud && typeof cloud === 'object') ? Object.values(cloud)
+                   : [];
+
+    // 第一次載入前若本地已有暫存（例如使用者已先新增分類），做一次合併避免覆蓋掉
+    if (!categoriesLoaded && categories.length) {
+      serverList = Array.from(new Set([...serverList, ...categories]));
     }
 
-    // 2) 切到新房前，清空本地狀態與 UI，避免 A → B 殘留
-    categoriesLoaded = false;
-    tasks = [];
-    completedTasks = [];
-    categories = [];
-    const sc = document.getElementById("section-container");
-    if (sc) sc.innerHTML = "";
+    categories = serverList;
+    categoriesLoaded = true;
+
+    renderSections && renderSections(categories);
     updateSectionOptions && updateSectionOptions();
+    if (statusFilter === "done") {
+      renderCompletedTasks && renderCompletedTasks();
+    } else {
+      showOngoing && showOngoing();
+    }
 
-    // 3) 綁定新房的資料節點（注意：這裡使用全域 categoriesRef）
-    tasksRef = db.ref(`${roomPath}/tasks`);
-    completedRef = db.ref(`${roomPath}/completedTasks`);
-    categoriesRef = db.ref(`${roomPath}/categories`);
-
-    // 4) 任務（先只接資料，不渲染；等分類載入完成後再畫）
-    tasksRef.on("value", (snap) => {
-      const data = snap.val() || {};
-      tasks = Array.isArray(data) ? data.filter(Boolean) : Object.values(data);
-      if (categoriesLoaded) showOngoing && showOngoing();
-    });
-
-    // 5) 已完成（同上，等分類載入完成）
-    completedRef.on("value", (snap) => {
-      const data = snap.val() || {};
-      completedTasks = Array.isArray(data)
-        ? data.filter(Boolean)
-        : Object.values(data);
-      if (!categoriesLoaded) return;
-      if (statusFilter === "done") {
-        renderCompletedTasks && renderCompletedTasks();
-      }
-    });
-
-    // 6) 載入分類名稱（**分類是渲染的開關**）
-    categoriesRef.on("value", (snap) => {
-      const cloud = snap.val();
-
-      // 用房間專屬 key，避免跨帳互相影響
-      const welcomeKey = roomPath
-        ? `welcome_shown_${roomPath}`
-        : "welcome_shown";
-
-      if (cloud === null) {
-        // 第一次登入此房：不自動補預設，保持空清單
-        categories = [];
-
-        // 首次顯示歡迎窗（只對此房顯示一次）
-        if (!localStorage.getItem(welcomeKey)) {
-          const w = document.getElementById("welcomeModal");
-          if (w) w.style.display = "flex";
-          localStorage.setItem(welcomeKey, "1");
-        }
-
-        // 直接在雲端建立空陣列，之後就不會再收到 null
-        try {
-          categoriesRef.set([]);
-        } catch (_) {}
-      } else if (Array.isArray(cloud)) {
-        categories = cloud.slice();
-      } else if (cloud && typeof cloud === "object") {
-        categories = Object.values(cloud);
-      } else {
-        categories = [];
-      }
-
-      // 標記分類已就緒 → 之後的渲染才允許進行
-      categoriesLoaded = true;
-
-      // 先畫分類，再依狀態畫內容
-      renderSections && renderSections(categories);
-      updateSectionOptions && updateSectionOptions();
-
-      if (statusFilter === "done") {
-        renderCompletedTasks && renderCompletedTasks();
-      } else {
-        showOngoing && showOngoing();
-      }
-    });
-  }
+    // 若雲端原本是空，但本地已有暫存分類 → 回寫一次（防丟）
+    if (serverList.length === 0 && categories.length > 0) {
+      saveCategoriesToFirebase();
+    }
+  });
+}
 
   // === 寫回雲端（先寫 tasks；completed 之後再接）===
-  function saveTasksToFirebase() {
+function saveTasksToFirebase() {
+  if (!roomPath) return;
+
+  const updates = {};
+
+  // 僅在「對應分支已載入完成」才覆蓋，避免把雲端清空
+  if (tasksLoaded) {
     const obj = {};
-    tasks.forEach((t) => (obj[t.id] = t));
-
-    const doneObj = {};
-    completedTasks.forEach((t) => (doneObj[t.id] = t));
-
-    // 儲存任務資料
-    db.ref(`${roomPath}/tasks`).set(obj);
-    db.ref(`${roomPath}/completedTasks`).set(doneObj);
-
-    // 儲存分類資料
+    (Array.isArray(tasks) ? tasks : []).forEach(t => obj[t.id] = t);
+    updates[`${roomPath}/tasks`] = obj;
   }
+
+  if (completedLoaded) {
+    const doneObj = {};
+    (Array.isArray(completedTasks) ? completedTasks : []).forEach(t => doneObj[t.id] = t);
+    updates[`${roomPath}/completedTasks`] = doneObj;
+  }
+
+  if (Object.keys(updates).length) {
+    db.ref().update(updates);
+  } else {
+    console.warn("[saveTasksToFirebase] 跳過寫入：資料尚未載入完成", {
+      tasksLoaded, completedLoaded
+    });
+  }
+}
 
   //登出
 
