@@ -1415,6 +1415,37 @@ let categories = [];
 let sectionSortable = null;  // 存住 Sortable 實例
 let categoriesRef = null;
 // ✅ 重新畫出所有分類區塊（依照 categories 順序）
+
+// 放在全域
+let dbUnsubscribers = [];
+
+function detachDbListeners(){
+  try { dbUnsubscribers.forEach(off => off && off()); } catch(_) {}
+  dbUnsubscribers = [];
+}
+
+function resetAppState(){
+  // 清 JS 狀態
+  tasks = [];
+  completedTasks = [];
+  categories = [];
+  categoriesLoaded = false;
+  selectedTaskId = null;
+
+  // 清 UI
+  const box = document.getElementById('section-container');
+  if (box) box.innerHTML = '';
+
+  // 下拉選單也清乾淨
+  updateSectionOptions && updateSectionOptions();
+}
+
+// 綁 RTDB 時用這個包一下，方便之後 off()
+function bindValue(ref, callback){
+  ref.on('value', callback);
+  dbUnsubscribers.push(() => ref.off('value', callback));
+}
+
 function refreshCurrentView(){
   if (statusFilter === 'done') {
     buildDoneMonthMenu();
@@ -1438,8 +1469,8 @@ document.addEventListener('change', function(e){
 });
 
 function saveCategoriesToFirebase(){
-  if(!roomPath) return;
-  db.ref(`${roomPath}/categories`).set(categories);
+  if (!roomPath || !categoriesLoaded) return;
+  return db.ref(`${roomPath}/categories`).set(categories);
 }
 // === Firebase 初始化（放在這支 <script> 的最上面）===
 const firebaseConfig = {
@@ -1529,6 +1560,8 @@ async function bootAuth() {
     // 沒憑證：停在登入頁，並確保沒有殘留登入狀態
     try { if (auth.currentUser) await auth.signOut(); } catch(_) {}
     document.documentElement.classList.add('show-login');
+    detachDbListeners();
+resetAppState();
     setLoginBusy(false);
     bootAuth.__busy = false;
     return;
@@ -2981,8 +3014,8 @@ document.addEventListener("change", function(e){
 
 // 完成按鈕：改為歸檔（覆蓋你的 completeTask）
 function completeTask(id) {
-  commitActiveInput();       // 原本就有：盡量收掉輸入法/觸發 change
-  flushViewerSync();         // 新增：若在展開閱讀視圖，先把文字回灌到來源欄位
+  // 盡量收掉輸入法（OK：不分視圖都可做）
+  commitActiveInput();
 
   const targetId = id || selectedTaskId;
   if (!targetId) return;
@@ -2992,25 +3025,34 @@ function completeTask(id) {
 
   const t = tasks[idx];
 
-  // ★★★ 最小且關鍵的改動：不再仰賴 syncEditsIntoTask 的「modal 是否開啟」判斷，
-  // 只要欄位在 DOM，就直接把值覆寫回 task（桌機拖滑桿時就不會漏掉最後輸入）
-  (function harvestDetailFormIntoTask(task){
-    const secEl  = document.getElementById('detailSection');
-    const ttlEl  = document.getElementById('detailTitle');
-    const ctnEl  = document.getElementById('detailContent');
-    const dateEl = document.getElementById('detailDate');
-    const noteEl = document.getElementById('detailNote');
-    const impEl  = document.getElementById('detailImportant');
+  // 只有當詳情視窗開著 & 正在編輯同一筆任務時，才從表單回寫
+  const shouldHarvest =
+    isModalOpen('detailModal') && selectedTaskId === targetId;
 
-    if (secEl)  task.section   = secEl.value;
-    if (ttlEl)  task.title     = ttlEl.value;
-    if (ctnEl)  task.content   = ctnEl.value;
-    if (dateEl) task.date      = dateEl.value;
-    if (noteEl) task.note      = noteEl.value;
-    if (impEl)  task.important = !!impEl.checked;
+  if (shouldHarvest) {
+    // 若有展開閱讀層，先把內容回灌到表單欄位
+    flushViewerSync();
 
-    task.updatedAt = Date.now();
-  })(t);
+    // 回寫目前詳情表單的值（抓到欄位就寫，不開視窗時不執行）
+    (function harvestDetailFormIntoTask(task){
+      const secEl  = document.getElementById('detailSection');
+      const ttlEl  = document.getElementById('detailTitle');
+      const ctnEl  = document.getElementById('detailContent');
+      const dateEl = document.getElementById('detailDate');
+      const noteEl = document.getElementById('detailNote');
+      const impEl  = document.getElementById('detailImportant');
+
+      if (secEl)  task.section   = secEl.value;
+      if (ttlEl)  task.title     = ttlEl.value;
+      if (ctnEl)  task.content   = ctnEl.value;
+      if (dateEl) task.date      = dateEl.value;
+      if (noteEl) task.note      = noteEl.value;
+      if (impEl)  task.important = !!impEl.checked;
+
+      task.updatedAt = Date.now();
+    })(t);
+  }
+  // ❗詳情未開/不同筆時，不回寫，避免把空白標題覆蓋掉
 
   const finished = { ...t, completedAt: Date.now() };
 
@@ -3025,13 +3067,15 @@ function completeTask(id) {
   // 推進已完成並存雲
   completedTasks.push(finished);
   saveTasksToFirebase();
-  try{
-  if (window.__recurrenceCore) {
-    window.__recurrenceCore.spawnNextIfNeeded(t, finished.completedAt);
-  }
-}catch(_){}
 
-  // 動畫
+  // 若是排程任務，產生下一筆（會沿用正確的 title/內容等）
+  try {
+    if (window.__recurrenceCore) {
+      window.__recurrenceCore.spawnNextIfNeeded(t, finished.completedAt);
+    }
+  } catch (_){}
+
+  // 完成動畫
   const checkmark = document.getElementById('check-success');
   checkmark.classList.add('show');
   setTimeout(() => checkmark.classList.remove('show'), 1500);
@@ -3041,9 +3085,10 @@ function completeTask(id) {
     buildDoneMonthMenu();
     renderCompletedTasks();
   } else {
-    applyDayFilter();   // ← 交給既有濾鏡：預設會顯示全部分類，不會把空的藏起來
+    applyDayFilter();
   }
 }
+
 
 
 
@@ -3062,15 +3107,17 @@ function showOngoing() {
 // 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
 // 把任務裡用到的分類補進 categories（避免有任務但沒有分類）
 const needed = Array.from(new Set(tasks.map(t => t.section).filter(Boolean)));
-const merged = Array.from(new Set([...(categories || []), ...needed]));
 
-if (merged.length !== (categories || []).length) {
-  categories = merged;
-  if (categoriesLoaded) {          // ★★★ 分類載好後才允許存雲端
-    saveCategoriesToFirebase();
+if (categoriesLoaded) {
+  const merged = Array.from(new Set([...(categories || []), ...needed]));
+  if (merged.length !== (categories || []).length) {
+    categories = merged;
+    saveCategoriesToFirebase && saveCategoriesToFirebase();
   }
-  renderSections(categories);       // 重畫分類
+  renderSections && renderSections(categories);
 }
+// 分類尚未載入完成時，不渲染、不合併，等雲端資料到再畫
+
   // 重新把進行中 tasks 依 section 渲染
   tasks.forEach(t => {
     const days = getRemainingDays(t.date);
@@ -3418,60 +3465,85 @@ window.addEventListener('pageshow', ensureSignedIn);
 function loadTasksFromFirebase() {
   if (!roomPath || !auth.currentUser) return;
 
-  // 先取消舊監聽，避免重複綁
-  if (tasksRef) tasksRef.off();
-  if (completedRef) completedRef.off();
+  // 1) 先取消舊監聽（包含 categoriesRef，避免殘留跨帳戶回呼）
+  if (tasksRef) { try { tasksRef.off(); } catch (_) {} tasksRef = null; }
+  if (completedRef) { try { completedRef.off(); } catch (_) {} completedRef = null; }
+  if (categoriesRef) { try { categoriesRef.off(); } catch (_) {} categoriesRef = null; }
 
-  tasksRef = db.ref(`${roomPath}/tasks`);
-  completedRef = db.ref(`${roomPath}/completedTasks`);
-  const categoriesRef = db.ref(`${roomPath}/categories`);
+  // 2) 切到新房前，清空本地狀態與 UI，避免 A → B 殘留
+  categoriesLoaded = false;
+  tasks = [];
+  completedTasks = [];
+  categories = [];
+  const sc = document.getElementById('section-container');
+  if (sc) sc.innerHTML = '';
+  updateSectionOptions && updateSectionOptions();
 
+  // 3) 綁定新房的資料節點（注意：這裡使用全域 categoriesRef）
+  tasksRef      = db.ref(`${roomPath}/tasks`);
+  completedRef  = db.ref(`${roomPath}/completedTasks`);
+  categoriesRef = db.ref(`${roomPath}/categories`);
+
+  // 4) 任務（先只接資料，不渲染；等分類載入完成後再畫）
   tasksRef.on('value', (snap) => {
     const data = snap.val() || {};
-    tasks = Object.values(data);
-    showOngoing();
+    tasks = Array.isArray(data) ? data.filter(Boolean) : Object.values(data);
+    if (categoriesLoaded) showOngoing && showOngoing();
   });
 
+  // 5) 已完成（同上，等分類載入完成）
   completedRef.on('value', (snap) => {
     const data = snap.val() || {};
-    completedTasks = Object.values(data);
-    if (statusFilter === 'done') renderCompletedTasks();
+    completedTasks = Array.isArray(data) ? data.filter(Boolean) : Object.values(data);
+    if (!categoriesLoaded) return;
+    if (statusFilter === 'done') {
+      renderCompletedTasks && renderCompletedTasks();
+    }
   });
 
-  // 載入分類名稱
-// 載入分類名稱（允許空陣列，不自動補預設）
-categoriesRef.on('value', (snap) => {
-  const cloud = snap.val();
+  // 6) 載入分類名稱（**分類是渲染的開關**）
+  categoriesRef.on('value', (snap) => {
+    const cloud = snap.val();
 
-  // 用每個房間專屬的 key，確保不同帳號各自顯示一次
-  const welcomeKey = roomPath ? `welcome_shown_${roomPath}` : 'welcome_shown';
+    // 用房間專屬 key，避免跨帳互相影響
+    const welcomeKey = roomPath ? `welcome_shown_${roomPath}` : 'welcome_shown';
 
-  if (cloud === null) {
-    // 第一次登入：不補預設，分類維持空
-    categories = [];
+    if (cloud === null) {
+      // 第一次登入此房：不自動補預設，保持空清單
+      categories = [];
 
-    // 本帳號（room）還沒看過才顯示
-    if (!localStorage.getItem(welcomeKey)) {
-      document.getElementById('welcomeModal').style.display = 'flex';
-      localStorage.setItem(welcomeKey, '1');
+      // 首次顯示歡迎窗（只對此房顯示一次）
+      if (!localStorage.getItem(welcomeKey)) {
+        const w = document.getElementById('welcomeModal');
+        if (w) w.style.display = 'flex';
+        localStorage.setItem(welcomeKey, '1');
+      }
+
+      // 直接在雲端建立空陣列，之後就不會再收到 null
+      try { categoriesRef.set([]); } catch(_) {}
+    } else if (Array.isArray(cloud)) {
+      categories = cloud.slice();
+    } else if (cloud && typeof cloud === 'object') {
+      categories = Object.values(cloud);
+    } else {
+      categories = [];
     }
 
-    // 把空陣列寫上雲端，之後就不是 null 了
-    saveCategoriesToFirebase();
+    // 標記分類已就緒 → 之後的渲染才允許進行
+    categoriesLoaded = true;
 
-  } else if (Array.isArray(cloud)) {
-    categories = cloud.slice();
-  } else if (cloud && typeof cloud === 'object') {
-    categories = Object.values(cloud);
-  } else {
-    categories = [];
-  }
+    // 先畫分類，再依狀態畫內容
+    renderSections && renderSections(categories);
+    updateSectionOptions && updateSectionOptions();
 
-  categoriesLoaded = true;
-  renderSections(categories);
-  if (statusFilter === 'done') { renderCompletedTasks(); } else { showOngoing(); }
-});
+    if (statusFilter === 'done') {
+      renderCompletedTasks && renderCompletedTasks();
+    } else {
+      showOngoing && showOngoing();
+    }
+  });
 }
+
 
 
 // === 寫回雲端（先寫 tasks；completed 之後再接）===
