@@ -2592,49 +2592,61 @@ function saveTask() {
   const _lbl = document.getElementById('detailLastUpdate');
   if (_lbl) _lbl.textContent = '更新：' + formatRocDateTime(task.updatedAt);
 
-  // ===== 互斥規則：手動日期 vs 排程（含精準 log）=====
   try {
     const rc  = window.__recurrenceCore;
     const rce = window.__recurrenceCoreEx;
 
-    // 使用者剛在詳情中「手動改了日期」→ 取消所有排程
+    // 使用者剛在詳情中「手動改了日期」→ 取消排程（維持你的互斥規則）
     if (rce?.manualDetailDateEdit?.()) {
       if (task.recurrence) {
         console.warn('[saveTask] 手動日期優先 → 取消原排程', {
           id: task.id, date: task.date, oldRecurrence: task.recurrence
         });
-      } else {
-        console.log('[saveTask] 手動日期（本來就無排程）', { id: task.id, date: task.date });
       }
       delete task.recurrence;
       const sumEl = document.getElementById('recurrenceSummary');
       if (sumEl) sumEl.textContent = '';
       rce.clearManualDetailDateEdit?.();
     }
-    // 沒有手動改日期，且任務有排程 → 以排程邏輯覆寫日期為「下一次」
+
+    // 有排程 & 沒手動改日期：僅在需要時才自動糾正日期
     else if (task.recurrence?.type && rc?.computeNext) {
       const base = new Date(); base.setHours(0,0,0,0);
-      const next = rc.computeNext(task.recurrence, base);
-      if (next) {
-        const iso = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
-        console.info('[saveTask] 以排程為準 → 改寫日期', {
-          id: task.id, dateFrom: task.date, dateTo: iso, recurrence: task.recurrence
-        });
-        task.date = iso;
-        const dateEl = document.getElementById('detailDate');
-        if (dateEl) dateEl.value = iso;  // 讓畫面同步顯示
+      const dateEl = document.getElementById('detailDate');
+
+      const curISO  = dateEl?.value || task.date || '';
+      const curDate = (curISO && /^\d{4}-\d{2}-\d{2}$/.test(curISO)) ? new Date(curISO) : null;
+      const isValid = !!curDate && !isNaN(curDate);
+      const isPast  = isValid ? (curDate < base) : true;
+      const matches = (isValid && rc?.matches) ? rc.matches(curDate, task.recurrence) : false;
+
+      // 只有「日期無效 / 早於今天 / 不符合規則」才改為下一次
+      if (!isValid || isPast || !matches) {
+        const next = rc.computeNext(task.recurrence, base);
+        if (next) {
+          const iso = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+          console.info('[saveTask] 日期不合理 → 依排程改為下一次', {
+            id: task.id, dateFrom: task.date, dateTo: iso, recurrence: task.recurrence
+          });
+          task.date = iso;
+          if (dateEl) dateEl.value = iso; // 同步畫面
+        } else {
+          console.warn('[saveTask] 有排程但算不出下一次，保留既有日期', {
+            id: task.id, date: task.date, recurrence: task.recurrence
+          });
+        }
       } else {
-        console.warn('[saveTask] 有排程但算不出下一次，保留既有日期', {
-          id: task.id, date: task.date, recurrence: task.recurrence
-        });
+        // 合理且符合規則 → 保留使用者既有日期（不跳回/不重置）
+        task.date = curISO;
       }
-      // 即時更新排程摘要
+
+      // 更新排程摘要顯示
       const sum = rc?.summaryFromRecurrence?.(task.recurrence) || '';
       const sumEl = document.getElementById('recurrenceSummary');
       if (sumEl) sumEl.textContent = sum;
     }
   } catch (e) {
-    console.error('[saveTask] 互斥規則套用失敗', e);
+    console.error('[saveTask] 排程/日期互斥規則處理失敗', e);
   }
 
   // 重新渲染該卡片
@@ -2656,14 +2668,11 @@ function saveTask() {
   sortTasks(task.section);
   bindSwipeToTasks();
 
-  console.log('[saveTask] 已儲存並重新渲染', {
-    id: task.id, section: task.section, date: task.date, important: task.important
-  });
-
   closeModal('detailModal');
   applyDayFilter();
   saveTasksToFirebase();
 }
+
 
 
 function isModalOpen(id){
