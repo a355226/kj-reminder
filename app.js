@@ -88,16 +88,15 @@ let completedLoaded = false;
     }
   });
 
- function saveCategoriesToFirebase() {
+function saveCategoriesToFirebase() {
   if (!roomPath) return;
-  const arr = Array.from(new Set(categories)); // 去重
-
-  // 用 transaction 合併，避免覆蓋掉他端或稍早的伺服器值
+  const arr = Array.from(new Set(categories)); // 本機的最新順序
   return db.ref(`${roomPath}/categories`).transaction(cur => {
     const base = Array.isArray(cur) ? cur.slice()
                : (cur && typeof cur === 'object') ? Object.values(cur)
                : [];
-    return Array.from(new Set([...base, ...arr]));
+    const rest = base.filter(x => !arr.includes(x)); // server 有但本機沒列到的
+    return [...arr, ...rest]; // ★ 以本機順序優先
   });
 }
   // === Firebase 初始化（放在這支 <script> 的最上面）===
