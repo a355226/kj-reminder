@@ -3760,6 +3760,11 @@
     deleteCompletedConfirmed,
     openLogoutModal,
     doLogout,
+      toggleDetailExpand,
+  viewerUndo,
+  viewerRedo,
+  viewerCopy,
+
   });
 
   // --- 這行以上 ---
