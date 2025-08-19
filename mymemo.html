@@ -2418,6 +2418,8 @@
     overlay.style.display = "none"; // 失敗時至少讓使用者操作得到
   }
 }
+
+  document.addEventListener("DOMContentLoaded", bootFromTask);
       function sanitizeKey(s) {
         return String(s).replace(/[.#$/\[\]\/]/g, "_");
       }
