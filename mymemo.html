@@ -1225,8 +1225,8 @@
           "https://kjreminder-24d74-default-rtdb.asia-southeast1.firebasedatabase.app/",
       };
       firebase.initializeApp(firebaseConfig);
-      const auth = firebase.auth();
-      const db = firebase.database();
+      let auth = firebase.auth();
+      let db = firebase.database();
 
       /* ===== 狀態 ===== */
       let roomPath = ""; // rooms/{user}-{pass}
@@ -2380,51 +2380,44 @@
         if (el) el.style.display = "none";
       }
 
-      async function bootFromTask() {
-        const overlay = document.getElementById("autologin-overlay");
-        const app = document.getElementById("app");
+  async function bootFromTask() {
+  const overlay = document.getElementById("autologin-overlay");
+  overlay.style.display = "flex"; // 先蓋住，避免殘影
 
-        // 蓋起來，避免殘影
-        overlay.style.display = "flex";
+  // 1) roomPath 沒有就導回登入
+  const rp = hydrateRoomPath();
+  if (!rp) { location.replace("index.html"); return; }
+  roomPath = rp;
 
-        try {
-          // 1) 先算出 roomPath，沒有就回登入
-          const rp = hydrateRoomPath();
-          if (!rp) {
-            location.replace("index.html");
-            return;
-          }
-          roomPath = rp; // 全域只此一份
+  // 2) 綁觀察者：它會在「已登入／剛登入」時自動開 App + 綁資料 + 關遮罩
+  attachAuthObserver();
 
-          // 2) 固定會話
-          try {
-            await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-          } catch (_) {}
+  try {
+    // 3) 固定會話
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
 
-          // 3) 若沒有 user 就匿名登入
-          if (!auth.currentUser) {
-            try {
-              await auth.signInAnonymously();
-            } catch (e) {
-              console.warn("Anonymous sign-in failed", e);
-            }
-          }
+    // 4) 若一開始就有 user，觀察者會很快回呼 → 這裡什麼都不用做
+    if (auth.currentUser) {
+      console.info("[auto] already signed in; wait for observer tick");
+      return;
+    }
 
-          // 4) 綁定 RTDB 路徑
-          bindFirebase();
+    // 5) 真的需要登入 → 顯示登入中（遮罩已在）、啟動看門狗
+    startAutoLoginWatchdog(8000);
+    await Promise.race([
+      auth.signInAnonymously(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("sign-in timeout")), 7000))
+    ]);
 
-          // 5) 顯示 App
-          app.style.display = "block";
-        } catch (e) {
-          console.error(e);
-          alert("初始化失敗，請重新整理");
-        } finally {
-          // 收掉覆蓋層（就算失敗也收）
-          overlay.style.display = "none";
-        }
-      }
-
-      document.addEventListener("DOMContentLoaded", bootFromTask);
+    // 成功 resolve 的話，觀察者很快會收到 user 並關遮罩
+    stopAutoLoginWatchdog();
+  } catch (e) {
+    stopAutoLoginWatchdog();
+    console.warn("Anonymous sign-in failed", e);
+    alert("自動登入失敗，請重新整理");
+    overlay.style.display = "none"; // 失敗時至少讓使用者操作得到
+  }
+}
       function sanitizeKey(s) {
         return String(s).replace(/[.#$/\[\]\/]/g, "_");
       }
@@ -2459,6 +2452,65 @@
         } catch (_) {}
         window.location.href = "index.html";
       }
+      // --- 看門狗（只有真的在嘗試登入時才會啟動） ---
+let __loginPending = false;
+let __autoLoginWD = null;
+
+function startAutoLoginWatchdog(ms = 8000) {
+  stopAutoLoginWatchdog();
+  __loginPending = true;
+  __autoLoginWD = setTimeout(() => {
+    if (!__loginPending) return;
+    console.warn("[auto] login watchdog fired");
+    runAutoLoginRescue(); // 可選：見下
+  }, ms);
+}
+function stopAutoLoginWatchdog() {
+  __loginPending = false;
+  if (__autoLoginWD) { clearTimeout(__autoLoginWD); __autoLoginWD = null; }
+}
+
+// --- 觀察者：唯一入口，決定何時綁資料、顯示 App、關遮罩 ---
+function attachAuthObserver() {
+  auth.onAuthStateChanged((user) => {
+    console.info("[auto] onAuthStateChanged:", !!user);
+    const overlay = document.getElementById("autologin-overlay");
+    const app = document.getElementById("app");
+
+    if (user) {
+      stopAutoLoginWatchdog();           // 一旦有 user 就關看門狗
+      bindFirebase();                    // 現在綁 RTDB 才安全
+      app.style.display = "block";
+      overlay.style.display = "none";
+    } else {
+      // 尚未登入 → 保持遮罩顯示，等待登入或救援
+      overlay.style.display = "flex";
+    }
+  });
+}
+
+// ---（可選）救援：硬重置 Firebase 並重新登入匿名 ---
+async function runAutoLoginRescue() {
+  try {
+    console.warn("[auto] rescue: hard reset firebase");
+    unbindFirebase();
+    try { await firebase.app().delete(); } catch (_) {}
+    firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db   = firebase.database();
+    attachAuthObserver(); // 重新綁觀察者
+
+    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    await auth.signInAnonymously();
+  } catch (e) {
+    console.error("[auto] rescue failed", e);
+    alert("登入逾時，請重新整理或稍後再試");
+    document.getElementById("autologin-overlay").style.display = "none";
+  } finally {
+    stopAutoLoginWatchdog();
+  }
+}
+      
     </script>
 
     <!-- Loading（切換中） -->
