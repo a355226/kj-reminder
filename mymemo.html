@@ -827,7 +827,7 @@
       style="
         position: fixed;
         inset: 0;
-        display: flex;
+        display: none;
         align-items: center;
         justify-content: center;
         background: rgba(255, 255, 255, 0.72);
@@ -2380,42 +2380,54 @@
         if (el) el.style.display = "none";
       }
 
-  async function bootFromTask() {
+async function bootFromTask() {
   const overlay = document.getElementById("autologin-overlay");
-  overlay.style.display = "flex"; // 先蓋住，避免殘影
+  const app = document.getElementById("app");
+  
+    // ★ 貼這三行（讀 fast_switch，決定寬限時間）
+  const fast = sessionStorage.getItem('fast_switch') === '1';
+  sessionStorage.removeItem('fast_switch');
+  const graceMs = fast ? 800 : 400;
 
-  // 1) roomPath 沒有就導回登入
+  // 0) 先不要動遮罩，保持 hidden（HTML/CSS 預設 display:none）
+  // ★ 不要 overlay.style.display = "flex";
+
+  // 1) 沒 roomPath 就回登入
   const rp = hydrateRoomPath();
   if (!rp) { location.replace("index.html"); return; }
   roomPath = rp;
 
-  // 2) 綁觀察者：它會在「已登入／剛登入」時自動開 App + 綁資料 + 關遮罩
+  // 2) 先綁觀察者（拿到 user 後會自動 bindFirebase + 顯示 App）
   attachAuthObserver();
 
+  // 3) 固定會話（不要阻塞 UI）
+  try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
+
+  // 4) 快速路徑：若 currentUser 已經就緒，直接進 App，完全不顯示遮罩
+  if (auth.currentUser) {
+    bindFirebase();
+    app.style.display = "block";
+    overlay.style.display = "none";
+    return;
+  }
+
+  // 5) ★ 寬限 400ms：這段時間等 Firebase 還原既有 session
+  const grace = setTimeout(() => {
+    // 仍然沒有使用者 → 才把遮罩打開
+    if (!auth.currentUser) overlay.style.display = "flex";
+  }, 400);
+
   try {
-    // 3) 固定會話
-    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
-
-    // 4) 若一開始就有 user，觀察者會很快回呼 → 這裡什麼都不用做
-    if (auth.currentUser) {
-      console.info("[auto] already signed in; wait for observer tick");
-      return;
-    }
-
-    // 5) 真的需要登入 → 顯示登入中（遮罩已在）、啟動看門狗
+    // 6) ★ 如果真的沒有 session，就匿名登入（觀察者會在登入後關遮罩）
     startAutoLoginWatchdog(8000);
-    await Promise.race([
-      auth.signInAnonymously(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("sign-in timeout")), 7000))
-    ]);
-
-    // 成功 resolve 的話，觀察者很快會收到 user 並關遮罩
-    stopAutoLoginWatchdog();
+    await auth.signInAnonymously();
   } catch (e) {
-    stopAutoLoginWatchdog();
     console.warn("Anonymous sign-in failed", e);
     alert("自動登入失敗，請重新整理");
-    overlay.style.display = "none"; // 失敗時至少讓使用者操作得到
+    overlay.style.display = "none";
+  } finally {
+    clearTimeout(grace);
+    stopAutoLoginWatchdog();
   }
 }
 
@@ -2475,18 +2487,12 @@ function stopAutoLoginWatchdog() {
 // --- 觀察者：唯一入口，決定何時綁資料、顯示 App、關遮罩 ---
 function attachAuthObserver() {
   auth.onAuthStateChanged((user) => {
-    console.info("[auto] onAuthStateChanged:", !!user);
     const overlay = document.getElementById("autologin-overlay");
     const app = document.getElementById("app");
-
     if (user) {
-      stopAutoLoginWatchdog();           // 一旦有 user 就關看門狗
-      bindFirebase();                    // 現在綁 RTDB 才安全
+      bindFirebase();
       app.style.display = "block";
       overlay.style.display = "none";
-    } else {
-      // 尚未登入 → 保持遮罩顯示，等待登入或救援
-      overlay.style.display = "flex";
     }
   });
 }
