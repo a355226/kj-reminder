@@ -3032,7 +3032,7 @@ function saveTasksToFirebase() {
 
   function startAutoLoginWatchdog() {
     stopAutoLoginWatchdog();
-    autoLoginWD = setTimeout(runAutoLoginRescue, 6000); // 6 秒還沒好就救援
+    autoLoginWD = setTimeout(runAutoLoginRescue, 3000); // 6 秒還沒好就救援
   }
 
   function stopAutoLoginWatchdog() {
