@@ -90,15 +90,10 @@ let completedLoaded = false;
 
 function saveCategoriesToFirebase() {
   if (!roomPath) return;
-  const arr = Array.from(new Set(categories)); // 本機的最新順序
-  return db.ref(`${roomPath}/categories`).transaction(cur => {
-    const base = Array.isArray(cur) ? cur.slice()
-               : (cur && typeof cur === 'object') ? Object.values(cur)
-               : [];
-    const rest = base.filter(x => !arr.includes(x)); // server 有但本機沒列到的
-    return [...arr, ...rest]; // ★ 以本機順序優先
-  });
+  const arr = Array.from(new Set(categories));
+  return db.ref(`${roomPath}/categories`).set(arr); // ← 直接覆蓋，不合併
 }
+
   // === Firebase 初始化（放在這支 <script> 的最上面）===
   const firebaseConfig = {
     apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
