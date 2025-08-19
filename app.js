@@ -294,7 +294,6 @@ async function ensureSignedIn() {
   setLoginBusy(true);
 
   roomPath = hydrateRoomPath();
-
   if (!roomPath) {
     authBusy = false;
     setLoginBusy(false);
@@ -303,27 +302,49 @@ async function ensureSignedIn() {
     return;
   }
 
-  // ★ 先暖機（iOS PWA 會比較穩）
+  // 先暖機（PWA 冷啟較穩）
   if (isStandalone) {
     try { await pwaAuthWarmup(); } catch (_) {}
   } else {
     try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
   }
-
-  // ★ 確保有網路
   await waitOnline();
 
+  // ✅ 已經是登入狀態 → 直接進 app，完全不要啟動 overlay/watchdog
+  if (auth.currentUser) {
+    stopAutoLoginWatchdog();
+    hideAutoLoginOverlay();
+    document.documentElement.classList.add("show-app");
+    document.documentElement.classList.remove("show-login");
+    // 進來後載資料（安全：多叫一次也只會覆蓋監聽）
+    loadTasksFromFirebase();
+    updateSectionOptions?.();
+    authBusy = false;
+    setLoginBusy(false);
+    return;
+  }
+
+  // 走到這裡才表示「真的要做一次登入」
   showAutoLoginOverlay();
   startAutoLoginWatchdog();
 
   try {
-    if (!auth.currentUser) {
-      await auth.signInAnonymously();
-    }
-    // 成功後交由 onAuthStateChanged 收尾（會關 overlay）
-  } catch (e) {
-    alert("自動登入失敗：" + (e?.message || e));
+    // 用 Promise.race 給 sign-in 自己一個超時，避免卡死
+    await Promise.race([
+      auth.signInAnonymously(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("sign-in timeout")), 7000))
+    ]);
+
+    // ⚠️ 有些環境 resolve 會比 onAuthStateChanged 還快，先關 watchdog/overlay 以免 6~8 秒後又被救援誤觸發
+    stopAutoLoginWatchdog();
     hideAutoLoginOverlay();
+    // UI 切換仍交給 onAuthStateChanged；就算它晚一點到也沒關係，overlay 已經關了
+  } catch (e) {
+    stopAutoLoginWatchdog();
+    hideAutoLoginOverlay();
+    alert("自動登入失敗：" + (e?.message || e));
+    document.documentElement.classList.remove("show-app");
+    document.documentElement.classList.add("show-login");
   } finally {
     authBusy = false;
     setLoginBusy(false);
@@ -3029,18 +3050,26 @@ function saveTasksToFirebase() {
 
   // ===== 自動登入看門狗：超時自救 =====
   let autoLoginWD = null;
+let __loginPending = false;
 
-  function startAutoLoginWatchdog() {
-    stopAutoLoginWatchdog();
-    autoLoginWD = setTimeout(runAutoLoginRescue, 3000); // 6 秒還沒好就救援
-  }
+function startAutoLoginWatchdog() {
+  stopAutoLoginWatchdog();
+  __loginPending = true;
+  // 建議 8000ms；你現在 6000 也行，但 PWA 冷啟常超過 6 秒
+  autoLoginWD = setTimeout(() => {
+    if (!__loginPending) return; // 沒有登入中的流程就不救援
+    runAutoLoginRescue();
+  }, 8000);
+}
 
-  function stopAutoLoginWatchdog() {
-    if (autoLoginWD) {
-      clearTimeout(autoLoginWD);
-      autoLoginWD = null;
-    }
+function stopAutoLoginWatchdog() {
+  __loginPending = false;
+  if (autoLoginWD) {
+    clearTimeout(autoLoginWD);
+    autoLoginWD = null;
   }
+}
+
 
  async function runAutoLoginRescue() {
   try {
