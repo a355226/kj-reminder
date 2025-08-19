@@ -3059,7 +3059,7 @@ function startAutoLoginWatchdog() {
   autoLoginWD = setTimeout(() => {
     if (!__loginPending) return; // 沒有登入中的流程就不救援
     runAutoLoginRescue();
-  }, 8000);
+  }, 5000);
 }
 
 function stopAutoLoginWatchdog() {
