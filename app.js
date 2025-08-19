@@ -22,9 +22,9 @@
     },
     true
   ); // 用捕獲階段，優先攔住
-let tasksLoaded = false;
-let completedLoaded = false;
-// categoriesLoaded 已存在，保留使用
+  let tasksLoaded = false;
+  let completedLoaded = false;
+  // categoriesLoaded 已存在，保留使用
   let importantOnly = false; // ❗ 最後一層篩選（預設關）
   let isEditing = false; // 目前是否在編輯分類模式
   // ✅ 分類在這裡維護（有順序）
@@ -88,11 +88,11 @@ let completedLoaded = false;
     }
   });
 
-function saveCategoriesToFirebase() {
-  if (!roomPath) return;
-  const arr = Array.from(new Set(categories));
-  return db.ref(`${roomPath}/categories`).set(arr); // ← 直接覆蓋，不合併
-}
+  function saveCategoriesToFirebase() {
+    if (!roomPath) return;
+    const arr = Array.from(new Set(categories));
+    return db.ref(`${roomPath}/categories`).set(arr); // ← 直接覆蓋，不合併
+  }
 
   // === Firebase 初始化（放在這支 <script> 的最上面）===
   const firebaseConfig = {
@@ -107,53 +107,57 @@ function saveCategoriesToFirebase() {
   };
 
   firebase.initializeApp(firebaseConfig);
- // 這兩行原本是 const
-let auth = firebase.auth();
-let db = firebase.database();
+  // 這兩行原本是 const
+  let auth = firebase.auth();
+  let db = firebase.database();
 
-// 新增：保存/重綁 onAuthStateChanged
-let offAuth = null;
-function attachAuthObserver() {
-  if (offAuth) { try { offAuth(); } catch (_) {} }
-  offAuth = auth.onAuthStateChanged(async (user) => {
-    try {
-      if (authTimer) {
-        clearTimeout(authTimer);
-        authTimer = null;
-      }
-
-      // 你原本 onAuthStateChanged 裡的內容，原封不動貼進來 ↓↓↓
-      // （這段我不重貼，直接把你原本的 finally: hideAutoLoginOverlay... 都放進來）
-
-      roomPath = hydrateRoomPath();
-      document.documentElement.classList.remove("show-login", "show-app");
-      if (user && roomPath) {
-        document.documentElement.classList.add("show-app");
-        const lp = document.getElementById("loginPage");
-        const app = document.querySelector(".container");
-        if (lp) lp.style.display = "";
-        if (app) app.style.display = "";
-        loadTasksFromFirebase();
-        updateSectionOptions();
-      } else {
-        document.documentElement.classList.add("show-login");
-      }
-    } catch (e) {
-      console.error("onAuthStateChanged 錯誤：", e);
-      alert("畫面初始化失敗：" + (e?.message || e));
-      document.documentElement.classList.remove("show-app");
-      document.documentElement.classList.add("show-login");
-    } finally {
-      hideAutoLoginOverlay();
-      stopAutoLoginWatchdog();
-      setLoginBusy(false);
-      loggingIn = false;
+  // 新增：保存/重綁 onAuthStateChanged
+  let offAuth = null;
+  function attachAuthObserver() {
+    if (offAuth) {
+      try {
+        offAuth();
+      } catch (_) {}
     }
-  });
-}
+    offAuth = auth.onAuthStateChanged(async (user) => {
+      try {
+        if (authTimer) {
+          clearTimeout(authTimer);
+          authTimer = null;
+        }
 
-// 初始化完 Firebase 之後，馬上呼叫一次
-attachAuthObserver();
+        // 你原本 onAuthStateChanged 裡的內容，原封不動貼進來 ↓↓↓
+        // （這段我不重貼，直接把你原本的 finally: hideAutoLoginOverlay... 都放進來）
+
+        roomPath = hydrateRoomPath();
+        document.documentElement.classList.remove("show-login", "show-app");
+        if (user && roomPath) {
+          document.documentElement.classList.add("show-app");
+          const lp = document.getElementById("loginPage");
+          const app = document.querySelector(".container");
+          if (lp) lp.style.display = "";
+          if (app) app.style.display = "";
+          loadTasksFromFirebase();
+          updateSectionOptions();
+        } else {
+          document.documentElement.classList.add("show-login");
+        }
+      } catch (e) {
+        console.error("onAuthStateChanged 錯誤：", e);
+        alert("畫面初始化失敗：" + (e?.message || e));
+        document.documentElement.classList.remove("show-app");
+        document.documentElement.classList.add("show-login");
+      } finally {
+        hideAutoLoginOverlay();
+        stopAutoLoginWatchdog();
+        setLoginBusy(false);
+        loggingIn = false;
+      }
+    });
+  }
+
+  // 初始化完 Firebase 之後，馬上呼叫一次
+  attachAuthObserver();
 
   // 建議：明確指定持久性（iOS/Safari 比較不會怪）
   auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
@@ -283,68 +287,74 @@ attachAuthObserver();
   let authBusy = false;
   let authTimer = null;
 
-async function ensureSignedIn() {
-  if (authBusy) return;
-  authBusy = true;
-  setLoginBusy(true);
+  async function ensureSignedIn() {
+    if (authBusy) return;
+    authBusy = true;
+    setLoginBusy(true);
 
-  roomPath = hydrateRoomPath();
-  if (!roomPath) {
-    authBusy = false;
-    setLoginBusy(false);
-    document.documentElement.classList.remove("show-app");
-    document.documentElement.classList.add("show-login");
-    return;
+    roomPath = hydrateRoomPath();
+    if (!roomPath) {
+      authBusy = false;
+      setLoginBusy(false);
+      document.documentElement.classList.remove("show-app");
+      document.documentElement.classList.add("show-login");
+      return;
+    }
+
+    // 先暖機（PWA 冷啟較穩）
+    if (isStandalone) {
+      try {
+        await pwaAuthWarmup();
+      } catch (_) {}
+    } else {
+      try {
+        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      } catch (_) {}
+    }
+    await waitOnline();
+
+    // ✅ 已經是登入狀態 → 直接進 app，完全不要啟動 overlay/watchdog
+    if (auth.currentUser) {
+      stopAutoLoginWatchdog();
+      hideAutoLoginOverlay();
+      document.documentElement.classList.add("show-app");
+      document.documentElement.classList.remove("show-login");
+      // 進來後載資料（安全：多叫一次也只會覆蓋監聽）
+      loadTasksFromFirebase();
+      updateSectionOptions?.();
+      authBusy = false;
+      setLoginBusy(false);
+      return;
+    }
+
+    // 走到這裡才表示「真的要做一次登入」
+    showAutoLoginOverlay();
+    startAutoLoginWatchdog();
+
+    try {
+      // 用 Promise.race 給 sign-in 自己一個超時，避免卡死
+      await Promise.race([
+        auth.signInAnonymously(),
+        new Promise((_, rej) =>
+          setTimeout(() => rej(new Error("sign-in timeout")), 7000)
+        ),
+      ]);
+
+      // ⚠️ 有些環境 resolve 會比 onAuthStateChanged 還快，先關 watchdog/overlay 以免 6~8 秒後又被救援誤觸發
+      stopAutoLoginWatchdog();
+      hideAutoLoginOverlay();
+      // UI 切換仍交給 onAuthStateChanged；就算它晚一點到也沒關係，overlay 已經關了
+    } catch (e) {
+      stopAutoLoginWatchdog();
+      hideAutoLoginOverlay();
+      alert("自動登入失敗：" + (e?.message || e));
+      document.documentElement.classList.remove("show-app");
+      document.documentElement.classList.add("show-login");
+    } finally {
+      authBusy = false;
+      setLoginBusy(false);
+    }
   }
-
-  // 先暖機（PWA 冷啟較穩）
-  if (isStandalone) {
-    try { await pwaAuthWarmup(); } catch (_) {}
-  } else {
-    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
-  }
-  await waitOnline();
-
-  // ✅ 已經是登入狀態 → 直接進 app，完全不要啟動 overlay/watchdog
-  if (auth.currentUser) {
-    stopAutoLoginWatchdog();
-    hideAutoLoginOverlay();
-    document.documentElement.classList.add("show-app");
-    document.documentElement.classList.remove("show-login");
-    // 進來後載資料（安全：多叫一次也只會覆蓋監聽）
-    loadTasksFromFirebase();
-    updateSectionOptions?.();
-    authBusy = false;
-    setLoginBusy(false);
-    return;
-  }
-
-  // 走到這裡才表示「真的要做一次登入」
-  showAutoLoginOverlay();
-  startAutoLoginWatchdog();
-
-  try {
-    // 用 Promise.race 給 sign-in 自己一個超時，避免卡死
-    await Promise.race([
-      auth.signInAnonymously(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("sign-in timeout")), 7000))
-    ]);
-
-    // ⚠️ 有些環境 resolve 會比 onAuthStateChanged 還快，先關 watchdog/overlay 以免 6~8 秒後又被救援誤觸發
-    stopAutoLoginWatchdog();
-    hideAutoLoginOverlay();
-    // UI 切換仍交給 onAuthStateChanged；就算它晚一點到也沒關係，overlay 已經關了
-  } catch (e) {
-    stopAutoLoginWatchdog();
-    hideAutoLoginOverlay();
-    alert("自動登入失敗：" + (e?.message || e));
-    document.documentElement.classList.remove("show-app");
-    document.documentElement.classList.add("show-login");
-  } finally {
-    authBusy = false;
-    setLoginBusy(false);
-  }
-}
 
   let roomPath = ""; // ← 放這裡！全檔只出現一次
   let tasksRef = null;
@@ -489,45 +499,51 @@ async function ensureSignedIn() {
         },
       };
     }
-  // --- 放在 recurrence IIFE 裡（summaryFromRecurrence 附近）---
+    // --- 放在 recurrence IIFE 裡（summaryFromRecurrence 附近）---
 
-// 民國年 yyyy/m/d（不補0）
-function __rocYmd(d) {
-  return `${d.getFullYear() - 1911}/${d.getMonth() + 1}/${d.getDate()}`;
-}
-
-// 只給「自訂排程」用的固定摘要建構器：114/8/20、114/9/30...
-function __buildCustomSummaryFixed(rec) {
-  const arr = (rec?.dates || [])
-    .filter(isValidISO)
-    .map(parseISO)
-    .sort((a, b) => a - b);
-  if (!arr.length) return "（自訂：尚未選擇）";
-  return `自訂排程：${arr.map(__rocYmd).join("、")}`;
-}
-
-// ⚠️ 改寫你原本的 summaryFromRecurrence（只動 custom 區塊就好）
-function summaryFromRecurrence(rec) {
-  if (!rec || !rec.type) return "";
-  if (rec.type === "weekly") {
-    const arr = (rec.days || []).slice().sort((a, b) => a - b);
-    return arr.length ? `每週排程：${arr.join("、")}` : "（每週：尚未選擇）";
-  }
-  if (rec.type === "monthly") {
-    const arr = (rec.monthdays || []).slice().sort((a, b) => a - b);
-    return arr.length ? `每月排程：${arr.join("、")}號` : "（每月：尚未選擇）";
-  }
-  if (rec.type === "custom") {
-    // ✅ 固定摘要：若已有就直接用；沒有就生成並回填到物件上
-    if (rec.summaryFixed && typeof rec.summaryFixed === "string") {
-      return rec.summaryFixed;
+    // 民國年 yyyy/m/d（不補0）
+    function __rocYmd(d) {
+      return `${d.getFullYear() - 1911}/${d.getMonth() + 1}/${d.getDate()}`;
     }
-    const txt = __buildCustomSummaryFixed(rec);
-    try { rec.summaryFixed = txt; } catch (_) {}
-    return txt;
-  }
-  return "";
-}
+
+    // 只給「自訂排程」用的固定摘要建構器：114/8/20、114/9/30...
+    function __buildCustomSummaryFixed(rec) {
+      const arr = (rec?.dates || [])
+        .filter(isValidISO)
+        .map(parseISO)
+        .sort((a, b) => a - b);
+      if (!arr.length) return "（自訂：尚未選擇）";
+      return `自訂排程：${arr.map(__rocYmd).join("、")}`;
+    }
+
+    // ⚠️ 改寫你原本的 summaryFromRecurrence（只動 custom 區塊就好）
+    function summaryFromRecurrence(rec) {
+      if (!rec || !rec.type) return "";
+      if (rec.type === "weekly") {
+        const arr = (rec.days || []).slice().sort((a, b) => a - b);
+        return arr.length
+          ? `每週排程：${arr.join("、")}`
+          : "（每週：尚未選擇）";
+      }
+      if (rec.type === "monthly") {
+        const arr = (rec.monthdays || []).slice().sort((a, b) => a - b);
+        return arr.length
+          ? `每月排程：${arr.join("、")}號`
+          : "（每月：尚未選擇）";
+      }
+      if (rec.type === "custom") {
+        // ✅ 固定摘要：若已有就直接用；沒有就生成並回填到物件上
+        if (rec.summaryFixed && typeof rec.summaryFixed === "string") {
+          return rec.summaryFixed;
+        }
+        const txt = __buildCustomSummaryFixed(rec);
+        try {
+          rec.summaryFixed = txt;
+        } catch (_) {}
+        return txt;
+      }
+      return "";
+    }
 
     function computeNext(rec, fromDate) {
       if (!rec || !rec.type) return null;
@@ -720,9 +736,9 @@ function summaryFromRecurrence(rec) {
       const t = curTask();
       if (!t) return;
       t.recurrence = deepcopy(rec);
-        if (t.recurrence && t.recurrence.type === "custom") {
-    t.recurrence.summaryFixed = __buildCustomSummaryFixed(t.recurrence);
-  }
+      if (t.recurrence && t.recurrence.type === "custom") {
+        t.recurrence.summaryFixed = __buildCustomSummaryFixed(t.recurrence);
+      }
 
       t.updatedAt = Date.now();
 
@@ -749,10 +765,9 @@ function summaryFromRecurrence(rec) {
 
     function applyCreate(rec) {
       createDraft = deepcopy(rec);
-        if (createDraft && createDraft.type === "custom") {
-    createDraft.summaryFixed = __buildCustomSummaryFixed(createDraft);
-  }
-
+      if (createDraft && createDraft.type === "custom") {
+        createDraft.summaryFixed = __buildCustomSummaryFixed(createDraft);
+      }
 
       const base = today0();
       // 有設定排程：一律以排程算「下一次」，忽略目前輸入的日期
@@ -1083,7 +1098,7 @@ function summaryFromRecurrence(rec) {
           typeof getColorByDays === "function"
             ? getColorByDays(days)
             : "#e6f9f0";
-        const disp = days == null ? "無" : days;
+        const disp = days == null ? "無期限" : days;
 
         const el = document.createElement("div");
         el.className = "task";
@@ -1432,7 +1447,7 @@ function summaryFromRecurrence(rec) {
 
     const days = getRemainingDays(task.date); // ← 用「最後決定」的日期
     const bg = getColorByDays(days);
-    const displayDays = days == null ? "無" : days;
+    const displayDays = days == null ? "無期限" : days;
 
     const el = document.createElement("div");
     el.className = "task";
@@ -1682,7 +1697,7 @@ function summaryFromRecurrence(rec) {
 
     const days = getRemainingDays(task.date);
     const bg = getColorByDays(days);
-    const displayDays = days == null ? "無" : days;
+    const displayDays = days == null ? "無期限" : days;
 
     const el = document.createElement("div");
     el.className = "task";
@@ -1778,17 +1793,23 @@ function summaryFromRecurrence(rec) {
     decorateSectionsForEdit(); // 你原本的
   }
   // 刪除分類彈窗
+  // 🔁 取代原本的 confirmDeleteCategory(id)
+  // 🔁 取代原本的 confirmDeleteCategory(id)
   function confirmDeleteCategory(id) {
     const category = document.getElementById(id);
     if (!category) return;
 
-    // 建立確認視窗
+    const archiveName = `${id}(分類已移除)`;
+
     const confirmBox = document.createElement("div");
     confirmBox.className = "modal";
     confirmBox.style.display = "flex";
     confirmBox.innerHTML = `
     <div class="modal-content">
-      <h3 style="text-align:center;">是否確認刪除此分類？</br>(所有任務(含已完成)將一併刪除)</h3>
+      <h3 style="text-align:center;">
+        是否確認刪除此分類？</br>
+        <small>(進行中任務也將全數刪除)</small>
+      </h3>
       <div class="confirm-buttons" style="display:flex;gap:.75rem;margin-top:1rem;">
         <button class="confirm-btn btn-half btn-del">確認</button>
         <button class="cancel-btn btn-half btn-save">取消</button>
@@ -1796,21 +1817,28 @@ function summaryFromRecurrence(rec) {
     </div>
   `;
 
-    // 綁定按鈕事件
+    // 確認
     confirmBox.querySelector(".confirm-btn").onclick = () => {
-      // 1) 刪除該分類底下的所有任務（進行中 + 已完成）
-      const delInSection = (arr) => arr.filter((t) => t.section !== id);
-      tasks = delInSection(tasks);
-      completedTasks = delInSection(completedTasks);
+      // 1) 進行中：刪除該分類任務
+      tasks = (Array.isArray(tasks) ? tasks : []).filter(
+        (t) => t.section !== id
+      );
 
-      // 2) 移除分類本身
-      categories = categories.filter((c) => c !== id);
+      // 2) 已完成：改名為 xxx(已移除)，不刪
+      completedTasks = (
+        Array.isArray(completedTasks) ? completedTasks : []
+      ).map((t) => (t.section === id ? { ...t, section: archiveName } : t));
 
-      // 3) 存檔（雲端/Firebase）
-      saveTasksToFirebase(); // 你原本的儲存函式
-      saveCategoriesToFirebase(); // 你原本的儲存函式
+      // 3) 更新分類清單：只移除舊分類，不新增 "(已移除)"
+      categories = (Array.isArray(categories) ? categories : []).filter(
+        (c) => c !== id
+      );
 
-      // 4) 重畫 UI
+      // 4) 存檔
+      saveTasksToFirebase();
+      saveCategoriesToFirebase();
+
+      // 5) 重畫
       renderSections(categories);
       if (statusFilter === "done") {
         renderCompletedTasks();
@@ -1818,21 +1846,12 @@ function summaryFromRecurrence(rec) {
         showOngoing();
       }
 
-      // 5) 關閉確認視窗
+      // 6) 關視窗 & 下拉
       confirmBox.remove();
-
-      // 6) 從所有 select 中移除這個分類選項（避免殘留）
-      const selects = [
-        document.getElementById("taskSection"),
-        document.getElementById("detailSection"),
-      ];
-      selects.forEach((select) => {
-        if (!select) return;
-        const option = select.querySelector(`option[value="${id}"]`);
-        if (option) option.remove();
-      });
+      updateSectionOptions();
     };
 
+    // 取消
     confirmBox.querySelector(".cancel-btn").onclick = () => {
       confirmBox.remove();
     };
@@ -2156,7 +2175,7 @@ function summaryFromRecurrence(rec) {
     tasks.forEach((t) => {
       const days = getRemainingDays(t.date);
       const bg = getColorByDays(days);
-      const displayDays = days == null ? "無" : days;
+      const displayDays = days == null ? "無期限" : days;
 
       const el = document.createElement("div");
       el.className = "task";
@@ -2185,7 +2204,7 @@ function summaryFromRecurrence(rec) {
     const d = input instanceof Date ? input : new Date(input);
 
     // 沒填日期 or 無效日期 → 直接歸到「無」
-    if (!input || isNaN(d.getTime())) return "無";
+    if (!input || isNaN(d.getTime())) return "無期限";
 
     const yy = d.getFullYear() - 1911;
     const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -2200,7 +2219,7 @@ function summaryFromRecurrence(rec) {
 
     // 置頂：近5日
     const recentBtn = document.createElement("button");
-    recentBtn.textContent = "近5日";
+    recentBtn.textContent = "近15日";
     recentBtn.style.cssText =
       "display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;font-weight:600;";
     recentBtn.onclick = () => {
@@ -2210,23 +2229,42 @@ function summaryFromRecurrence(rec) {
     };
     menu.appendChild(recentBtn);
 
+    // 蒐集所有「月份代碼」，含「無」（無日期）
     const monthSet = new Set();
-
-    completedTasks.forEach((t) => {
-      const d = new Date(t.date); // ← 改用預定完成日期
-      const rocYM = toRocYM(d);
-      console.log("Adding month:", rocYM); // 調試，檢查每個任務的年月是否正確
-      monthSet.add(rocYM);
+    (Array.isArray(completedTasks) ? completedTasks : []).forEach((t) => {
+      const d = new Date(t.date);
+      monthSet.add(toRocYM(d));
     });
 
+    // 建一個可重複使用的「❗」按鈕（只看重要）
+    let importantBtnInserted = false;
+    const addImportantBtn = () => {
+      if (importantBtnInserted) return;
+      const ib = document.createElement("button");
+      ib.textContent = "重要 ❗";
+      ib.title = "只看重要（已完成）";
+      ib.style.cssText =
+        "display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;";
+      ib.onclick = () => {
+        completedMonthFilter = "importantOnly"; // ★ 新增的特別篩選
+        menu.style.display = "none";
+        renderCompletedTasks();
+      };
+      menu.appendChild(ib);
+      importantBtnInserted = true;
+    };
+
+    // 沒有任何月份資料也仍提供「❗」可用
     if (monthSet.size === 0) {
+      addImportantBtn();
       const empty = document.createElement("div");
       empty.textContent = "無更多月份";
+      empty.style.cssText = "padding:6px 10px;color:#777;";
       menu.appendChild(empty);
       return;
     }
 
-    // 將月份按字母排序並生成按鈕
+    // 由新到舊列出月份；遇到「無」就把「❗」插在「無」的下面
     Array.from(monthSet)
       .sort((a, b) => b.localeCompare(a))
       .forEach((ym) => {
@@ -2240,7 +2278,14 @@ function summaryFromRecurrence(rec) {
           renderCompletedTasks();
         };
         menu.appendChild(btn);
+
+        if (ym === "無期限") {
+          addImportantBtn(); // ★ 放在「無」正下方
+        }
       });
+
+    // 若列表裡沒有「無」，就把「❗」放在清單最後以保險
+    if (!importantBtnInserted) addImportantBtn();
   }
 
   // 點「更多…」展開月份清單
@@ -2255,67 +2300,77 @@ function summaryFromRecurrence(rec) {
 
   // 渲染已完成（預設顯示 15 日內；點月份則顯示該月份）
   function renderCompletedTasks() {
-    clearAllSections();
-    // 把已完成任務用到的分類也補回 categories
-    // 把已完成任務用到的分類也補回 categories
-    const needFromDone = Array.from(
-      new Set(completedTasks.map((t) => t.section).filter(Boolean))
-    );
-    const merged2 = Array.from(
-      new Set([...(categories || []), ...needFromDone])
-    );
-
-    if (merged2.length !== (categories || []).length) {
-      categories = merged2;
-      if (categoriesLoaded) {
-        // ★★★ 分類載好後才允許存雲端
-        saveCategoriesToFirebase();
+    // === 先決定要顯示哪些「已完成」的任務 ===
+    const list = (Array.isArray(completedTasks) ? completedTasks : []).filter(
+      (t) => {
+        if (completedMonthFilter === "importantOnly") {
+          // ★ 新增：只看「❗重要」，不套任何月份/最近天數條件
+          return !!t.important;
+        }
+        if (completedMonthFilter === "recent15") {
+          // 仍沿用你的「近5日」邏輯（以 completedAt 計）
+          const completedDate = new Date(t.completedAt);
+          const diff = Math.floor(
+            (Date.now() - completedDate.getTime()) / 86400000
+          );
+          return diff <= 15;
+        } else {
+          // 指定月份：用「預定完成日」歸類
+          const d = new Date(t.date);
+          const rocYM = toRocYM(d);
+          return rocYM === completedMonthFilter;
+        }
       }
-      renderSections(categories);
-    }
+    );
 
-    const now = new Date();
-    const list = completedTasks.filter((t) => {
-      const d = new Date(t.date); // ← 改用預定完成日期
-      const rocYM = toRocYM(d); // 轉換為 ROC 年月
+    // === 這裡「只為了已完成視圖」建立暫時的區塊清單 ===
+    // ★ 重要：不改動全域 categories、不寫回雲端，避免 (分類已移除) 自動出現在進行中
+    const sectionsForDone = Array.from(
+      new Set([
+        ...(Array.isArray(categories) ? categories : []),
+        ...list.map((t) => t.section).filter(Boolean),
+      ])
+    );
 
-      console.log(
-        "Task completedAt:",
-        t.completedAt,
-        "Converted to ROC YM:",
-        rocYM
-      ); // 調試，確認每個任務的時間戳與轉換結果
+    // 重畫區塊（暫時 DOM；不動 categories 陣列）
+    renderSections(sectionsForDone);
 
-      if (completedMonthFilter === "recent15") {
-        const completedDate = new Date(t.completedAt); // ← 用實際完成日期
-        const diff = Math.floor(
-          (Date.now() - completedDate.getTime()) / 86400000
-        );
-        return diff <= 5; // 只顯示最近 5 天完成的任務
-      } else {
-        return rocYM === completedMonthFilter; // 月份歸類用預定完成日期
-      }
-    });
+    // 確保「🗂️更多」選單在已完成視圖可見
+    const dm = document.getElementById("doneMore");
+    if (dm) dm.style.display = "block";
+    buildDoneMonthMenu();
 
+    // 清空所有任務卡（renderSections 會把區塊建好，但裡面還沒有任務）
+    // （renderSections 已經把區塊重建了，所以不用再 clearAllSections）
+
+    // === 繪製符合條件的已完成任務 ===
     list.forEach((t) => {
       const el = document.createElement("div");
       el.className = "task";
       el.dataset.id = t.id;
-      el.style.backgroundColor = "var(--green-light)"; // 完成用淡綠色背景
-      const prefix = getTaskIconsPrefix(t);
+      el.style.backgroundColor = "var(--green-light)"; // 已完成用淡綠色
+      const importantPrefix = t.important ? "❗ " : "";
       el.innerHTML = `
-      <div class="task-content">
-        <div class="task-title">✅ ${prefix}${t.title}</div>
-      </div>
-      <div class="task-days">完</div>
-    `;
+        <div class="task-content">
+          <div class="task-title">✅ ${importantPrefix}${t.title}</div>
+        </div>
+        <div class="task-days">完</div>
+      `;
       el.onclick = () => openCompletedDetail(t.id);
 
       const sec = document.getElementById(t.section);
       if (sec) sec.appendChild(el);
     });
-    hideEmptySectionsAfterFilter(); // ← 新增：完成視圖也隱藏空白分類
-    applyImportantFilter(); // ✅ 最後一層
+
+    // 已完成頁面的刪分類 ✕、隱空白分類、以及（若你仍保留）最後一層的「重要開關」
+    decorateDoneSectionsForDelete();
+    hideEmptySectionsAfterFilter();
+
+    // 若你有保留全域的「最後一層❗開關」（importantOnly），在這裡套用也不會影響
+    // 「❗篩選按鈕」的獨立效果（因為 list 已經只含重要或已過濾完）
+    try {
+      applyImportantFilter();
+    } catch (_) {}
   }
 
   //已完成視窗細節
@@ -2541,102 +2596,110 @@ function summaryFromRecurrence(rec) {
   document.addEventListener("DOMContentLoaded", ensureSignedIn);
   window.addEventListener("pageshow", ensureSignedIn);
   // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
-function loadTasksFromFirebase() {
-  if (!roomPath || !auth.currentUser) return;
+  function loadTasksFromFirebase() {
+    if (!roomPath || !auth.currentUser) return;
 
-  // …(你原本 detach 舊監聽的程式保留)
+    // …(你原本 detach 舊監聽的程式保留)
 
-  // 2) 切到新房前，清空本地狀態與 UI
-  categoriesLoaded = false;
-  tasksLoaded = false;          // ← 新增
-  completedLoaded = false;      // ← 新增
-  tasks = [];
-  completedTasks = [];
-  categories = [];
-  const sc = document.getElementById("section-container");
-  if (sc) sc.innerHTML = "";
-  updateSectionOptions && updateSectionOptions();
-
-  // 3) 綁新 ref
-  tasksRef = db.ref(`${roomPath}/tasks`);
-  completedRef = db.ref(`${roomPath}/completedTasks`);
-  categoriesRef = db.ref(`${roomPath}/categories`);
-
-  // 4) tasks
-  tasksRef.on("value", (snap) => {
-    const data = snap.val() || {};
-    tasks = Array.isArray(data) ? data.filter(Boolean) : Object.values(data);
-    tasksLoaded = true;                    // ← 新增
-    if (categoriesLoaded) showOngoing && showOngoing();
-  });
-
-  // 5) completed
-  completedRef.on("value", (snap) => {
-    const data = snap.val() || {};
-    completedTasks = Array.isArray(data) ? data.filter(Boolean) : Object.values(data);
-    completedLoaded = true;                // ← 新增
-    if (!categoriesLoaded) return;
-    if (statusFilter === "done") renderCompletedTasks && renderCompletedTasks();
-  });
-
-  // 6) categories（安全合併＋不再強制 set([])）
-  categoriesRef.on("value", (snap) => {
-    const cloud = snap.val();
-    // 統一轉陣列
-    let serverList = Array.isArray(cloud) ? cloud.slice()
-                   : (cloud && typeof cloud === 'object') ? Object.values(cloud)
-                   : [];
-
-    // 第一次載入前若本地已有暫存（例如使用者已先新增分類），做一次合併避免覆蓋掉
-    if (!categoriesLoaded && categories.length) {
-      serverList = Array.from(new Set([...serverList, ...categories]));
-    }
-
-    categories = serverList;
-    categoriesLoaded = true;
-
-    renderSections && renderSections(categories);
+    // 2) 切到新房前，清空本地狀態與 UI
+    categoriesLoaded = false;
+    tasksLoaded = false; // ← 新增
+    completedLoaded = false; // ← 新增
+    tasks = [];
+    completedTasks = [];
+    categories = [];
+    const sc = document.getElementById("section-container");
+    if (sc) sc.innerHTML = "";
     updateSectionOptions && updateSectionOptions();
-    if (statusFilter === "done") {
-      renderCompletedTasks && renderCompletedTasks();
-    } else {
-      showOngoing && showOngoing();
-    }
 
-    // 若雲端原本是空，但本地已有暫存分類 → 回寫一次（防丟）
-    if (serverList.length === 0 && categories.length > 0) {
-      saveCategoriesToFirebase();
-    }
-  });
-}
+    // 3) 綁新 ref
+    tasksRef = db.ref(`${roomPath}/tasks`);
+    completedRef = db.ref(`${roomPath}/completedTasks`);
+    categoriesRef = db.ref(`${roomPath}/categories`);
 
-  // === 寫回雲端（先寫 tasks；completed 之後再接）===
-function saveTasksToFirebase() {
-  if (!roomPath) return;
+    // 4) tasks
+    tasksRef.on("value", (snap) => {
+      const data = snap.val() || {};
+      tasks = Array.isArray(data) ? data.filter(Boolean) : Object.values(data);
+      tasksLoaded = true; // ← 新增
+      if (categoriesLoaded) showOngoing && showOngoing();
+    });
 
-  const updates = {};
+    // 5) completed
+    completedRef.on("value", (snap) => {
+      const data = snap.val() || {};
+      completedTasks = Array.isArray(data)
+        ? data.filter(Boolean)
+        : Object.values(data);
+      completedLoaded = true; // ← 新增
+      if (!categoriesLoaded) return;
+      if (statusFilter === "done")
+        renderCompletedTasks && renderCompletedTasks();
+    });
 
-  // 僅在「對應分支已載入完成」才覆蓋，避免把雲端清空
-  if (tasksLoaded) {
-    const obj = {};
-    (Array.isArray(tasks) ? tasks : []).forEach(t => obj[t.id] = t);
-    updates[`${roomPath}/tasks`] = obj;
-  }
+    // 6) categories（安全合併＋不再強制 set([])）
+    categoriesRef.on("value", (snap) => {
+      const cloud = snap.val();
+      // 統一轉陣列
+      let serverList = Array.isArray(cloud)
+        ? cloud.slice()
+        : cloud && typeof cloud === "object"
+        ? Object.values(cloud)
+        : [];
 
-  if (completedLoaded) {
-    const doneObj = {};
-    (Array.isArray(completedTasks) ? completedTasks : []).forEach(t => doneObj[t.id] = t);
-    updates[`${roomPath}/completedTasks`] = doneObj;
-  }
+      // 第一次載入前若本地已有暫存（例如使用者已先新增分類），做一次合併避免覆蓋掉
+      if (!categoriesLoaded && categories.length) {
+        serverList = Array.from(new Set([...serverList, ...categories]));
+      }
 
-  if (Object.keys(updates).length) {
-    db.ref().update(updates);
-  } else {
-    console.warn("[saveTasksToFirebase] 跳過寫入：資料尚未載入完成", {
-      tasksLoaded, completedLoaded
+      categories = serverList;
+      categoriesLoaded = true;
+
+      renderSections && renderSections(categories);
+      updateSectionOptions && updateSectionOptions();
+      if (statusFilter === "done") {
+        renderCompletedTasks && renderCompletedTasks();
+      } else {
+        showOngoing && showOngoing();
+      }
+
+      // 若雲端原本是空，但本地已有暫存分類 → 回寫一次（防丟）
+      if (serverList.length === 0 && categories.length > 0) {
+        saveCategoriesToFirebase();
+      }
     });
   }
-}
+
+  // === 寫回雲端（先寫 tasks；completed 之後再接）===
+  function saveTasksToFirebase() {
+    if (!roomPath) return;
+
+    const updates = {};
+
+    // 僅在「對應分支已載入完成」才覆蓋，避免把雲端清空
+    if (tasksLoaded) {
+      const obj = {};
+      (Array.isArray(tasks) ? tasks : []).forEach((t) => (obj[t.id] = t));
+      updates[`${roomPath}/tasks`] = obj;
+    }
+
+    if (completedLoaded) {
+      const doneObj = {};
+      (Array.isArray(completedTasks) ? completedTasks : []).forEach(
+        (t) => (doneObj[t.id] = t)
+      );
+      updates[`${roomPath}/completedTasks`] = doneObj;
+    }
+
+    if (Object.keys(updates).length) {
+      db.ref().update(updates);
+    } else {
+      console.warn("[saveTasksToFirebase] 跳過寫入：資料尚未載入完成", {
+        tasksLoaded,
+        completedLoaded,
+      });
+    }
+  }
 
   //登出
 
@@ -2702,6 +2765,88 @@ function saveTasksToFirebase() {
 
   function getTitleWithFlag(t) {
     return (t.important ? "❗ " : "") + (t.title || "");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (m) =>
+      m === "&"
+        ? "&amp;"
+        : m === "<"
+        ? "&lt;"
+        : m === ">"
+        ? "&gt;"
+        : m === '"'
+        ? "&quot;"
+        : "&#39;"
+    );
+  }
+
+  // 在「已完成」畫面，為每個有任務的分類加右上角 ✕ 按鈕
+  function decorateDoneSectionsForDelete() {
+    if (statusFilter !== "done") return;
+
+    document.querySelectorAll("#section-container .section").forEach((sec) => {
+      // 僅對「有任務」的區塊顯示刪除鍵；空的等一下也會被隱藏
+      const hasTask = !!sec.querySelector(".task");
+      if (!hasTask) return;
+
+      // 避免重複加
+      if (sec.querySelector(".done-del-btn")) return;
+
+      // 讓絕對定位對齊區塊
+      sec.style.position = "relative";
+
+      const btn = document.createElement("button");
+      btn.className = "done-del-btn";
+      btn.setAttribute("aria-label", "刪除此已完成分類");
+      btn.textContent = "✕";
+      btn.style.cssText = `
+      position:absolute; top:8px; right:8px;
+      background:transparent; border:none;
+      font-size:1rem; color:#999; cursor:pointer;
+    `;
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        confirmDeleteCompletedCategory(sec.id);
+      };
+
+      sec.appendChild(btn);
+    });
+  }
+
+  // 啟動確認視窗（獨立 modal，不干擾你原本 confirmModal 的任務刪除流程）
+  function confirmDeleteCompletedCategory(sectionId) {
+    const confirmBox = document.createElement("div");
+    confirmBox.className = "modal";
+    confirmBox.style.display = "flex";
+    confirmBox.innerHTML = `
+    <div class="modal-content">
+      <h3 style="text-align:center;">是否確認移除此分類？</h3>
+      <div style="text-align:center; color:#666; margin:.25rem 0 .5rem;">
+        (已完成的所有任務將一併刪除)
+      </div>
+      <div class="confirm-buttons">
+        <button class="confirm-btn">確認</button>
+        <button class="cancel-btn">取消</button>
+      </div>
+    </div>
+  `;
+    confirmBox.querySelector(".confirm-btn").onclick = () => {
+      deleteCompletedCategory(sectionId);
+      confirmBox.remove();
+    };
+    confirmBox.querySelector(".cancel-btn").onclick = () => confirmBox.remove();
+    document.body.appendChild(confirmBox);
+  }
+
+  // 真正刪除「已完成」某分類（不動進行中、不動 categories）
+  function deleteCompletedCategory(sectionId) {
+    completedTasks = (
+      Array.isArray(completedTasks) ? completedTasks : []
+    ).filter((t) => t.section !== sectionId);
+
+    saveTasksToFirebase(); // 只會覆蓋 completedTasks 分支（你的函式已做載入旗標保護）
+    renderCompletedTasks(); // 重新繪製「已完成」頁
   }
 
   // 轉民國 yyyy/m/d HH:mm（小時與分鐘補0）
@@ -3045,85 +3190,96 @@ function saveTasksToFirebase() {
 
   // ===== 自動登入看門狗：超時自救 =====
   let autoLoginWD = null;
-let __loginPending = false;
+  let __loginPending = false;
 
-function startAutoLoginWatchdog() {
-  stopAutoLoginWatchdog();
-  __loginPending = true;
-  // 建議 8000ms；你現在 6000 也行，但 PWA 冷啟常超過 6 秒
-  autoLoginWD = setTimeout(() => {
-    if (!__loginPending) return; // 沒有登入中的流程就不救援
-    runAutoLoginRescue();
-  }, 5000);
-}
-
-function stopAutoLoginWatchdog() {
-  __loginPending = false;
-  if (autoLoginWD) {
-    clearTimeout(autoLoginWD);
-    autoLoginWD = null;
+  function startAutoLoginWatchdog() {
+    stopAutoLoginWatchdog();
+    __loginPending = true;
+    // 建議 8000ms；你現在 6000 也行，但 PWA 冷啟常超過 6 秒
+    autoLoginWD = setTimeout(() => {
+      if (!__loginPending) return; // 沒有登入中的流程就不救援
+      runAutoLoginRescue();
+    }, 5000);
   }
-}
 
+  function stopAutoLoginWatchdog() {
+    __loginPending = false;
+    if (autoLoginWD) {
+      clearTimeout(autoLoginWD);
+      autoLoginWD = null;
+    }
+  }
 
- async function runAutoLoginRescue() {
-  try {
-    // ---- Soft retry ----
-    await waitOnline();
-    try { if (auth.currentUser) await auth.signOut(); } catch (_) {}
+  async function runAutoLoginRescue() {
     try {
-      const idbOK = await testIndexedDB();
-      const mode = isStandalone && idbOK
-        ? firebase.auth.Auth.Persistence.LOCAL
-        : firebase.auth.Auth.Persistence.NONE;
-      await auth.setPersistence(mode);
-    } catch (_) {}
-    await Promise.race([
-      auth.signInAnonymously(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("soft-timeout")), 5000))
-    ]);
-    return; // 成功 → 交給 onAuthStateChanged 收尾（會關 overlay）
-  } catch (_e1) {
-    // 繼續 Hard reset
-  }
+      // ---- Soft retry ----
+      await waitOnline();
+      try {
+        if (auth.currentUser) await auth.signOut();
+      } catch (_) {}
+      try {
+        const idbOK = await testIndexedDB();
+        const mode =
+          isStandalone && idbOK
+            ? firebase.auth.Auth.Persistence.LOCAL
+            : firebase.auth.Auth.Persistence.NONE;
+        await auth.setPersistence(mode);
+      } catch (_) {}
+      await Promise.race([
+        auth.signInAnonymously(),
+        new Promise((_, rej) =>
+          setTimeout(() => rej(new Error("soft-timeout")), 5000)
+        ),
+      ]);
+      return; // 成功 → 交給 onAuthStateChanged 收尾（會關 overlay）
+    } catch (_e1) {
+      // 繼續 Hard reset
+    }
 
-  try {
-    // ---- Hard reset ----
-    try { if (auth.currentUser) await auth.signOut(); } catch (_) {}
-    try { await firebase.app().delete(); } catch (_) {}
-
-    // 重新初始化
-    firebase.initializeApp(firebaseConfig);
-
-    // ★★★ 重新指向新實例（注意：前面已改成 let）
-    auth = firebase.auth();
-    db   = firebase.database();
-
-    // ★★★ 重新綁 onAuthStateChanged
-    attachAuthObserver();
-
-    // 依環境設定持久性
     try {
-      const idbOK = await testIndexedDB();
-      const mode = isStandalone && idbOK
-        ? firebase.auth.Auth.Persistence.LOCAL
-        : firebase.auth.Auth.Persistence.NONE;
-      await auth.setPersistence(mode);
-    } catch (_) {}
+      // ---- Hard reset ----
+      try {
+        if (auth.currentUser) await auth.signOut();
+      } catch (_) {}
+      try {
+        await firebase.app().delete();
+      } catch (_) {}
 
-    await Promise.race([
-      auth.signInAnonymously(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("hard-timeout")), 5000))
-    ]);
-    return; // 成功 → 一樣交給 onAuthStateChanged
-  } catch (_e2) {
-    // 全部失敗 → 關 overlay、回登入頁，讓使用者手動登入
-    hideAutoLoginOverlay();
-    document.documentElement.classList.remove("show-app");
-    document.documentElement.classList.add("show-login");
-    alert("自動登入逾時，請手動登入一次（已自動重設連線）。");
+      // 重新初始化
+      firebase.initializeApp(firebaseConfig);
+
+      // ★★★ 重新指向新實例（注意：前面已改成 let）
+      auth = firebase.auth();
+      db = firebase.database();
+
+      // ★★★ 重新綁 onAuthStateChanged
+      attachAuthObserver();
+
+      // 依環境設定持久性
+      try {
+        const idbOK = await testIndexedDB();
+        const mode =
+          isStandalone && idbOK
+            ? firebase.auth.Auth.Persistence.LOCAL
+            : firebase.auth.Auth.Persistence.NONE;
+        await auth.setPersistence(mode);
+      } catch (_) {}
+
+      await Promise.race([
+        auth.signInAnonymously(),
+        new Promise((_, rej) =>
+          setTimeout(() => rej(new Error("hard-timeout")), 5000)
+        ),
+      ]);
+      return; // 成功 → 一樣交給 onAuthStateChanged
+    } catch (_e2) {
+      // 全部失敗 → 關 overlay、回登入頁，讓使用者手動登入
+      hideAutoLoginOverlay();
+      document.documentElement.classList.remove("show-app");
+      document.documentElement.classList.add("show-login");
+      alert("自動登入逾時，請手動登入一次（已自動重設連線）。");
+    }
   }
-}
 
   // ===== Section 空白處：長按新增（不阻擋捲動）＋ 輕點彈跳 =====
   (function enableCleanLongPressNewTask() {
@@ -3823,11 +3979,10 @@ function stopAutoLoginWatchdog() {
     deleteCompletedConfirmed,
     openLogoutModal,
     doLogout,
-      toggleDetailExpand,
-  viewerUndo,
-  viewerRedo,
-  viewerCopy,
-
+    toggleDetailExpand,
+    viewerUndo,
+    viewerRedo,
+    viewerCopy,
   });
 
   // --- 這行以上 ---
