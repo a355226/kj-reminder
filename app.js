@@ -1098,7 +1098,7 @@
           typeof getColorByDays === "function"
             ? getColorByDays(days)
             : "#e6f9f0";
-        const disp = days == null ? "無期限" : days;
+        const disp = days == null ? "無" : days;
 
         const el = document.createElement("div");
         el.className = "task";
@@ -1447,7 +1447,7 @@
 
     const days = getRemainingDays(task.date); // ← 用「最後決定」的日期
     const bg = getColorByDays(days);
-    const displayDays = days == null ? "無期限" : days;
+    const displayDays = days == null ? "無" : days;
 
     const el = document.createElement("div");
     el.className = "task";
@@ -1697,7 +1697,7 @@
 
     const days = getRemainingDays(task.date);
     const bg = getColorByDays(days);
-    const displayDays = days == null ? "無期限" : days;
+    const displayDays = days == null ? "無" : days;
 
     const el = document.createElement("div");
     el.className = "task";
@@ -2175,7 +2175,7 @@
     tasks.forEach((t) => {
       const days = getRemainingDays(t.date);
       const bg = getColorByDays(days);
-      const displayDays = days == null ? "無期限" : days;
+      const displayDays = days == null ? "無" : days;
 
       const el = document.createElement("div");
       el.className = "task";
