@@ -1303,16 +1303,7 @@
         }
       }
 
-      function setMemoView(view) {
-        memoView = view;
-        try {
-          localStorage.setItem("memo_view", view);
-        } catch (_) {}
-        applyViewAffordances();
-        renderSections(); // 內部會依照 memoView 自行決定要畫哪些分類
-        renderAll();
-      }
-
+  
       function buildMemoMonthMenu() {
         const menu = document.getElementById("memoMonthMenu");
         if (!menu) return;
@@ -1433,24 +1424,6 @@
         renderAll();
       }
 
-      document
-        .getElementById("viewActiveToggle")
-        ?.addEventListener("change", (e) => {
-          const other = document.getElementById("viewRemovedToggle");
-          if (e.target.checked) {
-            if (other) other.checked = false;
-            setMemoView("active");
-          } else if (other && !other.checked) e.target.checked = true; // 至少擇一
-        });
-      document
-        .getElementById("viewRemovedToggle")
-        ?.addEventListener("change", (e) => {
-          const other = document.getElementById("viewActiveToggle");
-          if (e.target.checked) {
-            if (other) other.checked = false;
-            setMemoView("removed");
-          } else if (other && !other.checked) e.target.checked = true; // 至少擇一
-        });
 
       function openMemoModal(prefSectionId) {
         updateSectionOptions();
