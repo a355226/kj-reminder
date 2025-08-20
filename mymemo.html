@@ -844,6 +844,10 @@
         box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
         pointer-events: none;
       }
+      
+      #app.editing .task { 
+  pointer-events: none;
+}
     </style>
   </head>
   <body>
@@ -906,10 +910,6 @@
         }
       }
       
-      /* 編輯分類時，禁用卡片互動，避免誤觸開詳情 */
-#app.editing .task { 
-  pointer-events: none;
-}
     </style>
 
     <!-- App -->
