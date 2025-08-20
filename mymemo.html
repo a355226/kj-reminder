@@ -844,10 +844,25 @@
         box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
         pointer-events: none;
       }
-      
-      #app.editing .task { 
-  pointer-events: none;
-}
+
+      /* 預設不顯示備忘拖拉把手 */
+      .memo-drag {
+        display: none;
+      }
+
+      /* 只有編輯中才顯示把手 */
+      #app.editing .memo-drag {
+        display: inline-flex;
+        margin-right: 6px;
+        color: #888;
+        cursor: grab;
+      }
+
+      /* 編輯中允許拖拉卡片（避免先前把 .task 設成 pointer-events:none） */
+      #app.editing .task {
+        pointer-events: auto;
+        cursor: grab;
+      }
     </style>
   </head>
   <body>
@@ -909,7 +924,6 @@
           transform: rotate(360deg);
         }
       }
-      
     </style>
 
     <!-- App -->
@@ -1279,6 +1293,7 @@
         categoriesRef = null;
       let sectionSortable = null;
       let isEditing = false; // 是否在編輯分類模式（給長按行為判斷）
+      let memoSortables = []; // 備忘條拖拉（跨分類用）
 
       let memoMonthFilter = "all"; // 'all' | 'recent5' | '11407'（ROC 年月）
       let memoView = "active"; // 'active' | 'removed'
@@ -1302,8 +1317,6 @@
           fab?.classList.remove("fab-disabled");
         }
       }
-
-
 
       function buildMemoMonthMenu() {
         const menu = document.getElementById("memoMonthMenu");
@@ -1424,7 +1437,6 @@
         renderSections();
         renderAll();
       }
-
 
       function openMemoModal(prefSectionId) {
         updateSectionOptions();
@@ -1563,7 +1575,7 @@
         const wrap = document.getElementById("section-container");
         if (!wrap) return;
 
-        // 先畫上方 🗂️ + 篩選選單容器
+        // 上方 🗂️ + 篩選選單容器
         wrap.innerHTML = `
     <div id="memoMore" style="text-align:right; margin:0.25rem 0; position:relative;">
       <button id="memoMoreBtn"
@@ -1577,40 +1589,45 @@
     </div>
   `;
 
+        // 取出要顯示的分類清單
+        // 取出要顯示的分類清單
         let names = [];
         if (memoView === "active") {
           names = (categories || []).slice();
         } else {
-          // 只蒐集「有已移除備忘」的分類
+          // removed：只顯示「有被移除備忘」的分類（統一用原始分類名）
           const set = new Set();
           (memos || []).forEach((m) => {
-            if (m.removedAt) set.add(m.section);
+            if (m.removedAt) set.add(stripRemovedSuffix(m.section));
           });
           names = Array.from(set);
         }
 
+        // 畫出各分類的區塊
         names.forEach((name) => {
-          const sec = document.createElement("div");
-          sec.className = "section";
-          sec.id = name;
-
           if (memoView === "removed") {
-            const stillExists = (categories || []).includes(name);
-            const displayName = stillExists ? name : `${name}(已移除)`;
+            const displayName = getRemovedSectionLabel(name); // 顯示用(可能帶後綴)
+            const sec = document.createElement("div");
+            sec.className = "section";
+            sec.id = name; // ← id 永遠用「原始分類名」
             sec.innerHTML = `
-    <div class="section-title">
-      <span class="section-name">${displayName}</span>
-      <button class="delete-btn" title="刪除此分類">✕</button>
-    </div>
-  `;
-            // 這顆 X：永久刪掉該分類底下「已移除」的所有備忘
+      <div class="section-title">
+        <span class="section-name">${displayName}</span>
+        <button class="delete-btn" title="刪除此分類">✕</button>
+      </div>
+    `;
+            // 右上角 X：清掉該分類底下所有「已移除」備忘（不管舊資料是否帶(已移除)後綴）
             sec.querySelector(".delete-btn").onclick = () =>
               confirmDeleteCategory(name, "removed");
+            wrap.appendChild(sec);
           } else {
+            // active 視圖維持原樣
+            const sec = document.createElement("div");
+            sec.className = "section" + (isEditing ? " edit-mode" : "");
+            sec.id = name;
             sec.innerHTML = `<div class="section-title">${name}</div>`;
+            wrap.appendChild(sec);
           }
-
-          wrap.appendChild(sec);
         });
 
         // 🗂️ 按鈕
@@ -1623,25 +1640,22 @@
               menu.style.display === "block" ? "none" : "block";
           });
 
-        // 依目前 memos 重建月份清單
+        // 依目前 memos 重建月份清單（你的 buildMemoMonthMenu 內已會參照 memoView/memoMonthFilter）
         buildMemoMonthMenu();
 
-        // 編輯模式時才需要拖拉（在「已移除」禁止）
-        // 編輯模式時才需要拖拉（在「已移除」禁止）
+        // 編輯模式與拖拉（在「已移除」禁止）
         if (memoView === "active") {
           updateSectionOptions();
           if (isEditing) {
-            // ★ 仍在編輯模式：把把手／✎／✕ 再掛回去 + 顯示底部✅
-            applyEditModeUI();
+            applyEditModeUI(); // 加上把手、✎、✕ 等
           } else {
-            // 非編輯模式就不要套把手，但允許正常渲染
             initSectionSortable?.();
           }
         } else {
-          updateSectionOptions(); // 下拉仍要能看見（唯讀）
+          updateSectionOptions(); // 下拉仍可看，但唯讀
         }
 
-        // ✅ 底部「完成編輯」按鈕只在當前檢視顯示
+        // ✅ 底部「完成編輯」按鈕只在「當前」且編輯中顯示
         const exitBtn = document.getElementById("exitEditBtn");
         if (exitBtn)
           exitBtn.style.display =
@@ -1676,6 +1690,49 @@
         });
       }
 
+      function destroyMemoSortables() {
+        memoSortables.forEach((s) => {
+          try {
+            s.destroy();
+          } catch (_) {}
+        });
+        memoSortables = [];
+      }
+
+      function initMemoSortables() {
+        destroyMemoSortables();
+        if (!(memoView === "active" && isEditing)) return;
+
+        // 每個分類區塊都是一個可投遞的清單
+        document
+          .querySelectorAll("#section-container .section")
+          .forEach((sec) => {
+            const s = new Sortable(sec, {
+              animation: 150,
+              handle: ".memo-drag", // 只允許抓把手拖
+              draggable: ".task", // 拖的是備忘條
+              group: "memos", // 跨容器移動
+              ghostClass: "dragging",
+              onAdd: (evt) => {
+                const el = evt.item;
+                const id = el?.dataset?.id;
+                const targetSection = evt.to?.id; // 目標分類名 = section 的 id
+                if (!id || !targetSection) return;
+                const m = memos.find((x) => x.id === id);
+                if (m && m.section !== targetSection) {
+                  m.section = targetSection;
+                  m.updatedAt = Date.now();
+                  saveMemos(); // 寫回雲端
+                }
+              },
+              onUpdate: () => {
+                // 目前未儲存排序順序，保持現狀即可
+              },
+            });
+            memoSortables.push(s);
+          });
+      }
+
       /* ===== 分類：新增/編輯/刪除/更名 ===== */
       function openCategoryModal() {
         closeFabMenu(); // 關掉＋選單
@@ -1701,7 +1758,7 @@
           return;
         }
         isEditing = true;
-        document.getElementById('app')?.classList.add('editing');
+        document.getElementById("app")?.classList.add("editing");
         closeFabMenu(); // 關掉＋選單
 
         // 每個區塊套上編輯配件
@@ -1730,7 +1787,10 @@
 
         // 重新啟用拖拉
         initSectionSortable();
+        initMemoSortables(); // 啟用備忘條拖拉（跨分類）
+
         memoMonthFilter = "all";
+
         renderAll();
 
         // 顯示底部 ✅ 鈕
@@ -1740,7 +1800,7 @@
 
       function exitEditMode() {
         isEditing = false;
-        document.getElementById('app')?.classList.remove('editing');
+        document.getElementById("app")?.classList.remove("editing");
 
         // 還原標題列成只有名稱
         document.querySelectorAll(".section").forEach((sec) => {
@@ -1759,55 +1819,60 @@
           sectionSortable = null;
         }
         initSectionSortable();
+        destroyMemoSortables(); // 關閉備忘條拖拉
+        renderAll();
 
         // 更新下拉
         updateSectionOptions();
       }
 
-      function confirmDeleteCategory(id, mode = 'active') {
-  pendingCategoryId = id;
-  pendingCategoryMode = mode; // 記住是在哪個視圖操作的
-  openModal("confirmCategoryModal");
-}
-function deleteCategoryConfirmed() {
-  if (!pendingCategoryId) {
-    closeModal("confirmCategoryModal");
-    return;
-  }
+      function confirmDeleteCategory(id, mode = "active") {
+        pendingCategoryId = id;
+        pendingCategoryMode = mode; // 記住是在哪個視圖操作的
+        openModal("confirmCategoryModal");
+      }
+      function deleteCategoryConfirmed() {
+        if (!pendingCategoryId) {
+          closeModal("confirmCategoryModal");
+          return;
+        }
 
-  const id = pendingCategoryId;
-  const mode = pendingCategoryMode || 'active';
+        const id = pendingCategoryId;
+        const mode = pendingCategoryMode || "active";
 
-  if (mode === 'removed') {
-    // ✅ 只刪「已移除」的這個分類底下的備忘；不動當前 categories/memos
-    memos = (memos || []).filter(m => !(m.removedAt && m.section === id));
-    saveMemos();
+        if (mode === "removed") {
+          // 把這個分類在「已移除」中的所有備忘都清掉
+          const base = stripRemovedSuffix(id);
+          memos = (memos || []).filter(
+            (m) => !(m.removedAt && stripRemovedSuffix(m.section) === base)
+          );
+          saveMemos();
 
-    // 重畫移除區（分類若已無任何已移除備忘，會自動消失）
-    renderSections();
-    renderAll();
+          renderSections();
+          renderAll();
 
-    pendingCategoryId = null;
-    pendingCategoryMode = 'active';
-    closeModal("confirmCategoryModal");
-    return;
-  }
+          pendingCategoryId = null;
+          pendingCategoryMode = "active";
+          closeModal("confirmCategoryModal");
+          return;
+        }
 
-  // === 以下維持「當前」原本刪除流程 ===
-  const fallback = categories.find(c => c !== "其它" && c !== id) || "其它";
-  memos = memos.filter(m => m.section !== id);
-  if (selectedMemoId && !memos.find(x => x.id === selectedMemoId)) {
-    selectedMemoId = null;
-  }
-  categories = categories.filter(c => c !== id);
-  saveMemos();
-  saveCategories();
-  renderSections();
-  renderAll();
-  pendingCategoryId = null;
-  pendingCategoryMode = 'active';
-  closeModal("confirmCategoryModal");
-}
+        // === 修正點（active 分支）===
+        // 1) 準備備用分類（盡量用現有第一個非本分類的；沒有就用「其它」，也順手建立）
+
+        // 3) 從「當前」的分類清單移除該分類
+        categories = categories.filter((c) => c !== id);
+
+        // 4) 存檔與重畫
+        saveMemos();
+        saveCategories();
+        renderSections();
+        renderAll();
+
+        pendingCategoryId = null;
+        pendingCategoryMode = "active";
+        closeModal("confirmCategoryModal");
+      }
 
       function closeFabMenu() {
         const m = document.getElementById("menu");
@@ -1835,14 +1900,16 @@ function deleteCategoryConfirmed() {
 
       /* ===== Memo CRUD ===== */
       function memoCardHTML(m) {
+        const showHandle = memoView === "active" && isEditing;
+        const handle = showHandle ? '<span class="memo-drag">☰</span>' : "";
         return `
-              <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
-              <div class="task-content">
-                <div class="task-title">${m.important ? "❗ " : ""}${
+    <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
+    <div class="task-content">
+      <div class="task-title">${handle}${m.important ? "❗ " : ""}${
           m.title || ""
         }</div>
-              </div>
-            `;
+    </div>
+  `;
       }
 
       function renderAll() {
@@ -1882,7 +1949,8 @@ function deleteCategoryConfirmed() {
           (sec || document.getElementById(categories[0]))?.appendChild(el);
         });
 
-        bindSwipeToTasks?.();
+        if (!isEditing) bindSwipeToTasks?.(); // 編輯時不要綁 swipe/click
+
         updateSectionOptions?.();
 
         if (filterVal === "all") {
@@ -1892,6 +1960,7 @@ function deleteCategoryConfirmed() {
         } else {
           hideEmptySectionsAfterFilter();
         }
+        if (isEditing && memoView === "active") initMemoSortables();
 
         // 依目前檢視重建月份選單
         buildMemoMonthMenu();
@@ -2376,13 +2445,19 @@ function deleteCategoryConfirmed() {
 
       /* ===== 互動補強 ===== */
       // 點背景關閉 modal
+      // 點背景關閉 modal（※ detailModal 例外：點背景不關）
       document.addEventListener("click", (e) => {
         const modal = e.target.closest(".modal");
         if (!modal) return;
         if (getComputedStyle(modal).display === "none") return;
+
+        // 「備忘內容」視窗不啟用背景點擊關閉
+        if (modal.id === "detailModal") return;
+
         const content = modal.querySelector(".modal-content");
         if (!content || !content.contains(e.target)) closeModal(modal.id);
       });
+
       // Esc 關閉
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
@@ -2739,10 +2814,32 @@ function deleteCategoryConfirmed() {
 
         // 只在編輯時啟用拖拉
         initSectionSortable?.();
+        initMemoSortables();
 
         // 底部的 ✅ 要持續顯示
         const exitBtn = document.getElementById("exitEditBtn");
         if (exitBtn) exitBtn.style.display = "block";
+      }
+
+      // 已移除檢視中的分類顯示：當前仍存在 → 原名；當前已刪 → 加 (已移除)
+      function getRemovedSectionLabel(name) {
+        const alive = (categories || []).includes(name);
+        return alive ? name : `${name}(已移除)`;
+      }
+
+      const REMOVED_SUFFIX = "(已移除)";
+
+      function stripRemovedSuffix(name = "") {
+        return name.endsWith(REMOVED_SUFFIX)
+          ? name.slice(0, -REMOVED_SUFFIX.length)
+          : name;
+      }
+
+      function getRemovedSectionLabel(name) {
+        // name 可能已經帶了(已移除)，先還原成原名後再決定顯示
+        const base = stripRemovedSuffix(name);
+        const alive = (categories || []).includes(base);
+        return alive ? base : `${base}${REMOVED_SUFFIX}`;
       }
     </script>
 
