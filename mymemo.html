@@ -108,8 +108,10 @@
         margin: 0.2rem 0 0.6rem;
         font-size: 1.1rem;
       }
-      
-      
+      .more-row-inline {
+        justify-content: flex-start !important;
+        gap: 0.75rem;
+      }
 
       /* row 佈局：左文右鈕 */
       .more-row {
@@ -802,21 +804,46 @@
       #app {
         display: none;
       } /* 等驗證完再顯示 */
-      
+
       /* 讓進度條內部不會因寬度變動而換行/跳動 */
-.swipe-bar { 
-  overflow: hidden;            /* 寬度不夠時把左側超出部分裁掉 */
-}
+      .swipe-bar {
+        overflow: hidden; /* 寬度不夠時把左側超出部分裁掉 */
+      }
 
+      .swipe-bar .label {
+        white-space: nowrap; /* 禁止換行（CJK 也不換） */
+        flex: 0 0 auto; /* 不要被壓縮 */
+        width: 72px; /* 固定一個寬度：🗑 +「移除」剛好單行 */
+        text-align: right; /* 文字靠右對齊，視覺上貼近右邊 */
+        letter-spacing: 0.02em; /* 可有可無：微調字距 */
+      }
 
+      /* 已移除：淺色毛玻璃卡片 */
+      .task.removed {
+        background: rgba(255, 255, 255, 0.55);
+        backdrop-filter: blur(8px) saturate(1.05);
+        -webkit-backdrop-filter: blur(8px) saturate(1.05);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      }
+      .task.removed .task-title {
+        color: #555;
+        font-weight: 600;
+      }
 
-.swipe-bar .label{
-  white-space: nowrap;         /* 禁止換行（CJK 也不換） */
-  flex: 0 0 auto;              /* 不要被壓縮 */
-  width: 72px;                 /* 固定一個寬度：🗑 +「移除」剛好單行 */
-  text-align: right;           /* 文字靠右對齊，視覺上貼近右邊 */
-  letter-spacing: 0.02em;      /* 可有可無：微調字距 */
-}
+      /* 在「已移除」檢視時，強制顯示分類右上角的 X */
+      #app.view-removed .section .delete-btn {
+        display: inline-flex !important;
+      }
+
+      /* 「已移除」檢視時，右下＋採反灰半透明（且不可點） */
+      .fab.fab-disabled {
+        opacity: 0.38;
+        filter: grayscale(100%);
+        background: rgba(200, 200, 200, 0.5) !important;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
@@ -1153,13 +1180,22 @@
     <div class="modal" id="moreModal">
       <div class="modal-content">
         <button class="close-btn" onclick="closeModal('moreModal')">✕</button>
-        <h3>更多功能</h3>
+        <h3>備忘錄檢視</h3>
+        <div class="more-row more-row-inline">
+          <label style="display: flex; align-items: center; gap: 0.4rem">
+            <input type="checkbox" id="viewActiveToggle" />當前</label
+          >
+          <label style="display: flex; align-items: center; gap: 0.4rem">
+            <input type="checkbox" id="viewRemovedToggle" />已移除</label
+          >
+        </div>
+
+        <h3>更換底色</h3>
 
         <div
           class="more-row"
           style="flex-direction: column; align-items: flex-start; gap: 0.5rem"
         >
-          <span style="font-weight: bold">更換底色</span>
           <button id="openPaletteBtn" class="palette-btn">🎨 調色盤</button>
         </div>
 
@@ -1240,66 +1276,84 @@
       let isEditing = false; // 是否在編輯分類模式（給長按行為判斷）
 
       let memoMonthFilter = "all"; // 'all' | 'recent5' | '11407'（ROC 年月）
+      let memoView = "active"; // 'active' | 'removed'
+      let memoMonthFilterActive = "all";
+      let memoMonthFilterRemoved = "all";
+      let pendingCategoryMode = "active"; // 'active' | 'removed'
+
+      function applyViewAffordances() {
+        const fab = document.querySelector(".fab");
+        const menu = document.getElementById("menu");
+        const appEl = document.getElementById("app");
+
+        // 切視圖用 class，控制 X 顯示與 FAB 反灰
+        appEl?.classList.toggle("view-removed", memoView === "removed");
+
+        if (memoView === "removed") {
+          fab?.classList.add("fab-disabled"); // 反灰＋不可點
+          menu?.classList.remove("show");
+          fab?.classList.remove("open");
+        } else {
+          fab?.classList.remove("fab-disabled");
+        }
+      }
+
+      function setMemoView(view) {
+        memoView = view;
+        try {
+          localStorage.setItem("memo_view", view);
+        } catch (_) {}
+        applyViewAffordances();
+        renderSections(); // 內部會依照 memoView 自行決定要畫哪些分類
+        renderAll();
+      }
 
       function buildMemoMonthMenu() {
         const menu = document.getElementById("memoMonthMenu");
         if (!menu) return;
         menu.innerHTML = "";
 
-        const mkBtn = (label, onClick, bold = false) => {
+        const isRemovedView = memoView === "removed";
+        const list = (memos || []).filter((m) =>
+          isRemovedView ? !!m.removedAt : !m.removedAt
+        );
+
+        const getFilter = () =>
+          isRemovedView ? memoMonthFilterRemoved : memoMonthFilterActive;
+        const setFilter = (val) => {
+          if (isRemovedView) memoMonthFilterRemoved = val;
+          else memoMonthFilterActive = val;
+          try {
+            localStorage.setItem(
+              isRemovedView ? "memo_filter_removed" : "memo_filter_active",
+              val
+            );
+          } catch (_) {}
+          renderAll();
+        };
+
+        const mkBtn = (label, value) => {
           const btn = document.createElement("button");
           btn.textContent = label;
           btn.style.cssText =
             "display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;" +
-            (bold ? "font-weight:600;" : "");
+            (getFilter() === value ? "font-weight:700;" : "");
           btn.onclick = () => {
-            onClick();
+            setFilter(value);
             menu.style.display = "none";
           };
           return btn;
         };
 
-        // 全部
-        menu.appendChild(
-          mkBtn(
-            "全部",
-            () => {
-              memoMonthFilter = "all";
-              renderAll();
-            },
-            true
-          )
-        );
+        menu.appendChild(mkBtn("全部", "all"));
+        menu.appendChild(mkBtn("近5日", "recent5"));
+        menu.appendChild(mkBtn("近30日", "recent30"));
+        menu.appendChild(mkBtn("重要 ❗", "important"));
 
-        // 近5日
-        menu.appendChild(
-          mkBtn("近5日", () => {
-            memoMonthFilter = "recent5";
-            renderAll();
-          })
-        );
-
-        // 近30日
-        menu.appendChild(
-          mkBtn("近30日", () => {
-            memoMonthFilter = "recent30";
-            renderAll();
-          })
-        );
-
-        // 重要❗
-        menu.appendChild(
-          mkBtn("重要 ❗", () => {
-            memoMonthFilter = "important";
-            renderAll();
-          })
-        );
-
-        // 月份（以最後更新時間為主，沒有更新就用建立時間）
         const monthSet = new Set();
-        (memos || []).forEach((m) => {
-          const ts = getMemoRefTime(m); // 你上一版已加：return m.updatedAt || m.createdAt || null;
-          const ym = toRocYMFromTs(ts); // 你上一版已加：把時間戳轉成 ROC 年月字串
+        list.forEach((m) => {
+          const ts = getMemoRefTime(m);
+          const ym = toRocYMFromTs(ts);
           if (ym !== "無") monthSet.add(ym);
         });
 
@@ -1310,27 +1364,89 @@
           menu.appendChild(empty);
           return;
         }
-
         Array.from(monthSet)
           .sort((a, b) => b.localeCompare(a))
-          .forEach((ym) => {
-            menu.appendChild(
-              mkBtn(ym, () => {
-                memoMonthFilter = ym;
-                renderAll();
-              })
-            );
-          });
+          .forEach((ym) => menu.appendChild(mkBtn(ym, ym)));
       }
 
       /* ===== 小工具 ===== */
 
       function openModal(id) {
         document.getElementById(id).style.display = "flex";
+        if (id === "moreModal") {
+          const a = document.getElementById("viewActiveToggle");
+          const r = document.getElementById("viewRemovedToggle");
+          if (a && r) {
+            a.checked = memoView === "active";
+            r.checked = memoView === "removed";
+          }
+        }
       }
+
+      document
+        .getElementById("viewActiveToggle")
+        ?.addEventListener("change", (e) => {
+          const other = document.getElementById("viewRemovedToggle");
+          if (e.target.checked) {
+            if (other) other.checked = false;
+            setMemoView("active");
+          } else if (other && !other.checked) e.target.checked = true;
+        });
+      document
+        .getElementById("viewRemovedToggle")
+        ?.addEventListener("change", (e) => {
+          const other = document.getElementById("viewActiveToggle");
+          if (e.target.checked) {
+            if (other) other.checked = false;
+            setMemoView("removed");
+          } else if (other && !other.checked) e.target.checked = true;
+        });
+
+      document.addEventListener("DOMContentLoaded", () => {
+        try {
+          memoView = localStorage.getItem("memo_view") || "active";
+          memoMonthFilterActive =
+            localStorage.getItem("memo_filter_active") || "all";
+          memoMonthFilterRemoved =
+            localStorage.getItem("memo_filter_removed") || "all";
+        } catch (_) {}
+        applyViewAffordances();
+        renderSections();
+      });
+
       function closeModal(id) {
         document.getElementById(id).style.display = "none";
       }
+
+      function setMemoView(view) {
+        memoView = view;
+        try {
+          localStorage.setItem("memo_view", view);
+        } catch (_) {}
+        applyViewAffordances();
+        renderSections();
+        renderAll();
+      }
+
+      document
+        .getElementById("viewActiveToggle")
+        ?.addEventListener("change", (e) => {
+          const other = document.getElementById("viewRemovedToggle");
+          if (e.target.checked) {
+            if (other) other.checked = false;
+            setMemoView("active");
+          } else if (other && !other.checked) e.target.checked = true; // 至少擇一
+        });
+      document
+        .getElementById("viewRemovedToggle")
+        ?.addEventListener("change", (e) => {
+          const other = document.getElementById("viewActiveToggle");
+          if (e.target.checked) {
+            if (other) other.checked = false;
+            setMemoView("removed");
+          } else if (other && !other.checked) e.target.checked = true; // 至少擇一
+        });
+
       function openMemoModal(prefSectionId) {
         updateSectionOptions();
         if (prefSectionId) {
@@ -1343,6 +1459,7 @@
       }
 
       function toggleMenu() {
+        if (memoView === "removed") return;
         const m = document.getElementById("menu");
         const fab = document.querySelector(".fab");
         const willShow = !m.classList.contains("show");
@@ -1351,13 +1468,13 @@
       }
 
       document.addEventListener("click", (e) => {
-  const menu = document.getElementById("menu");
-  if (!menu || !menu.classList.contains("show")) return;
-  const fab = document.querySelector(".fab");
-  const inside = menu.contains(e.target);
-  const onFab  = fab && fab.contains(e.target);
-  if (!inside && !onFab) closeFabMenu();                    // ← 同步關 & 還原「＋」
-});
+        const menu = document.getElementById("menu");
+        if (!menu || !menu.classList.contains("show")) return;
+        const fab = document.querySelector(".fab");
+        const inside = menu.contains(e.target);
+        const onFab = fab && fab.contains(e.target);
+        if (!inside && !onFab) closeFabMenu(); // ← 同步關 & 還原「＋」
+      });
 
       async function doLogout() {
         // 1) 關掉 Firebase 監聽
@@ -1463,10 +1580,11 @@
       })();
 
       /* ===== 分類區 ===== */
-      function renderSections(list) {
+      function renderSections() {
         const wrap = document.getElementById("section-container");
+        if (!wrap) return;
 
-        // 先畫「更多…」 + 清單
+        // 先畫上方 🗂️ + 篩選選單容器
         wrap.innerHTML = `
     <div id="memoMore" style="text-align:right; margin:0.25rem 0; position:relative;">
       <button id="memoMoreBtn"
@@ -1480,45 +1598,43 @@
     </div>
   `;
 
-        // 依分類畫區塊（若正在編輯，直接帶入把手/鉛筆/刪除）
-        list.forEach((name) => {
+        let names = [];
+        if (memoView === "active") {
+          names = (categories || []).slice();
+        } else {
+          // 只蒐集「有已移除備忘」的分類
+          const set = new Set();
+          (memos || []).forEach((m) => {
+            if (m.removedAt) set.add(m.section);
+          });
+          names = Array.from(set);
+        }
+
+        names.forEach((name) => {
           const sec = document.createElement("div");
-          sec.className = "section" + (isEditing ? " edit-mode" : "");
+          sec.className = "section";
           sec.id = name;
 
-          if (isEditing) {
+          if (memoView === "removed") {
+            const stillExists = (categories || []).includes(name);
+            const displayName = stillExists ? name : `${name}(已移除)`;
             sec.innerHTML = `
-        <div class="section-title">
-          <span class="drag-handle">☰</span>
-          <span class="section-name">${name}</span>
-          <button class="rename-btn" title="重命名">✎</button>
-          <button class="delete-btn" title="刪除此分類">✕</button>
-        </div>
-      `;
+    <div class="section-title">
+      <span class="section-name">${displayName}</span>
+      <button class="delete-btn" title="刪除此分類">✕</button>
+    </div>
+  `;
+            // 這顆 X：永久刪掉該分類底下「已移除」的所有備忘
+            sec.querySelector(".delete-btn").onclick = () =>
+              confirmDeleteCategory(name, "removed");
           } else {
             sec.innerHTML = `<div class="section-title">${name}</div>`;
           }
 
           wrap.appendChild(sec);
-
-          // 編輯模式下掛事件
-          if (isEditing) {
-            const bar = sec.querySelector(".section-title");
-            bar.querySelector(".rename-btn").onclick = () => {
-              pendingRenameId = sec.id;
-              document.getElementById("renameInput").value = sec.id;
-              openModal("renameModal");
-            };
-            bar.querySelector(".delete-btn").onclick = () =>
-              confirmDeleteCategory(sec.id);
-          }
         });
 
-        // 更新下拉選單與拖拉（把手只在編輯模式存在）
-        updateSectionOptions();
-        initSectionSortable?.();
-
-        // 「更多…」按鈕行為
+        // 🗂️ 按鈕
         document
           .getElementById("memoMoreBtn")
           ?.addEventListener("click", () => {
@@ -1531,9 +1647,26 @@
         // 依目前 memos 重建月份清單
         buildMemoMonthMenu();
 
-        // ✅ 按鈕顯示與否：編輯中就顯示
+        // 編輯模式時才需要拖拉（在「已移除」禁止）
+        // 編輯模式時才需要拖拉（在「已移除」禁止）
+        if (memoView === "active") {
+          updateSectionOptions();
+          if (isEditing) {
+            // ★ 仍在編輯模式：把把手／✎／✕ 再掛回去 + 顯示底部✅
+            applyEditModeUI();
+          } else {
+            // 非編輯模式就不要套把手，但允許正常渲染
+            initSectionSortable?.();
+          }
+        } else {
+          updateSectionOptions(); // 下拉仍要能看見（唯讀）
+        }
+
+        // ✅ 底部「完成編輯」按鈕只在當前檢視顯示
         const exitBtn = document.getElementById("exitEditBtn");
-        if (exitBtn) exitBtn.style.display = isEditing ? "block" : "none";
+        if (exitBtn)
+          exitBtn.style.display =
+            memoView === "active" && isEditing ? "block" : "none";
       }
 
       function updateSectionOptions() {
@@ -1585,6 +1718,9 @@
       let pendingCategoryId = null;
 
       function enterEditMode() {
+        if (memoView === "removed") {
+          return;
+        }
         isEditing = true;
         closeFabMenu(); // 關掉＋選單
 
@@ -1647,37 +1783,57 @@
         updateSectionOptions();
       }
 
-      function confirmDeleteCategory(id) {
+      function confirmDeleteCategory(id, mode = "active") {
         pendingCategoryId = id;
-        openModal("confirmCategoryModal"); // 打開自訂視窗
+        pendingCategoryMode = mode;
+        openModal("confirmCategoryModal");
       }
-
       function deleteCategoryConfirmed() {
         if (!pendingCategoryId) {
           closeModal("confirmCategoryModal");
           return;
         }
-
         const id = pendingCategoryId;
-        const fallback =
-          categories.find((c) => c !== "其它" && c !== id) || "其它";
 
-        // 把該分類下的 memo 移到 fallback
-        memos = memos.filter((m) => m.section !== id);
-        if (selectedMemoId && !memos.find((x) => x.id === selectedMemoId)) {
-          selectedMemoId = null; // 若剛好正在看被刪掉的 memo，清掉選取
+        // ★「已移除」檢視：永久刪除該分類以及該分類下所有已移除的備忘
+        if (pendingCategoryMode === "removed") {
+          // 刪掉所有屬於此分類、且已被移除的備忘
+          memos = (memos || []).filter(
+            (m) => !(m.section === id && m.removedAt)
+          );
+
+          // 從「當前」分類清單中也移除這個分類（存在才會刪，不存在就略過）
+          categories = (categories || []).filter((c) => c !== id);
+
+          saveMemos();
+          saveCategories();
+
+          renderSections();
+          renderAll();
+
+          pendingCategoryId = null;
+          closeModal("confirmCategoryModal");
+          return;
         }
 
-        // 刪掉分類
-        categories = categories.filter((c) => c !== id);
+        // === 「當前」檢視：把該分類內「未移除」的備忘軟刪除（標記 removedAt），並移除分類 ===
+        const now = Date.now();
+        (memos || []).forEach((m) => {
+          if (m.section === id && !m.removedAt) {
+            m.removedAt = now;
+            m.updatedAt = m.updatedAt || now;
+            // m.section 不變，讓它在「已移除」檢視保留原分類名稱
+          }
+        });
 
-        // 存雲＋重畫
+        categories = (categories || []).filter((c) => c !== id);
+
         saveMemos();
         saveCategories();
-        renderSections(categories);
+
+        renderSections();
         renderAll();
 
-        // 收尾
         pendingCategoryId = null;
         closeModal("confirmCategoryModal");
       }
@@ -1724,30 +1880,31 @@
           Array.from(sec.querySelectorAll(".task")).forEach((t) => t.remove());
         });
 
-        // 依選擇篩選（all 不過濾 / important 只看旗標 / 其他看時間或月份）
-        const filtered = (memos || []).filter((m) => {
-          if (memoMonthFilter === "all") return true; // 全部
-          if (memoMonthFilter === "important") return !!m.important;
+        const isRemoved = memoView === "removed";
+        const filterVal = isRemoved
+          ? memoMonthFilterRemoved
+          : memoMonthFilterActive;
+        const source = (memos || []).filter((m) =>
+          isRemoved ? !!m.removedAt : !m.removedAt
+        );
 
-          const ts = getMemoRefTime(m); // 以「最後更新日（無則建立日）」為基準
+        const filtered = source.filter((m) => {
+          if (filterVal === "all") return true;
+          if (filterVal === "important") return !!m.important;
+          const ts = getMemoRefTime(m);
           if (!ts) return false;
-
-          if (memoMonthFilter === "recent5") {
-            const diffDays = Math.floor((Date.now() - ts) / 86400000);
-            return diffDays <= 5;
+          if (filterVal === "recent5") {
+            return Math.floor((Date.now() - ts) / 86400000) <= 5;
           }
-          if (memoMonthFilter === "recent30") {
-            const diffDays = Math.floor((Date.now() - ts) / 86400000);
-            return diffDays <= 30;
+          if (filterVal === "recent30") {
+            return Math.floor((Date.now() - ts) / 86400000) <= 30;
           }
-          // 指定月份（ROC 年月）
-          return toRocYMFromTs(ts) === memoMonthFilter;
+          return toRocYMFromTs(ts) === filterVal; // 指定月份
         });
 
-        // 畫卡片
         filtered.forEach((m) => {
           const el = document.createElement("div");
-          el.className = "task";
+          el.className = "task" + (isRemoved ? " removed" : "");
           el.dataset.id = m.id;
           el.innerHTML = memoCardHTML(m);
           const sec = document.getElementById(m.section);
@@ -1757,8 +1914,7 @@
         bindSwipeToTasks?.();
         updateSectionOptions?.();
 
-        // ★ 非「全部」時，把沒有任何符合卡片的分類隱藏起來
-        if (memoMonthFilter === "all") {
+        if (filterVal === "all") {
           document
             .querySelectorAll("#section-container .section")
             .forEach((sec) => (sec.style.display = ""));
@@ -1766,7 +1922,7 @@
           hideEmptySectionsAfterFilter();
         }
 
-        // 清單同步（防新增/編輯後月份變動）
+        // 依目前檢視重建月份選單
         buildMemoMonthMenu();
       }
 
@@ -1846,6 +2002,35 @@
           : "";
 
         resetDetailPanels();
+
+        const isRemoved = memoView === "removed";
+        // 標籤文案
+        const labels = document.querySelectorAll("#detailForm label");
+        if (labels[0])
+          labels[0].textContent = isRemoved ? "分類（已移除）" : "備忘分類";
+
+        // 欄位唯讀/禁用
+        document.getElementById("detailSection").disabled = isRemoved;
+        document.getElementById("detailTitle").readOnly = isRemoved;
+        document.getElementById("detailContent").readOnly = isRemoved;
+        document.getElementById("detailImportant").disabled = isRemoved;
+
+        // 儲存鈕 → 我知道了！
+        const saveBtn = document.querySelector(
+          "#detailForm .btn-half.btn-save"
+        );
+        if (saveBtn) {
+          if (isRemoved) {
+            saveBtn.textContent = "我知道了！";
+            saveBtn.onclick = () => {
+              closeModal("detailModal");
+            };
+          } else {
+            saveBtn.textContent = "💾 儲存";
+            saveBtn.onclick = saveMemo;
+          }
+        }
+
         document.getElementById("detailModal").style.display = "flex";
       }
 
@@ -1866,12 +2051,31 @@
       }
 
       function confirmDelete() {
+        const title = document.querySelector("#confirmModal h3");
+        if (title) {
+          title.textContent =
+            memoView === "removed"
+              ? "確定要永久刪除這則備忘？"
+              : "確定要移到「已移除」？";
+        }
         openModal("confirmModal");
       }
+
       function deleteMemo() {
         if (!selectedMemoId) return;
         const idx = memos.findIndex((x) => x.id === selectedMemoId);
-        if (idx >= 0) memos.splice(idx, 1);
+        if (idx < 0) return;
+
+        if (memoView === "removed") {
+          // 永久刪除
+          memos.splice(idx, 1);
+        } else {
+          // 軟刪除 → 丟到「已移除」
+          const m = memos[idx];
+          m.removedAt = Date.now();
+          m.updatedAt = m.updatedAt || Date.now();
+        }
+
         saveMemos();
         renderAll();
         closeModal("confirmModal");
@@ -2209,14 +2413,14 @@
         if (!content || !content.contains(e.target)) closeModal(modal.id);
       });
       // Esc 關閉
-     document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    document.querySelectorAll(".modal").forEach((m) => {
-      if (getComputedStyle(m).display !== "none") closeModal(m.id);
-    });
-    closeFabMenu();   // ← 新增：若 menu 展開也一併收
-  }
-});
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          document.querySelectorAll(".modal").forEach((m) => {
+            if (getComputedStyle(m).display !== "none") closeModal(m.id);
+          });
+          closeFabMenu(); // ← 新增：若 menu 展開也一併收
+        }
+      });
 
       /* ===== 其他 ===== */
       function formatRocDateTime(ts) {
@@ -2233,6 +2437,13 @@
 
       /* ===== 初始資料 ===== */
       document.addEventListener("DOMContentLoaded", () => {
+        try {
+          memoView = localStorage.getItem("memo_view") || "active";
+          memoMonthFilterActive =
+            localStorage.getItem("memo_filter_active") || "all";
+          memoMonthFilterRemoved =
+            localStorage.getItem("memo_filter_removed") || "all";
+        } catch (_) {}
         // 預設先畫空容器，等雲端回來再畫
         renderSections(categories);
       });
@@ -2269,6 +2480,8 @@
         let pressSection = null;
 
         function isEligibleTarget(e) {
+          if (memoView === "removed") return false;
+
           if (isEditing) return false; // 編輯分類時停用
           const sec = e.target.closest(".section"); // 必須點在分類區塊裡
           if (!sec) return false;
@@ -2380,58 +2593,63 @@
         if (el) el.style.display = "none";
       }
 
-async function bootFromTask() {
-  const overlay = document.getElementById("autologin-overlay");
-  const app = document.getElementById("app");
-  
-    // ★ 貼這三行（讀 fast_switch，決定寬限時間）
-  const fast = sessionStorage.getItem('fast_switch') === '1';
-  sessionStorage.removeItem('fast_switch');
-  const graceMs = fast ? 800 : 400;
+      async function bootFromTask() {
+        const overlay = document.getElementById("autologin-overlay");
+        const app = document.getElementById("app");
 
-  // 0) 先不要動遮罩，保持 hidden（HTML/CSS 預設 display:none）
-  // ★ 不要 overlay.style.display = "flex";
+        // ★ 貼這三行（讀 fast_switch，決定寬限時間）
+        const fast = sessionStorage.getItem("fast_switch") === "1";
+        sessionStorage.removeItem("fast_switch");
+        const graceMs = fast ? 800 : 400;
 
-  // 1) 沒 roomPath 就回登入
-  const rp = hydrateRoomPath();
-  if (!rp) { location.replace("index.html"); return; }
-  roomPath = rp;
+        // 0) 先不要動遮罩，保持 hidden（HTML/CSS 預設 display:none）
+        // ★ 不要 overlay.style.display = "flex";
 
-  // 2) 先綁觀察者（拿到 user 後會自動 bindFirebase + 顯示 App）
-  attachAuthObserver();
+        // 1) 沒 roomPath 就回登入
+        const rp = hydrateRoomPath();
+        if (!rp) {
+          location.replace("index.html");
+          return;
+        }
+        roomPath = rp;
 
-  // 3) 固定會話（不要阻塞 UI）
-  try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
+        // 2) 先綁觀察者（拿到 user 後會自動 bindFirebase + 顯示 App）
+        attachAuthObserver();
 
-  // 4) 快速路徑：若 currentUser 已經就緒，直接進 App，完全不顯示遮罩
-  if (auth.currentUser) {
-    bindFirebase();
-    app.style.display = "block";
-    overlay.style.display = "none";
-    return;
-  }
+        // 3) 固定會話（不要阻塞 UI）
+        try {
+          await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        } catch (_) {}
 
-  // 5) ★ 寬限 400ms：這段時間等 Firebase 還原既有 session
-  const grace = setTimeout(() => {
-    // 仍然沒有使用者 → 才把遮罩打開
-    if (!auth.currentUser) overlay.style.display = "flex";
-  }, 400);
+        // 4) 快速路徑：若 currentUser 已經就緒，直接進 App，完全不顯示遮罩
+        if (auth.currentUser) {
+          bindFirebase();
+          app.style.display = "block";
+          overlay.style.display = "none";
+          return;
+        }
 
-  try {
-    // 6) ★ 如果真的沒有 session，就匿名登入（觀察者會在登入後關遮罩）
-    startAutoLoginWatchdog(8000);
-    await auth.signInAnonymously();
-  } catch (e) {
-    console.warn("Anonymous sign-in failed", e);
-    alert("自動登入失敗，請重新整理");
-    overlay.style.display = "none";
-  } finally {
-    clearTimeout(grace);
-    stopAutoLoginWatchdog();
-  }
-}
+        // 5) ★ 寬限 400ms：這段時間等 Firebase 還原既有 session
+        const grace = setTimeout(() => {
+          // 仍然沒有使用者 → 才把遮罩打開
+          if (!auth.currentUser) overlay.style.display = "flex";
+        }, 400);
 
-  document.addEventListener("DOMContentLoaded", bootFromTask);
+        try {
+          // 6) ★ 如果真的沒有 session，就匿名登入（觀察者會在登入後關遮罩）
+          startAutoLoginWatchdog(8000);
+          await auth.signInAnonymously();
+        } catch (e) {
+          console.warn("Anonymous sign-in failed", e);
+          alert("自動登入失敗，請重新整理");
+          overlay.style.display = "none";
+        } finally {
+          clearTimeout(grace);
+          stopAutoLoginWatchdog();
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", bootFromTask);
       function sanitizeKey(s) {
         return String(s).replace(/[.#$/\[\]\/]/g, "_");
       }
@@ -2467,58 +2685,94 @@ async function bootFromTask() {
         window.location.href = "index.html";
       }
       // --- 看門狗（只有真的在嘗試登入時才會啟動） ---
-let __loginPending = false;
-let __autoLoginWD = null;
+      let __loginPending = false;
+      let __autoLoginWD = null;
 
-function startAutoLoginWatchdog(ms = 8000) {
-  stopAutoLoginWatchdog();
-  __loginPending = true;
-  __autoLoginWD = setTimeout(() => {
-    if (!__loginPending) return;
-    console.warn("[auto] login watchdog fired");
-    runAutoLoginRescue(); // 可選：見下
-  }, ms);
-}
-function stopAutoLoginWatchdog() {
-  __loginPending = false;
-  if (__autoLoginWD) { clearTimeout(__autoLoginWD); __autoLoginWD = null; }
-}
+      function startAutoLoginWatchdog(ms = 8000) {
+        stopAutoLoginWatchdog();
+        __loginPending = true;
+        __autoLoginWD = setTimeout(() => {
+          if (!__loginPending) return;
+          console.warn("[auto] login watchdog fired");
+          runAutoLoginRescue(); // 可選：見下
+        }, ms);
+      }
+      function stopAutoLoginWatchdog() {
+        __loginPending = false;
+        if (__autoLoginWD) {
+          clearTimeout(__autoLoginWD);
+          __autoLoginWD = null;
+        }
+      }
 
-// --- 觀察者：唯一入口，決定何時綁資料、顯示 App、關遮罩 ---
-function attachAuthObserver() {
-  auth.onAuthStateChanged((user) => {
-    const overlay = document.getElementById("autologin-overlay");
-    const app = document.getElementById("app");
-    if (user) {
-      bindFirebase();
-      app.style.display = "block";
-      overlay.style.display = "none";
-    }
-  });
-}
+      // --- 觀察者：唯一入口，決定何時綁資料、顯示 App、關遮罩 ---
+      function attachAuthObserver() {
+        auth.onAuthStateChanged((user) => {
+          const overlay = document.getElementById("autologin-overlay");
+          const app = document.getElementById("app");
+          if (user) {
+            bindFirebase();
+            app.style.display = "block";
+            overlay.style.display = "none";
+          }
+        });
+      }
 
-// ---（可選）救援：硬重置 Firebase 並重新登入匿名 ---
-async function runAutoLoginRescue() {
-  try {
-    console.warn("[auto] rescue: hard reset firebase");
-    unbindFirebase();
-    try { await firebase.app().delete(); } catch (_) {}
-    firebase.initializeApp(firebaseConfig);
-    auth = firebase.auth();
-    db   = firebase.database();
-    attachAuthObserver(); // 重新綁觀察者
+      // ---（可選）救援：硬重置 Firebase 並重新登入匿名 ---
+      async function runAutoLoginRescue() {
+        try {
+          console.warn("[auto] rescue: hard reset firebase");
+          unbindFirebase();
+          try {
+            await firebase.app().delete();
+          } catch (_) {}
+          firebase.initializeApp(firebaseConfig);
+          auth = firebase.auth();
+          db = firebase.database();
+          attachAuthObserver(); // 重新綁觀察者
 
-    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-    await auth.signInAnonymously();
-  } catch (e) {
-    console.error("[auto] rescue failed", e);
-    alert("登入逾時，請重新整理或稍後再試");
-    document.getElementById("autologin-overlay").style.display = "none";
-  } finally {
-    stopAutoLoginWatchdog();
-  }
-}
-      
+          await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+          await auth.signInAnonymously();
+        } catch (e) {
+          console.error("[auto] rescue failed", e);
+          alert("登入逾時，請重新整理或稍後再試");
+          document.getElementById("autologin-overlay").style.display = "none";
+        } finally {
+          stopAutoLoginWatchdog();
+        }
+      }
+
+      // === 讓編輯模式在 re-render 後持續套用 ===
+      function applyEditModeUI() {
+        if (!isEditing || memoView !== "active") return;
+
+        document.querySelectorAll(".section").forEach((sec) => {
+          sec.classList.add("edit-mode");
+          const bar = sec.querySelector(".section-title");
+          const name = sec.id;
+          bar.innerHTML = `
+      <span class="drag-handle">☰</span>
+      <span class="section-name">${name}</span>
+      <button class="rename-btn" title="重命名">✎</button>
+      <button class="delete-btn" title="刪除此分類">✕</button>
+    `;
+
+          bar.querySelector(".rename-btn").onclick = () => {
+            pendingRenameId = sec.id;
+            document.getElementById("renameInput").value = sec.id;
+            openModal("renameModal");
+          };
+          bar.querySelector(".delete-btn").onclick = () =>
+            confirmDeleteCategory(sec.id);
+        });
+
+        // 只在編輯時啟用拖拉
+        initSectionSortable?.();
+
+        // 底部的 ✅ 要持續顯示
+        const exitBtn = document.getElementById("exitEditBtn");
+        if (exitBtn) exitBtn.style.display = "block";
+      }
     </script>
 
     <!-- Loading（切換中） -->
