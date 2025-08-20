@@ -1727,6 +1727,7 @@
           return;
         }
         isEditing = true;
+        document.getElementById('app')?.classList.add('editing');
         closeFabMenu(); // 關掉＋選單
 
         // 每個區塊套上編輯配件
@@ -1765,6 +1766,7 @@
 
       function exitEditMode() {
         isEditing = false;
+        document.getElementById('app')?.classList.remove('editing');
 
         // 還原標題列成只有名稱
         document.querySelectorAll(".section").forEach((sec) => {
