@@ -1279,23 +1279,23 @@ button.palette-btn:active {
 ">✅</button>
 
 
-  <!-- 新增任務視窗 -->
-  <div class="modal no-backdrop-close" id="taskDetailModal">
-    <div class="modal-content">
-      <button class="close-btn" onclick="closeModal('taskModal')">✕</button>
-      <h3>新增任務</h3>
-    <label>任務分類</label>
-    <div class="inline-row">
-      <!-- 這裡要用 taskSection（不是 detailSection）-->
-      <select id="taskSection" class="half">
-      </select>
+<!-- 新增任務視窗 -->
+<div class="modal" id="taskModal">
+  <div class="modal-content">
+    <button class="close-btn" onclick="closeModal('taskModal')">✕</button>
+    <h3>新增任務</h3>
+  <label>任務分類</label>
+  <div class="inline-row">
+    <!-- 這裡要用 taskSection（不是 detailSection）-->
+    <select id="taskSection" class="half">
+    </select>
 
-      <!-- 這裡要用 taskImportant（不是 detailImportant）-->
-      <label class="important-flag">
-        <input type="checkbox" id="taskImportant">
-        重要
-      </label>
-    </div>
+    <!-- 這裡要用 taskImportant（不是 detailImportant）-->
+    <label class="important-flag">
+      <input type="checkbox" id="taskImportant">
+      重要
+    </label>
+  </div>
 
       <label>任務標題(必填)</label>
       <input type="text" id="taskTitle">
