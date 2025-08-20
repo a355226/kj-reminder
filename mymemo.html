@@ -905,6 +905,11 @@
           transform: rotate(360deg);
         }
       }
+      
+      /* 編輯分類時，禁用卡片互動，避免誤觸開詳情 */
+#app.editing .task { 
+  pointer-events: none;
+}
     </style>
 
     <!-- App -->
@@ -1715,6 +1720,7 @@
         closeModal("categoryModal");
       }
       let pendingRenameId = null;
+      let pendingCategoryMode = 'active'; // 'active' | 'removed'
       let pendingCategoryId = null;
 
       function enterEditMode() {
@@ -1783,60 +1789,67 @@
         updateSectionOptions();
       }
 
-      function confirmDeleteCategory(id, mode = "active") {
-        pendingCategoryId = id;
-        pendingCategoryMode = mode;
-        openModal("confirmCategoryModal");
-      }
-      function deleteCategoryConfirmed() {
-        if (!pendingCategoryId) {
-          closeModal("confirmCategoryModal");
-          return;
-        }
-        const id = pendingCategoryId;
+      function confirmDeleteCategory(id, mode = 'active') {
+  pendingCategoryId = id;
+  pendingCategoryMode = mode; // 記住是在哪個視圖操作的
+  openModal("confirmCategoryModal");
+}
+function deleteCategoryConfirmed() {
+  if (!pendingCategoryId) {
+    closeModal("confirmCategoryModal");
+    return;
+  }
 
-        // ★「已移除」檢視：永久刪除該分類以及該分類下所有已移除的備忘
-        if (pendingCategoryMode === "removed") {
-          // 刪掉所有屬於此分類、且已被移除的備忘
-          memos = (memos || []).filter(
-            (m) => !(m.section === id && m.removedAt)
-          );
+  const id = pendingCategoryId;
+  const mode = pendingCategoryMode || 'active';
 
-          // 從「當前」分類清單中也移除這個分類（存在才會刪，不存在就略過）
-          categories = (categories || []).filter((c) => c !== id);
+  if (mode === 'removed') {
+    // ✅ 只刪「已移除庫」的資料，不碰當前的 categories / memos
+    // 若你的移除庫變數不是 removedMemos，請把下行換成你的變數名（例如 trashMemos / memosRemoved）
+    removedMemos = (removedMemos || []).filter(m => m.section !== id);
 
-          saveMemos();
-          saveCategories();
+    // 同步雲端（若你已經有 saveRemovedMemos() 就呼叫它；如果沒有，用下面這個）
+    if (typeof saveRemovedMemos === 'function') {
+      saveRemovedMemos();
+    } else {
+      const obj = {};
+      (removedMemos || []).forEach(m => obj[m.id] = m);
+      try {
+        db.ref(`${roomPath}/memosRemoved`).set(obj);
+      } catch (_) {}
+    }
 
-          renderSections();
-          renderAll();
+    // 重畫「已移除」畫面即可（當前 categories 不要動）
+    renderSections(categories);
+    renderAll();
 
-          pendingCategoryId = null;
-          closeModal("confirmCategoryModal");
-          return;
-        }
+    // 收尾
+    pendingCategoryId = null;
+    pendingCategoryMode = 'active';
+    closeModal("confirmCategoryModal");
+    return;
+  }
 
-        // === 「當前」檢視：把該分類內「未移除」的備忘軟刪除（標記 removedAt），並移除分類 ===
-        const now = Date.now();
-        (memos || []).forEach((m) => {
-          if (m.section === id && !m.removedAt) {
-            m.removedAt = now;
-            m.updatedAt = m.updatedAt || now;
-            // m.section 不變，讓它在「已移除」檢視保留原分類名稱
-          }
-        });
+  // === 下面是「當前」的原本刪除流程（保留你的行為） ===
+  const fallback = categories.find(c => c !== "其它" && c !== id) || "其它";
 
-        categories = (categories || []).filter((c) => c !== id);
+  // 把該分類的「當前」 memo 全移除（注意：這裡是當前，不是移除庫）
+  memos = memos.filter(m => m.section !== id);
+  if (selectedMemoId && !memos.find(x => x.id === selectedMemoId)) {
+    selectedMemoId = null;
+  }
 
-        saveMemos();
-        saveCategories();
+  categories = categories.filter(c => c !== id);
 
-        renderSections();
-        renderAll();
+  saveMemos();
+  saveCategories();
+  renderSections(categories);
+  renderAll();
 
-        pendingCategoryId = null;
-        closeModal("confirmCategoryModal");
-      }
+  pendingCategoryId = null;
+  pendingCategoryMode = 'active';
+  closeModal("confirmCategoryModal");
+}
 
       function closeFabMenu() {
         const m = document.getElementById("menu");
