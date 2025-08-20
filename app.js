@@ -3956,7 +3956,7 @@
   // === 圖示前綴（❗️ / 📅）統一處理 ===
   function getTaskIconsPrefix(t) {
     let p = "";
-    if (t?.important) p += "❗️";
+    if (t?.important) p += "❗️\u202F";
     if (t?.recurrence && t.recurrence.type) p += "🗓️\u202F"; // 小空格（窄不換行）
     return p;
   }
