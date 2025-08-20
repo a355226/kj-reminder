@@ -1303,7 +1303,8 @@
         }
       }
 
-  
+
+
       function buildMemoMonthMenu() {
         const menu = document.getElementById("memoMonthMenu");
         if (!menu) return;
@@ -1778,48 +1779,31 @@ function deleteCategoryConfirmed() {
   const mode = pendingCategoryMode || 'active';
 
   if (mode === 'removed') {
-    // ✅ 只刪「已移除庫」的資料，不碰當前的 categories / memos
-    // 若你的移除庫變數不是 removedMemos，請把下行換成你的變數名（例如 trashMemos / memosRemoved）
-    removedMemos = (removedMemos || []).filter(m => m.section !== id);
+    // ✅ 只刪「已移除」的這個分類底下的備忘；不動當前 categories/memos
+    memos = (memos || []).filter(m => !(m.removedAt && m.section === id));
+    saveMemos();
 
-    // 同步雲端（若你已經有 saveRemovedMemos() 就呼叫它；如果沒有，用下面這個）
-    if (typeof saveRemovedMemos === 'function') {
-      saveRemovedMemos();
-    } else {
-      const obj = {};
-      (removedMemos || []).forEach(m => obj[m.id] = m);
-      try {
-        db.ref(`${roomPath}/memosRemoved`).set(obj);
-      } catch (_) {}
-    }
-
-    // 重畫「已移除」畫面即可（當前 categories 不要動）
-    renderSections(categories);
+    // 重畫移除區（分類若已無任何已移除備忘，會自動消失）
+    renderSections();
     renderAll();
 
-    // 收尾
     pendingCategoryId = null;
     pendingCategoryMode = 'active';
     closeModal("confirmCategoryModal");
     return;
   }
 
-  // === 下面是「當前」的原本刪除流程（保留你的行為） ===
+  // === 以下維持「當前」原本刪除流程 ===
   const fallback = categories.find(c => c !== "其它" && c !== id) || "其它";
-
-  // 把該分類的「當前」 memo 全移除（注意：這裡是當前，不是移除庫）
   memos = memos.filter(m => m.section !== id);
   if (selectedMemoId && !memos.find(x => x.id === selectedMemoId)) {
     selectedMemoId = null;
   }
-
   categories = categories.filter(c => c !== id);
-
   saveMemos();
   saveCategories();
-  renderSections(categories);
+  renderSections();
   renderAll();
-
   pendingCategoryId = null;
   pendingCategoryMode = 'active';
   closeModal("confirmCategoryModal");
