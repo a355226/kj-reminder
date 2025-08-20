@@ -3107,32 +3107,46 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") closeFabMenu();
   });
+  // ✅ 不允許「點背景就關」的 modal（只鎖任務資訊視窗）
+  const BACKDROP_LOCKED = new Set(["detailModal"]);
 
-  // ✅ 事件委派：點到任何開著的 modal 的「背景區」就關閉
+  // ✅ 事件委派：點到任何開著的 modal 的「背景區」就關閉（但 detailModal 除外）
   document.addEventListener(
     "click",
     function (e) {
-      // 只處理點在 .modal 範圍內的事件
       const modal = e.target.closest(".modal");
       if (!modal) return;
 
-      // 只關「有開著」的 modal（display !== 'none'）
+      // 只處理「有開著」的 modal
       if (getComputedStyle(modal).display === "none") return;
 
       const content = modal.querySelector(".modal-content");
-      // 點到內容框外（=背景遮罩）才關
-      if (!content || !content.contains(e.target)) {
+      const clickedBackdrop = !content || !content.contains(e.target);
+      if (!clickedBackdrop) return;
+
+      // ★ 任務資訊（detailModal）不因點背景而關閉
+      if (BACKDROP_LOCKED.has(modal.id)) return;
+
+      // 沒 id 的臨時彈窗（例如你動態建的 confirmBox）直接隱藏即可
+      if (modal.id) {
         closeModal(modal.id);
+      } else {
+        modal.style.display = "none";
       }
     },
     { passive: true }
   );
 
-  // （可選）按 Esc 關掉目前所有開著的 modal
+  // （可選）按 Esc 關掉目前所有開著的 modal（包含 detailModal，因為你只說要關掉背景點擊）
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
     document.querySelectorAll(".modal").forEach((m) => {
-      if (getComputedStyle(m).display !== "none") closeModal(m.id);
+      if (getComputedStyle(m).display === "none") return;
+      if (m.id) {
+        closeModal(m.id);
+      } else {
+        m.style.display = "none"; // 沒 id 的臨時彈窗也安全關掉
+      }
     });
   });
 
