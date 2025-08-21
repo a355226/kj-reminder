@@ -607,8 +607,13 @@
     function ensureDetailInlineUI() {
       const dateEl = document.getElementById("detailDate");
       if (!dateEl) return;
-      if (dateEl.parentElement.querySelector("#recurrenceBtn")) return;
 
+      // 已經建立過兩顆按鈕就不重複建立
+      const parentHas = (sel) =>
+        dateEl.parentElement && dateEl.parentElement.querySelector(sel);
+      if (parentHas("#recurrenceBtn") && parentHas("#gcalBtn")) return;
+
+      // 標題右側的排程摘要欄位（保留）
       const labels = Array.from(
         document.querySelectorAll("#detailForm label")
       ).filter((l) => l.textContent.trim().startsWith("預定完成日"));
@@ -616,30 +621,46 @@
         labels[0].innerHTML = `<span>預定完成日</span><span id="recurrenceSummary" style="font-size:.85rem;color:#666;margin-left:.5rem;"></span>`;
       }
 
-      // 建 row，但讓日期保持全寬（不要加 .half）
+      // 佈局：跟「新增任務」一樣 → 日期半寬 + 右側按鈕
       const row = document.createElement("div");
       row.className = "inline-row";
-      dateEl.classList.remove("half"); // 保險：移除可能存在的 .half
+      dateEl.classList.add("half"); // ← 重點：半寬
       dateEl.parentElement.insertBefore(row, dateEl);
       row.appendChild(dateEl);
 
-      // 建立按鈕，但直接隱藏（保留節點，其他程式仍可取得到 #recurrenceBtn）
-      const btn = document.createElement("button");
-      btn.id = "recurrenceBtn";
-      btn.type = "button";
-      btn.title = "定期排程";
-      btn.textContent = "🗓️";
-      btn.style.cssText =
-        "padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer;";
-      btn.onclick = () => openRecurrenceModal(TARGET_DETAIL);
-      row.appendChild(btn);
+      //  匯入 Google 日曆（顯示）
+      if (!row.querySelector("#gcalBtn")) {
+        const calBtn = document.createElement("button");
+        calBtn.id = "gcalBtn";
+        calBtn.type = "button";
+        calBtn.title = "匯入到 Google 日曆";
+        calBtn.setAttribute("aria-label", "匯入到 Google 日曆");
+        calBtn.textContent = ""; // 讓背景居中顯示
+        calBtn.style.cssText =
+          "width:30px;height:30px;padding:0;border:1px solid #ddd;" +
+          "background:#f9f9f9 url('https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/googleca.png')" +
+          " no-repeat center/18px 18px;border-radius:6px;cursor:pointer;";
+        calBtn.onclick = exportCurrentDetailToGoogleCalendar;
+        row.appendChild(calBtn);
+      }
 
-      // 讓 📅 從版面消失，但不影響邏輯或其他程式碼的存取
-      btn.style.display = "none";
-      btn.tabIndex = -1;
-      btn.setAttribute("aria-hidden", "true");
+      // 🗓️ 定期排程（保留但隱藏，不佔版面）
+      if (!row.querySelector("#recurrenceBtn")) {
+        const btn = document.createElement("button");
+        btn.id = "recurrenceBtn";
+        btn.type = "button";
+        btn.title = "定期排程";
+        btn.textContent = "🗓️";
+        btn.style.cssText =
+          "padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer;";
+        btn.onclick = () => openRecurrenceModal(TARGET_DETAIL);
+        btn.style.display = "none";
+        btn.tabIndex = -1;
+        btn.setAttribute("aria-hidden", "true");
+        row.appendChild(btn);
+      }
 
-      // 互斥監聽照常綁
+      // 原本的「日期 vs 排程互斥」維持
       wireDateVsRecurrenceInterlock(TARGET_DETAIL);
     }
 
@@ -2421,6 +2442,10 @@
 
     const btn = document.getElementById("recurrenceBtn");
     if (btn) btn.disabled = !!ro;
+
+    // 只在進行中可用：唯讀時藏起來
+    const gBtn = document.getElementById("gcalBtn");
+    if (gBtn) gBtn.style.display = ro ? "none" : "";
   }
 
   let selectedCompletedId = null;
@@ -3968,6 +3993,88 @@
     // 直接覆寫 textContent，避免舊的 ❗️ 重複
     titleEl.textContent = `${getTaskIconsPrefix(t)}${t.title || ""}`;
   }
+
+  // === Google Calendar 匯入（進行中任務） ===
+  function exportCurrentDetailToGoogleCalendar() {
+    try {
+      // 僅允許「進行中」畫面
+      if (typeof statusFilter !== "undefined" && statusFilter === "done")
+        return;
+
+      // 若展開了閱讀層，先把內容回灌到表單
+      if (typeof flushViewerSync === "function") flushViewerSync();
+
+      const section = document.getElementById("detailSection")?.value || "";
+      const title = document.getElementById("detailTitle")?.value || "";
+      const content = document.getElementById("detailContent")?.value || "";
+      const note = document.getElementById("detailNote")?.value || "";
+      const dateISO = document.getElementById("detailDate")?.value || "";
+
+      if (!title) {
+        alert("請先填寫「任務標題」再匯入 Google 日曆");
+        return;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) {
+        alert("請先選擇「預定完成日」再匯入 Google 日曆");
+        return;
+      }
+
+      // 取排程摘要（若有）
+      let recSummary = "";
+      try {
+        const t = (Array.isArray(tasks) ? tasks : []).find(
+          (x) => x.id === selectedTaskId
+        );
+        if (t && t.recurrence && window.__recurrenceCore) {
+          const s = window.__recurrenceCore.summaryFromRecurrence(t.recurrence);
+          if (s) recSummary = `(${s})`; // 例： （每週排程：1、2、3、4、5）
+        }
+      } catch (_) {}
+
+      // 標題：(分類)標題
+      const text = `(${section})${title}`;
+
+      // 全日活動：YYYYMMDD / YYYYMMDD(次日)
+      const pad2 = (n) => String(n).padStart(2, "0");
+      const start = dateISO.replace(/-/g, "");
+      const d = new Date(dateISO);
+      d.setDate(d.getDate() + 1);
+      const end = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(
+        d.getDate()
+      )}`;
+
+      // 說明欄（中間空一行）
+      const details =
+        (recSummary ? recSummary + "\n\n" : "") +
+        "【任務內容】\n" +
+        (content || "") +
+        "\n\n" +
+        "【處理情形】\n" +
+        (note || "");
+
+      const params = new URLSearchParams({
+        action: "TEMPLATE",
+        text,
+        dates: `${start}/${end}`,
+        details,
+        ctz: "Asia/Taipei",
+      });
+
+      const url = `https://calendar.google.com/calendar/render?${params.toString()}`;
+
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile) {
+        // 手機：用同分頁開啟，交給系統的 Universal Link，已安裝會直開 App
+        window.location.href = url;
+      } else {
+        // 桌機：新分頁開啟
+        window.open(url, "_blank", "noopener");
+      }
+    } catch (e) {
+      alert("開啟 Google 日曆失敗：" + (e?.message || e));
+    }
+  }
+
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
     openModal,
