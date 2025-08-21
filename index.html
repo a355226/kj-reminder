@@ -994,6 +994,7 @@ body.bg-metal::before {
   width:22px; height:22px; margin-left:.4rem;
   border-radius:4px; border:1px solid #ddd; background:#f8f8f8;
   cursor:pointer; font-size:12px; line-height:1; color:#555;
+  transform: translateY(4px);            /* ⬅ 往下移一點 */
 }
 .expand-icon:active{ transform: scale(.97); }
 
@@ -1334,21 +1335,29 @@ button.palette-btn:active {
   <input type="text" id="detailTitle">
 
   <!-- 任務內容：加展開鈕 -->
-  <label style="display:flex;align-items:center;">
-    任務內容
-    <button type="button" class="expand-icon" onclick="toggleDetailExpand('detailContent','任務內容')" title="展開">⤢</button>
-  </label>
+  <div class="label-row" style="display:flex;align-items:center;">
+    <label for="detailContent">任務內容</label>
+    <button type="button"
+            class="expand-icon"
+            onclick="toggleDetailExpand('detailContent','任務內容')"
+            title="展開" aria-label="展開任務內容">⤢</button>
+  </div>
   <textarea id="detailContent"></textarea>
+  
 
   <label>預定完成日</label>
   <input type="date" id="detailDate">
 
   <!-- 處理情形：加展開鈕 -->
-  <label style="display:flex;align-items:center;">
-    處理情形
-    <button type="button" class="expand-icon" onclick="toggleDetailExpand('detailNote','處理情形')" title="展開">⤢</button>
-  </label>
+  <div class="label-row" style="display:flex;align-items:center;">
+    <label for="detailNote">處理情形</label>
+    <button type="button"
+            class="expand-icon"
+            onclick="toggleDetailExpand('detailNote','處理情形')"
+            title="展開" aria-label="展開處理情形">⤢</button>
+  </div>
   <textarea id="detailNote"></textarea>
+  
 
   <div style="display: flex; gap: 0.5rem;">
     <button class="save-btn-half" onclick="saveTask()">💾 儲存</button>
