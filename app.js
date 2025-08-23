@@ -4270,16 +4270,13 @@
   function openDriveFolderWeb(id) {
     const url = `https://drive.google.com/drive/folders/${id}`;
     if (IS_MOBILE) {
-      // 手機：同窗導頁，較易喚起 App
       try {
         location.href = url;
-        return;
       } catch (_) {}
+      return;
     }
-    // 電腦：另開分頁
     try {
-      const w = window.open(url, "_blank", "noopener");
-      if (!w) alert("請解除彈出視窗阻擋後再點一次。");
+      window.open(url, "_blank", "noreferrer");
     } catch (_) {}
   }
 
@@ -4401,39 +4398,44 @@
   let __driveClickLock = false;
   let __driveBounceArmed = false; // 防止無限回圈
 
-  async function onDriveButtonClick(e) {
+  async function onDriveButtonClick() {
     if (__driveClickLock) return;
     __driveClickLock = true;
 
     try {
       const mode = await ensureDriveAuth(); // "fresh" 或 "warm"
-
-      // ✅ 首次驗證/登入：不建不開、不導頁；僅自動「再點一次」。
-      if (mode === "fresh" && !__driveBounceArmed) {
-        __driveBounceArmed = true; // 僅觸發一次 bounce
-        __driveClickLock = false; // 先解鎖，讓下一次點擊能進來
-        setTimeout(() => {
-          document.getElementById("gdriveBtn")?.click();
-          // 不在這裡重設 __driveBounceArmed，留給第二次正常流程結束時重設
-        }, 0);
-        return;
-      }
-
-      // 🔁 第二次（或本來就 warm）：走原本流程
       const t = getCurrentDetailTask();
       if (!t) return;
 
+      if (mode === "fresh") {
+        if (IS_IOS_PWA) {
+          // ★ iOS PWA 必須在同一手勢鏈內完成導頁，否則會被阻擋或沒反應
+          const folderId = await ensureExistingOrRecreateFolder(t);
+          updateDriveButtonState(t);
+          openDriveFolderWeb(folderId); // 手機/PWA 走同窗導頁（見 D）
+          return;
+        } else {
+          // 其他平台：不開分頁，改為自動「再點一次」，第二次才真正建/開
+          if (!__driveBounceArmed) {
+            __driveBounceArmed = true;
+            __driveClickLock = false; // 先解鎖，讓下一次 click 能進來
+            setTimeout(() => document.getElementById("gdriveBtn")?.click(), 0);
+            return;
+          }
+        }
+      }
+
+      // 第二次（或本來就 warm）
       const folderId = await ensureExistingOrRecreateFolder(t);
       updateDriveButtonState(t);
-
-      openDriveFolderWeb(folderId); // 手機走同窗導頁、電腦另開分頁（見下）
+      openDriveFolderWeb(folderId);
     } catch (e) {
       const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
       console.error("Drive error:", e);
     } finally {
       __driveClickLock = false;
-      __driveBounceArmed = false; // 正常流程跑完再復位
+      __driveBounceArmed = false;
     }
   }
 
