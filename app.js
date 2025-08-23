@@ -4092,6 +4092,77 @@
   let __gisReady = false;
   let __tokenClient = null;
 
+  // ① 偵測 iOS PWA
+  const IS_IOS_PWA = (() => {
+    try {
+      const ua = navigator.userAgent || "";
+      const isiOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      const standalone = !!(
+        window.matchMedia?.("(display-mode: standalone)")?.matches ||
+        navigator.standalone
+      );
+      return isiOS && standalone;
+    } catch {
+      return false;
+    }
+  })();
+
+  // ② 小視窗（Toast）提示：2.5 秒自動消失
+  function __showAuthDoneNotice() {
+    if (document.getElementById("__gdAuthNotice")) return;
+    const box = document.createElement("div");
+    box.id = "__gdAuthNotice";
+    box.textContent = "已完成驗證，再次點擊以建立資料夾。";
+    Object.assign(box.style, {
+      position: "fixed",
+      left: "50%",
+      bottom: "14%",
+      transform: "translateX(-50%)",
+      background: "rgba(0,0,0,.75)",
+      color: "#fff",
+      padding: "10px 14px",
+      borderRadius: "8px",
+      fontSize: "14px",
+      zIndex: "9999",
+    });
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 2000);
+  }
+
+  // ③ 解析 OAuth 回來的 #access_token（僅 iOS PWA redirect 會用到）
+  (function __bootstrapFromOAuthHash() {
+    try {
+      if (location.hash && location.hash.includes("access_token=")) {
+        const qs = new URLSearchParams(location.hash.slice(1));
+        const at = qs.get("access_token");
+        const expiresIn = parseInt(qs.get("expires_in") || "3600", 10);
+        const state = qs.get("state");
+        const expect = sessionStorage.getItem("gd_state");
+
+        if (!expect || (state && state === expect)) {
+          // 存 token 與到期（預留 10 分鐘緩衝）
+          const skew = 10 * 60 * 1000;
+          localStorage.setItem("gdrive_at", at || "");
+          localStorage.setItem(
+            "gdrive_token_exp",
+            String(Date.now() + expiresIn * 1000 - skew)
+          );
+          localStorage.setItem("gdrive_consent_done", "1");
+        }
+        // 清掉 URL hash
+        history.replaceState(null, "", location.pathname + location.search);
+
+        // 顯示「已完成驗證…」提示
+        if (sessionStorage.getItem("gd_show_notice") === "1") {
+          sessionStorage.removeItem("gd_show_notice");
+          __showAuthDoneNotice();
+        }
+      }
+    } catch (_) {}
+  })();
+
   function loadGapiOnce() {
     return new Promise((res, rej) => {
       if (__gapiReady && __gisReady && __tokenClient) return res();
@@ -4105,6 +4176,13 @@
           gapi.load("client", async () => {
             try {
               await gapi.client.init({});
+              // ⬇️ 新增：若有先前儲存的 access_token，設回 gapi（避免刷新後第一次要再點）
+              try {
+                const at = localStorage.getItem("gdrive_at");
+                if (at) gapi.client.setToken({ access_token: at });
+              } catch (_) {}
+
+              await gapi.client.load("drive", "v3"); // discovery
               await gapi.client.load("drive", "v3"); // discovery
               __gapiReady = true;
               __tokenClient = google.accounts.oauth2.initTokenClient({
@@ -4132,7 +4210,7 @@
     return new Promise(async (resolve, reject) => {
       await loadGapiOnce();
 
-      // 簡易有效期（預設 50 分鐘，留 10 分鐘提早刷新）
+      // 若 token 尚有效，直接通過
       const skew = 10 * 60 * 1000;
       const exp = +localStorage.getItem("gdrive_token_exp") || 0;
       const tok = gapi.client.getToken();
@@ -4140,6 +4218,29 @@
         return resolve();
       }
 
+      // ===== iOS PWA 專用：首擊必有反應（同窗導向，同窗導回）=====
+      if (IS_IOS_PWA) {
+        // 組合 redirect URL（請先把當前頁 URL 登記在 GCP OAuth 的「已授權的重新導向 URI」）
+        const redirectUri = location.origin + location.pathname;
+        const state = Math.random().toString(36).slice(2);
+        sessionStorage.setItem("gd_state", state);
+        sessionStorage.setItem("gd_show_notice", "1"); // 回來後顯示小視窗
+
+        const p = new URLSearchParams({
+          client_id: GOOGLE_CLIENT_ID,
+          redirect_uri: redirectUri,
+          response_type: "token", // Implicit token（不開新分頁、不彈窗）
+          scope: GD_SCOPES,
+          include_granted_scopes: "true",
+          state,
+          // 如要強制每次顯示同意畫面可加：prompt: 'consent'
+        });
+        // 直接同窗跳轉 → 使用者一定會看到 Google 同意頁（「首次點擊沒反應」問題解）
+        location.href = `https://accounts.google.com/o/oauth2/v2/auth?${p.toString()}`;
+        return; // 導向後不再繼續；回來時由 bootstrap 解析 hash
+      }
+
+      // ===== 其他平台：沿用原本 GIS popup/靜默流程 =====
       const alreadyConsented =
         localStorage.getItem("gdrive_consent_done") === "1";
 
@@ -4151,6 +4252,13 @@
           String(Date.now() + ttl - skew)
         );
         localStorage.setItem("gdrive_consent_done", "1");
+
+        // 若是「首次」完成驗證，也跳一次小視窗（你有需求第 2 點）
+        try {
+          const wasFirst = !alreadyConsented;
+          if (wasFirst) __showAuthDoneNotice();
+        } catch (_) {}
+
         resolve();
       };
       const finishErr = (err) =>
@@ -4161,13 +4269,11 @@
         return finishErr(resp?.error || "授權失敗");
       };
 
-      // 先試靜默；若已經同意過通常可成功（桌機/行動瀏覽器）
       try {
         __tokenClient.requestAccessToken({
           prompt: alreadyConsented ? "" : "consent",
         });
       } catch (e) {
-        // 少數環境（含 iOS PWA）可能仍需重新同意
         if (alreadyConsented) {
           try {
             __tokenClient.requestAccessToken({ prompt: "consent" });
@@ -4274,7 +4380,6 @@
       w = window.open(url, "_blank", "noopener");
     } catch (_) {}
     if (w) return;
-
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
