@@ -4103,6 +4103,55 @@
     }
   })();
 
+  (function bootstrapFromOAuthHash() {
+    try {
+      if (location.hash && location.hash.includes("access_token=")) {
+        const qs = new URLSearchParams(location.hash.slice(1));
+        const at = qs.get("access_token");
+        const expiresIn = parseInt(qs.get("expires_in") || "3600", 10);
+        const state = qs.get("state");
+        const expect = sessionStorage.getItem("gdrive_state");
+
+        // 簡易 state 驗證（避免誤配）
+        if (expect && state && expect !== state) {
+          // 狀態不符就放棄
+        } else if (at) {
+          // gapi 可能尚未載入，先暫存
+          localStorage.setItem("gdrive_at", at);
+          const skew = 10 * 60 * 1000;
+          localStorage.setItem(
+            "gdrive_token_exp",
+            String(Date.now() + expiresIn * 1000 - skew)
+          );
+          localStorage.setItem("gdrive_consent_done", "1");
+        }
+
+        // 清除 #hash
+        history.replaceState(null, "", location.pathname + location.search);
+
+        // 若先前要求「授權後自動再點一次」
+        if (sessionStorage.getItem("gdrive_bounce") === "1") {
+          sessionStorage.removeItem("gdrive_bounce");
+          setTimeout(() => document.getElementById("gdriveBtn")?.click(), 0);
+        }
+      }
+    } catch (e) {}
+  })();
+
+  const IOS_PWA_REDIRECT_URI = location.origin + location.pathname; // 務必在 GCP OAuth 設「已授權的重新導向 URI」
+  function buildIosPwaAuthUrl(state) {
+    const p = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: IOS_PWA_REDIRECT_URI,
+      response_type: "token", // Implicit token（無彈窗、同窗導回）
+      scope: GD_SCOPES,
+      include_granted_scopes: "true",
+      state,
+      // 可視需要加：prompt=consent（若想強制顯示同意）
+    });
+    return `https://accounts.google.com/o/oauth2/v2/auth?${p.toString()}`;
+  }
+
   /* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
   /* ✅ 設定你的 Google OAuth Client ID（必填） */
   const GOOGLE_CLIENT_ID =
@@ -4165,9 +4214,19 @@
         return resolve("warm");
       }
 
+      // ===== iOS PWA：改用同窗 redirect 流程（不彈窗）=====
+      if (IS_IOS_PWA) {
+        const st = Math.random().toString(36).slice(2);
+        sessionStorage.setItem("gdrive_state", st);
+        sessionStorage.setItem("gdrive_bounce", "1"); // 授權回來自動再點一次
+        location.href = buildIosPwaAuthUrl(st); // 直接同窗跳轉 → 同窗導回
+        return; // 中斷：之後會在 bootstrapFromOAuthHash() 設 token 並自動再點
+      }
+
+      // ===== 其他平台：維持你原本 GIS token client popup 流程 =====
       const alreadyConsented =
         localStorage.getItem("gdrive_consent_done") === "1";
-      const willPrompt = !alreadyConsented; // 視為「首次驗證/登入」
+      const willPrompt = !alreadyConsented;
 
       const finishOk = (resp) => {
         gapi.client.setToken({ access_token: resp.access_token });
@@ -4177,6 +4236,7 @@
           String(Date.now() + ttl - skew)
         );
         localStorage.setItem("gdrive_consent_done", "1");
+        // 回傳 'fresh' 或 'warm' 供 onDriveButtonClick 決定是否「再點一次」
         resolve(willPrompt ? "fresh" : "warm");
       };
       const finishErr = (err) =>
