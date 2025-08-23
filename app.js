@@ -4243,57 +4243,39 @@
     return parent; // 最底層資料夾 id
   }
 
-// ① 改：不再接受 preWin，也不再處理 about:blank
-function openDriveFolderWeb(id) {
-  const url = `https://drive.google.com/drive/folders/${id}`;
+  function openDriveFolderWeb(id, preWin) {
+    const url = `https://drive.google.com/drive/folders/${id}`;
 
-  // 局部 iOS PWA 判斷
-  const iOSPWA = (() => {
-    try {
-      const ua = navigator.userAgent || "";
-      const isiOS =
-        /iPad|iPhone|iPod/.test(ua) ||
-        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-      const standalone = !!(
-        window.matchMedia?.("(display-mode: standalone)")?.matches ||
-        navigator.standalone
-      );
-      return isiOS && standalone;
-    } catch {
-      return false;
+    // ✅ 局部判斷，避免全域變數重複宣告衝突
+    const iOSPWA = (() => {
+      try {
+        const ua = navigator.userAgent || "";
+        const isiOS =
+          /iPad|iPhone|iPod/.test(ua) ||
+          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+        const standalone = !!(
+          window.matchMedia?.("(display-mode: standalone)")?.matches ||
+          navigator.standalone
+        );
+        return isiOS && standalone;
+      } catch {
+        return false;
+      }
+    })();
+
+    if (preWin && !preWin.closed) {
+      try {
+        preWin.location.replace(url);
+        return;
+      } catch (_) {}
     }
-  })();
+    let w = null;
+    try {
+      w = window.open(url, "_blank", "noopener");
+    } catch (_) {}
+    if (w) return;
 
-  // iOS PWA：同分頁導向（最穩）
-  if (iOSPWA) {
-    location.href = url;
-    return;
   }
-
-  // 其他環境：先試新分頁；若被擋，退回同分頁
-  let w = null;
-  try {
-    w = window.open(url, "_blank", "noopener");
-  } catch (_) {}
-  if (!w) location.href = url;
-}
-
-// ② 改：onDriveButtonClick 移除預開 about:blank 的 preWin
-async function onDriveButtonClick() {
-  const t = getCurrentDetailTask();
-  if (!t) return;
-
-  try {
-    await ensureDriveAuth();                         // 先拿 token
-    const folderId = await ensureExistingOrRecreateFolder(t); // 取得/重建資料夾
-    updateDriveButtonState(t);
-    openDriveFolderWeb(folderId);                    // 直接開啟（不再傳 preWin）
-  } catch (e) {
-    const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-    alert("Google 雲端硬碟動作失敗：" + msg);
-    console.error("Drive error:", e);
-  }
-}
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
   function getCurrentDetailTask() {
