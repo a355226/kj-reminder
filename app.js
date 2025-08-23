@@ -4133,51 +4133,23 @@
       const token = gapi.client.getToken();
       if (token && token.access_token) return resolve();
 
-      // 首次需要 consent，後續盡量 silent
       const alreadyConsented =
         localStorage.getItem("gdrive_consent_done") === "1";
       const promptMode = alreadyConsented ? "" : "consent";
 
-      // iOS PWA（加入主畫面）常見彈窗被擋：預先同步開一個分頁
-      const isStandalone =
-        window.matchMedia?.("(display-mode: standalone)").matches ||
-        window.navigator.standalone;
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      let preWin = null;
-      try {
-        if (!alreadyConsented && isIOS && isStandalone) {
-          preWin = window.open("", "_blank"); // 先開空白分頁，以便授權過程不被擋
-        }
-      } catch (_) {}
-
       __tokenClient.callback = (resp) => {
-        try {
-          if (resp && resp.access_token) {
-            gapi.client.setToken({ access_token: resp.access_token });
-            localStorage.setItem("gdrive_consent_done", "1");
-            try {
-              preWin && !preWin.closed && preWin.close();
-            } catch (_) {}
-            resolve();
-          } else if (resp && resp.error) {
-            try {
-              preWin && !preWin.closed && preWin.close();
-            } catch (_) {}
-            reject(new Error(resp.error));
-          } else {
-            try {
-              preWin && !preWin.closed && preWin.close();
-            } catch (_) {}
-            reject(new Error("授權失敗"));
-          }
-        } catch (e) {
-          try {
-            preWin && !preWin.closed && preWin.close();
-          } catch (_) {}
-          reject(e);
+        if (resp && resp.access_token) {
+          gapi.client.setToken({ access_token: resp.access_token });
+          localStorage.setItem("gdrive_consent_done", "1");
+          resolve();
+        } else if (resp && resp.error) {
+          reject(new Error(resp.error));
+        } else {
+          reject(new Error("授權失敗"));
         }
       };
 
+      // 直接在「點擊事件」裡呼叫（避免被攔）
       __tokenClient.requestAccessToken({ prompt: promptMode });
     });
   }
@@ -4202,27 +4174,17 @@
       const t = getCurrentDetailTask();
       if (!t) return;
 
-      // 已有 → 直接開啟（新分頁），不影響當前頁
-      if (t.driveFolderId) {
-        openDriveFolderWeb(t.driveFolderId);
-        return;
-      }
-
-      // 首次 → 授權 + 建立路徑 + 記錄 + 開啟
+      // 先確保有 token（第一次 consent、之後 silent）
       await ensureDriveAuth();
 
-      const segs = [
-        "MyTask",
-        t.section || "未分類",
-        (t.title || "未命名").slice(0, 100),
-      ];
-      const folderId = await ensureFolderPath(segs);
+      // 有 ID 也先探測；找不到就重建
+      const folderId = await ensureExistingOrRecreateFolder(t);
 
-      t.driveFolderId = folderId;
-      saveTasksToFirebase?.();
+      // 視覺狀態（金黃＋發光）
       updateDriveButtonState(t);
 
-      openDriveFolderWeb(folderId); // 永遠新分頁/外部 app，保留 MyTask
+      // 永遠用新分頁開啟
+      openDriveFolderWeb(folderId);
     } catch (e) {
       const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
@@ -4283,8 +4245,13 @@
 
   function openDriveFolderWeb(id) {
     const url = `https://drive.google.com/drive/folders/${id}`;
-    // 行動裝置多半會喚起 Drive App；桌機開網頁
-    window.open(url, "_blank") || (location.href = url);
+    let w = null;
+    try {
+      w = window.open(url, "_blank", "noopener");
+    } catch (_) {}
+    if (!w) {
+      alert("瀏覽器阻擋了新分頁。請允許快顯視窗，或以右鍵/長按在新分頁開啟。");
+    }
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
@@ -4337,6 +4304,39 @@
       alert("開啟 Google 雲端硬碟失敗：" + msg);
       console.error("Drive error:", e);
     }
+  }
+
+  async function ensureExistingOrRecreateFolder(t) {
+    // 已記錄 ID → 先探測是否仍存在
+    if (t.driveFolderId) {
+      try {
+        const r = await gapi.client.drive.files.get({
+          fileId: t.driveFolderId,
+          fields: "id, trashed",
+          supportsAllDrives: true,
+        });
+        if (r?.result?.id && !r.result.trashed) {
+          return t.driveFolderId; // OK 就用舊的
+        }
+      } catch (e) {
+        // 404 / notFound → 走重建
+      }
+      // 失效 → 清掉舊 ID
+      t.driveFolderId = null;
+      saveTasksToFirebase?.();
+    }
+
+    // 重建路徑
+    const segs = [
+      "MyTask",
+      t.section || "未分類",
+      (t.title || "未命名").slice(0, 100),
+    ];
+    const newId = await ensureFolderPath(segs);
+    t.driveFolderId = newId;
+    saveTasksToFirebase?.();
+    updateDriveButtonState(t);
+    return newId;
   }
 
   /* 只開，不建（若沒記錄會退回主流程建） */
