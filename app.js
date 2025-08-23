@@ -4133,21 +4133,108 @@
       const token = gapi.client.getToken();
       if (token && token.access_token) return resolve();
 
+      // 首次需要 consent，後續盡量 silent
+      const alreadyConsented =
+        localStorage.getItem("gdrive_consent_done") === "1";
+      const promptMode = alreadyConsented ? "" : "consent";
+
+      // iOS PWA（加入主畫面）常見彈窗被擋：預先同步開一個分頁
+      const isStandalone =
+        window.matchMedia?.("(display-mode: standalone)").matches ||
+        window.navigator.standalone;
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      let preWin = null;
+      try {
+        if (!alreadyConsented && isIOS && isStandalone) {
+          preWin = window.open("", "_blank"); // 先開空白分頁，以便授權過程不被擋
+        }
+      } catch (_) {}
+
       __tokenClient.callback = (resp) => {
-        // 🟢 關鍵：把 token 塞給 gapi client
-        if (resp && resp.access_token) {
-          gapi.client.setToken({ access_token: resp.access_token });
-          resolve();
-        } else if (resp && resp.error) {
-          reject(new Error(resp.error));
-        } else {
-          reject(new Error("授權失敗"));
+        try {
+          if (resp && resp.access_token) {
+            gapi.client.setToken({ access_token: resp.access_token });
+            localStorage.setItem("gdrive_consent_done", "1");
+            try {
+              preWin && !preWin.closed && preWin.close();
+            } catch (_) {}
+            resolve();
+          } else if (resp && resp.error) {
+            try {
+              preWin && !preWin.closed && preWin.close();
+            } catch (_) {}
+            reject(new Error(resp.error));
+          } else {
+            try {
+              preWin && !preWin.closed && preWin.close();
+            } catch (_) {}
+            reject(new Error("授權失敗"));
+          }
+        } catch (e) {
+          try {
+            preWin && !preWin.closed && preWin.close();
+          } catch (_) {}
+          reject(e);
         }
       };
 
-      // 第一次建議用 consent，比較穩
-      __tokenClient.requestAccessToken({ prompt: "consent" });
+      __tokenClient.requestAccessToken({ prompt: promptMode });
     });
+  }
+
+  function ensureDriveGlowCss() {
+    if (document.getElementById("driveGlowCss")) return;
+    const css = `
+    .btn-gdrive { margin-left:.35rem;padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer; }
+    .btn-gdrive.has-folder { background:#FFD54F; border-color:#FFC107; box-shadow:0 0 .6rem rgba(255,193,7,.6); animation:drive-glow 1.2s ease-in-out infinite alternate; }
+    @keyframes drive-glow {
+      from { box-shadow:0 0 .35rem rgba(255,193,7,.45); }
+      to   { box-shadow:0 0 1rem rgba(255,193,7,.95); }
+    }`;
+    const st = document.createElement("style");
+    st.id = "driveGlowCss";
+    st.textContent = css;
+    document.head.appendChild(st);
+  }
+
+  async function onDriveButtonClick() {
+    try {
+      const t = getCurrentDetailTask();
+      if (!t) return;
+
+      // 已有 → 直接開啟（新分頁），不影響當前頁
+      if (t.driveFolderId) {
+        openDriveFolderWeb(t.driveFolderId);
+        return;
+      }
+
+      // 首次 → 授權 + 建立路徑 + 記錄 + 開啟
+      await ensureDriveAuth();
+
+      const segs = [
+        "MyTask",
+        t.section || "未分類",
+        (t.title || "未命名").slice(0, 100),
+      ];
+      const folderId = await ensureFolderPath(segs);
+
+      t.driveFolderId = folderId;
+      saveTasksToFirebase?.();
+      updateDriveButtonState(t);
+
+      openDriveFolderWeb(folderId); // 永遠新分頁/外部 app，保留 MyTask
+    } catch (e) {
+      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+      alert("Google 雲端硬碟動作失敗：" + msg);
+      console.error("Drive error:", e);
+    }
+  }
+
+  function updateDriveButtonState(taskObj) {
+    const btn = document.getElementById("gdriveBtn");
+    if (!btn) return;
+    const has = !!(taskObj && taskObj.driveFolderId);
+    btn.classList.toggle("has-folder", has); // 有紀錄 → 變金黃＋發光
   }
 
   function escapeForQuery(s) {
@@ -4262,40 +4349,23 @@
 
   /* 在詳情的「重要」右邊插入：💾（建立/開啟）與 🔍（僅開啟；有記錄才顯示） */
   function ensureDriveButtonsInlineUI(taskObj) {
-    // 找到「重要」這一排（detailForm 裡）
+    ensureDriveGlowCss();
+
     const row = document.querySelector("#detailForm .inline-row");
     if (!row) return;
 
-    // 若已有就略過重建
-    if (!row.querySelector("#gdriveSaveBtn")) {
-      const saveBtn = document.createElement("button");
-      saveBtn.id = "gdriveSaveBtn";
-      saveBtn.type = "button";
-      saveBtn.title = "在 Google 雲端硬碟建立/開啟此任務資料夾";
-      saveBtn.textContent = "💾";
-      saveBtn.style.cssText =
-        "margin-left:.35rem;padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer;";
-      saveBtn.onclick = openOrCreateDriveFolderForCurrentTask;
-      row.appendChild(saveBtn);
-    }
-    if (!row.querySelector("#gdriveOpenBtn")) {
-      const openBtn = document.createElement("button");
-      openBtn.id = "gdriveOpenBtn";
-      openBtn.type = "button";
-      openBtn.title = "開啟已建立的任務資料夾";
-      openBtn.textContent = "✔️";
-      openBtn.style.cssText =
-        "margin-left:0rem;padding:.4rem .4rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer;display:none;font-size:10px;";
-      openBtn.onclick = openCurrentTaskDriveFolder;
-      row.appendChild(openBtn);
+    if (!row.querySelector("#gdriveBtn")) {
+      const btn = document.createElement("button");
+      btn.id = "gdriveBtn";
+      btn.type = "button";
+      btn.title = "建立/開啟此任務的雲端資料夾";
+      btn.textContent = "💾";
+      btn.className = "btn-gdrive";
+      btn.onclick = onDriveButtonClick;
+      row.appendChild(btn);
     }
 
-    // 依是否有記錄來顯示 🔍
-    try {
-      const has = !!(taskObj && taskObj.driveFolderId);
-      const openBtn = row.querySelector("#gdriveOpenBtn");
-      if (openBtn) openBtn.style.display = has ? "" : "none";
-    } catch (_) {}
+    updateDriveButtonState(taskObj);
   }
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
