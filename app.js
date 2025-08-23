@@ -4077,81 +4077,6 @@
     }
   }
 
-  // 判斷是否在 iOS PWA（此環境通常無法用預開視窗）
-  const IS_IOS_PWA = (() => {
-    try {
-      const ua = navigator.userAgent || "";
-      const isiOS =
-        /iPad|iPhone|iPod/.test(ua) ||
-        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-      const standalone = !!(
-        window.matchMedia?.("(display-mode: standalone)")?.matches ||
-        navigator.standalone
-      );
-      return isiOS && standalone;
-    } catch {
-      return false;
-    }
-  })();
-
-  const IS_MOBILE = (() => {
-    try {
-      const ua = navigator.userAgent || "";
-      return /Android|iPhone|iPad|iPod/i.test(ua);
-    } catch {
-      return false;
-    }
-  })();
-
-  (function bootstrapFromOAuthHash() {
-    try {
-      if (location.hash && location.hash.includes("access_token=")) {
-        const qs = new URLSearchParams(location.hash.slice(1));
-        const at = qs.get("access_token");
-        const expiresIn = parseInt(qs.get("expires_in") || "3600", 10);
-        const state = qs.get("state");
-        const expect = sessionStorage.getItem("gdrive_state");
-
-        // 簡易 state 驗證（避免誤配）
-        if (expect && state && expect !== state) {
-          // 狀態不符就放棄
-        } else if (at) {
-          // gapi 可能尚未載入，先暫存
-          localStorage.setItem("gdrive_at", at);
-          const skew = 10 * 60 * 1000;
-          localStorage.setItem(
-            "gdrive_token_exp",
-            String(Date.now() + expiresIn * 1000 - skew)
-          );
-          localStorage.setItem("gdrive_consent_done", "1");
-        }
-
-        // 清除 #hash
-        history.replaceState(null, "", location.pathname + location.search);
-
-        // 若先前要求「授權後自動再點一次」
-        if (sessionStorage.getItem("gdrive_bounce") === "1") {
-          sessionStorage.removeItem("gdrive_bounce");
-          setTimeout(() => document.getElementById("gdriveBtn")?.click(), 0);
-        }
-      }
-    } catch (e) {}
-  })();
-
-  const IOS_PWA_REDIRECT_URI = location.origin + location.pathname; // 務必在 GCP OAuth 設「已授權的重新導向 URI」
-  function buildIosPwaAuthUrl(state) {
-    const p = new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      redirect_uri: IOS_PWA_REDIRECT_URI,
-      response_type: "token", // Implicit token（無彈窗、同窗導回）
-      scope: GD_SCOPES,
-      include_granted_scopes: "true",
-      state,
-      // 可視需要加：prompt=consent（若想強制顯示同意）
-    });
-    return `https://accounts.google.com/o/oauth2/v2/auth?${p.toString()}`;
-  }
-
   /* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
   /* ✅ 設定你的 Google OAuth Client ID（必填） */
   const GOOGLE_CLIENT_ID =
@@ -4207,26 +4132,16 @@
     return new Promise(async (resolve, reject) => {
       await loadGapiOnce();
 
+      // 簡易有效期（預設 50 分鐘，留 10 分鐘提早刷新）
       const skew = 10 * 60 * 1000;
       const exp = +localStorage.getItem("gdrive_token_exp") || 0;
       const tok = gapi.client.getToken();
       if (tok?.access_token && Date.now() + skew < exp) {
-        return resolve("warm");
+        return resolve();
       }
 
-      // ===== iOS PWA：改用同窗 redirect 流程（不彈窗）=====
-      if (IS_IOS_PWA) {
-        const st = Math.random().toString(36).slice(2);
-        sessionStorage.setItem("gdrive_state", st);
-        sessionStorage.setItem("gdrive_bounce", "1"); // 授權回來自動再點一次
-        location.href = buildIosPwaAuthUrl(st); // 直接同窗跳轉 → 同窗導回
-        return; // 中斷：之後會在 bootstrapFromOAuthHash() 設 token 並自動再點
-      }
-
-      // ===== 其他平台：維持你原本 GIS token client popup 流程 =====
       const alreadyConsented =
         localStorage.getItem("gdrive_consent_done") === "1";
-      const willPrompt = !alreadyConsented;
 
       const finishOk = (resp) => {
         gapi.client.setToken({ access_token: resp.access_token });
@@ -4236,8 +4151,7 @@
           String(Date.now() + ttl - skew)
         );
         localStorage.setItem("gdrive_consent_done", "1");
-        // 回傳 'fresh' 或 'warm' 供 onDriveButtonClick 決定是否「再點一次」
-        resolve(willPrompt ? "fresh" : "warm");
+        resolve();
       };
       const finishErr = (err) =>
         reject(err instanceof Error ? err : new Error(err || "授權失敗"));
@@ -4247,11 +4161,13 @@
         return finishErr(resp?.error || "授權失敗");
       };
 
+      // 先試靜默；若已經同意過通常可成功（桌機/行動瀏覽器）
       try {
         __tokenClient.requestAccessToken({
           prompt: alreadyConsented ? "" : "consent",
         });
       } catch (e) {
+        // 少數環境（含 iOS PWA）可能仍需重新同意
         if (alreadyConsented) {
           try {
             __tokenClient.requestAccessToken({ prompt: "consent" });
@@ -4327,17 +4243,38 @@
     return parent; // 最底層資料夾 id
   }
 
-  function openDriveFolderWeb(id) {
+  function openDriveFolderWeb(id, preWin) {
     const url = `https://drive.google.com/drive/folders/${id}`;
-    if (IS_MOBILE) {
+
+    // ✅ 局部判斷，避免全域變數重複宣告衝突
+    const iOSPWA = (() => {
       try {
-        location.href = url;
+        const ua = navigator.userAgent || "";
+        const isiOS =
+          /iPad|iPhone|iPod/.test(ua) ||
+          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+        const standalone = !!(
+          window.matchMedia?.("(display-mode: standalone)")?.matches ||
+          navigator.standalone
+        );
+        return isiOS && standalone;
+      } catch {
+        return false;
+      }
+    })();
+
+    if (preWin && !preWin.closed) {
+      try {
+        preWin.location.replace(url);
+        return;
       } catch (_) {}
-      return;
     }
+    let w = null;
     try {
-      window.open(url, "_blank", "noreferrer");
+      w = window.open(url, "_blank", "noopener");
     } catch (_) {}
+    if (w) return;
+
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
@@ -4455,47 +4392,28 @@
     updateDriveButtonState(taskObj);
   }
 
-  let __driveClickLock = false;
-  let __driveBounceArmed = false; // 防止無限回圈
-
   async function onDriveButtonClick() {
-    if (__driveClickLock) return;
-    __driveClickLock = true;
+    const t = getCurrentDetailTask();
+    if (!t) return;
+
+    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
+    let preWin = null;
+    try {
+      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
+    } catch (_) {}
 
     try {
-      const mode = await ensureDriveAuth(); // "fresh" 或 "warm"
-      const t = getCurrentDetailTask();
-      if (!t) return;
-
-      if (mode === "fresh") {
-        if (IS_IOS_PWA) {
-          // ★ iOS PWA 必須在同一手勢鏈內完成導頁，否則會被阻擋或沒反應
-          const folderId = await ensureExistingOrRecreateFolder(t);
-          updateDriveButtonState(t);
-          openDriveFolderWeb(folderId); // 手機/PWA 走同窗導頁（見 D）
-          return;
-        } else {
-          // 其他平台：不開分頁，改為自動「再點一次」，第二次才真正建/開
-          if (!__driveBounceArmed) {
-            __driveBounceArmed = true;
-            __driveClickLock = false; // 先解鎖，讓下一次 click 能進來
-            setTimeout(() => document.getElementById("gdriveBtn")?.click(), 0);
-            return;
-          }
-        }
-      }
-
-      // 第二次（或本來就 warm）
-      const folderId = await ensureExistingOrRecreateFolder(t);
-      updateDriveButtonState(t);
-      openDriveFolderWeb(folderId);
+      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
+      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
+      updateDriveButtonState(t); // 金黃發光狀態同步
+      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
     } catch (e) {
+      try {
+        preWin && !preWin.closed && preWin.close();
+      } catch (_) {}
       const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
       console.error("Drive error:", e);
-    } finally {
-      __driveClickLock = false;
-      __driveBounceArmed = false;
     }
   }
 
