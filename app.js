@@ -4275,12 +4275,6 @@
     } catch (_) {}
     if (w) return;
 
-    if (iOSPWA) {
-      // iOS PWA 幾乎不允許新分頁，最後手段直接導走（可喚起 Drive App）
-      location.href = url;
-    } else {
-      alert("瀏覽器阻擋了新分頁，請允許快顯視窗。");
-    }
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
