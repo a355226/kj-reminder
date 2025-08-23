@@ -4094,6 +4094,15 @@
     }
   })();
 
+  const IS_MOBILE = (() => {
+    try {
+      const ua = navigator.userAgent || "";
+      return /Android|iPhone|iPad|iPod/i.test(ua);
+    } catch {
+      return false;
+    }
+  })();
+
   /* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
   /* ✅ 設定你的 Google OAuth Client ID（必填） */
   const GOOGLE_CLIENT_ID =
@@ -4149,16 +4158,16 @@
     return new Promise(async (resolve, reject) => {
       await loadGapiOnce();
 
-      // 簡易有效期（預設 50 分鐘，留 10 分鐘提早刷新）
       const skew = 10 * 60 * 1000;
       const exp = +localStorage.getItem("gdrive_token_exp") || 0;
       const tok = gapi.client.getToken();
       if (tok?.access_token && Date.now() + skew < exp) {
-        return resolve();
+        return resolve("warm");
       }
 
       const alreadyConsented =
         localStorage.getItem("gdrive_consent_done") === "1";
+      const willPrompt = !alreadyConsented; // 視為「首次驗證/登入」
 
       const finishOk = (resp) => {
         gapi.client.setToken({ access_token: resp.access_token });
@@ -4168,7 +4177,7 @@
           String(Date.now() + ttl - skew)
         );
         localStorage.setItem("gdrive_consent_done", "1");
-        resolve();
+        resolve(willPrompt ? "fresh" : "warm");
       };
       const finishErr = (err) =>
         reject(err instanceof Error ? err : new Error(err || "授權失敗"));
@@ -4178,13 +4187,11 @@
         return finishErr(resp?.error || "授權失敗");
       };
 
-      // 先試靜默；若已經同意過通常可成功（桌機/行動瀏覽器）
       try {
         __tokenClient.requestAccessToken({
           prompt: alreadyConsented ? "" : "consent",
         });
       } catch (e) {
-        // 少數環境（含 iOS PWA）可能仍需重新同意
         if (alreadyConsented) {
           try {
             __tokenClient.requestAccessToken({ prompt: "consent" });
@@ -4260,20 +4267,19 @@
     return parent; // 最底層資料夾 id
   }
 
-  function openDriveFolderWeb(id, preWin) {
+  function openDriveFolderWeb(id) {
     const url = `https://drive.google.com/drive/folders/${id}`;
-
-    // 優先用預開的 about:blank（100% 不會被擋）
-    if (preWin && !preWin.closed) {
+    if (IS_MOBILE) {
+      // 手機：同窗導頁，較易喚起 App
       try {
-        preWin.location.replace(url);
+        location.href = url;
         return;
       } catch (_) {}
     }
-
-    // 後備：再嘗試新分頁（某些環境仍可成功）
+    // 電腦：另開分頁
     try {
-      window.open(url, "_blank", "noopener");
+      const w = window.open(url, "_blank", "noopener");
+      if (!w) alert("請解除彈出視窗阻擋後再點一次。");
     } catch (_) {}
   }
 
@@ -4392,28 +4398,42 @@
     updateDriveButtonState(taskObj);
   }
 
-  async function onDriveButtonClick() {
-    const t = getCurrentDetailTask();
-    if (!t) return;
+  let __driveClickLock = false;
+  let __driveBounceArmed = false; // 防止無限回圈
 
-    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
-    let preWin = null;
-    try {
-      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
-    } catch (_) {}
+  async function onDriveButtonClick(e) {
+    if (__driveClickLock) return;
+    __driveClickLock = true;
 
     try {
-      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
-      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
-      updateDriveButtonState(t); // 金黃發光狀態同步
-      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
+      const mode = await ensureDriveAuth(); // "fresh" 或 "warm"
+
+      // ✅ 首次驗證/登入：不建不開、不導頁；僅自動「再點一次」。
+      if (mode === "fresh" && !__driveBounceArmed) {
+        __driveBounceArmed = true; // 僅觸發一次 bounce
+        __driveClickLock = false; // 先解鎖，讓下一次點擊能進來
+        setTimeout(() => {
+          document.getElementById("gdriveBtn")?.click();
+          // 不在這裡重設 __driveBounceArmed，留給第二次正常流程結束時重設
+        }, 0);
+        return;
+      }
+
+      // 🔁 第二次（或本來就 warm）：走原本流程
+      const t = getCurrentDetailTask();
+      if (!t) return;
+
+      const folderId = await ensureExistingOrRecreateFolder(t);
+      updateDriveButtonState(t);
+
+      openDriveFolderWeb(folderId); // 手機走同窗導頁、電腦另開分頁（見下）
     } catch (e) {
-      try {
-        preWin && !preWin.closed && preWin.close();
-      } catch (_) {}
       const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
       console.error("Drive error:", e);
+    } finally {
+      __driveClickLock = false;
+      __driveBounceArmed = false; // 正常流程跑完再復位
     }
   }
 
