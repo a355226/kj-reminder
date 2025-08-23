@@ -1594,6 +1594,7 @@
       const sum = t ? summaryFromRecurrence(t.recurrence) : "";
       const elSum = document.getElementById("recurrenceSummary");
       if (elSum) elSum.textContent = sum || "";
+      ensureDriveButtonsInlineUI(task);
     }
     // ⬇⬇⬇ 新增這行：詳情一開就即時同步
     bindDetailLiveSync(task);
@@ -2473,6 +2474,7 @@
 
     setDetailReadonly(true);
     document.getElementById("detailModal").style.display = "flex";
+    ensureDriveButtonsInlineUI(t);
   }
 
   function deleteCompleted() {
@@ -4073,6 +4075,227 @@
     } catch (e) {
       alert("開啟 Google 日曆失敗：" + (e?.message || e));
     }
+  }
+
+  /* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
+  /* ✅ 設定你的 Google OAuth Client ID（必填） */
+  const GOOGLE_CLIENT_ID =
+    "735593435771-otisn8depskof8vmvp6sp5sl9n3t5e25.apps.googleusercontent.com";
+
+  /* 建議 scope：建立/讀取 app 建立的資料夾 + 讀取檔案名稱 */
+  const GD_SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
+  ].join(" ");
+
+  let __gapiReady = false;
+  let __gisReady = false;
+  let __tokenClient = null;
+
+  function loadGapiOnce() {
+    return new Promise((res, rej) => {
+      if (__gapiReady && __gisReady && __tokenClient) return res();
+      const wait = () => {
+        if (
+          window.gapi &&
+          window.google &&
+          google.accounts &&
+          google.accounts.oauth2
+        ) {
+          gapi.load("client", async () => {
+            try {
+              await gapi.client.init({});
+              await gapi.client.load("drive", "v3"); // discovery
+              __gapiReady = true;
+              __tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_CLIENT_ID,
+                scope: GD_SCOPES,
+                callback: () => {}, // 真正要用時再覆寫
+              });
+              __gisReady = true;
+              res();
+            } catch (e) {
+              rej(e);
+            }
+          });
+        } else {
+          setTimeout(wait, 50);
+        }
+      };
+      wait();
+    });
+  }
+
+  function ensureDriveAuth() {
+    return new Promise(async (resolve, reject) => {
+      await loadGapiOnce();
+
+      const token = gapi.client.getToken();
+      if (token && token.access_token) return resolve();
+
+      __tokenClient.callback = (resp) => {
+        // 🟢 關鍵：把 token 塞給 gapi client
+        if (resp && resp.access_token) {
+          gapi.client.setToken({ access_token: resp.access_token });
+          resolve();
+        } else if (resp && resp.error) {
+          reject(new Error(resp.error));
+        } else {
+          reject(new Error("授權失敗"));
+        }
+      };
+
+      // 第一次建議用 consent，比較穩
+      __tokenClient.requestAccessToken({ prompt: "consent" });
+    });
+  }
+
+  function escapeForQuery(s) {
+    return String(s).replace(/['\\]/g, "\\$&");
+  }
+
+  async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
+    const q = [
+      `name = '${escapeForQuery(name)}'`,
+      `mimeType = 'application/vnd.google-apps.folder'`,
+      `'${parentId}' in parents`,
+      "trashed = false",
+    ].join(" and ");
+
+    const list = await gapi.client.drive.files.list({
+      q,
+      fields: "files(id,name)",
+      pageSize: 1,
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+
+    if (list?.result?.files?.length) {
+      return list.result.files[0].id;
+    }
+
+    const created = await gapi.client.drive.files.create({
+      resource: {
+        name,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentId],
+      },
+      fields: "id",
+      supportsAllDrives: true,
+    });
+    return created.result.id;
+  }
+
+  async function ensureFolderPath(segments) {
+    let parent = "root";
+    for (const seg of segments) {
+      parent = await findOrCreateFolderByName(seg, parent);
+    }
+    return parent; // 最底層資料夾 id
+  }
+
+  function openDriveFolderWeb(id) {
+    const url = `https://drive.google.com/drive/folders/${id}`;
+    // 行動裝置多半會喚起 Drive App；桌機開網頁
+    window.open(url, "_blank") || (location.href = url);
+  }
+
+  /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
+  function getCurrentDetailTask() {
+    if (selectedTaskId) {
+      return (
+        (Array.isArray(tasks) ? tasks : []).find(
+          (t) => t.id === selectedTaskId
+        ) || null
+      );
+    }
+    if (selectedCompletedId) {
+      return (
+        (Array.isArray(completedTasks) ? completedTasks : []).find(
+          (t) => t.id === selectedCompletedId
+        ) || null
+      );
+    }
+    return null;
+  }
+
+  /* 主流程：建立或開啟資料夾 */
+  async function openOrCreateDriveFolderForCurrentTask() {
+    try {
+      const t = getCurrentDetailTask();
+      if (!t) return;
+
+      await ensureDriveAuth();
+
+      const segs = [
+        "MyTask",
+        t.section || "未分類",
+        (t.title || "未命名").slice(0, 100), // 名稱太長就截斷一下
+      ];
+      const folderId = await ensureFolderPath(segs);
+
+      // 記住資料夾 ID（之後就能顯示 🔍，下次直接開）
+      t.driveFolderId = folderId;
+      saveTasksToFirebase?.();
+
+      // UI：顯示 🔍
+      try {
+        const btn = document.getElementById("gdriveOpenBtn");
+        if (btn) btn.style.display = "";
+      } catch (_) {}
+
+      openDriveFolderWeb(folderId);
+    } catch (e) {
+      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+      alert("開啟 Google 雲端硬碟失敗：" + msg);
+      console.error("Drive error:", e);
+    }
+  }
+
+  /* 只開，不建（若沒記錄會退回主流程建） */
+  function openCurrentTaskDriveFolder() {
+    const t = getCurrentDetailTask();
+    if (!t) return;
+    if (t.driveFolderId) openDriveFolderWeb(t.driveFolderId);
+    else openOrCreateDriveFolderForCurrentTask();
+  }
+
+  /* 在詳情的「重要」右邊插入：💾（建立/開啟）與 🔍（僅開啟；有記錄才顯示） */
+  function ensureDriveButtonsInlineUI(taskObj) {
+    // 找到「重要」這一排（detailForm 裡）
+    const row = document.querySelector("#detailForm .inline-row");
+    if (!row) return;
+
+    // 若已有就略過重建
+    if (!row.querySelector("#gdriveSaveBtn")) {
+      const saveBtn = document.createElement("button");
+      saveBtn.id = "gdriveSaveBtn";
+      saveBtn.type = "button";
+      saveBtn.title = "在 Google 雲端硬碟建立/開啟此任務資料夾";
+      saveBtn.textContent = "💾";
+      saveBtn.style.cssText =
+        "margin-left:.35rem;padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer;";
+      saveBtn.onclick = openOrCreateDriveFolderForCurrentTask;
+      row.appendChild(saveBtn);
+    }
+    if (!row.querySelector("#gdriveOpenBtn")) {
+      const openBtn = document.createElement("button");
+      openBtn.id = "gdriveOpenBtn";
+      openBtn.type = "button";
+      openBtn.title = "開啟已建立的任務資料夾";
+      openBtn.textContent = "✔️";
+      openBtn.style.cssText =
+        "margin-left:0rem;padding:.4rem .4rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer;display:none;font-size:10px;";
+      openBtn.onclick = openCurrentTaskDriveFolder;
+      row.appendChild(openBtn);
+    }
+
+    // 依是否有記錄來顯示 🔍
+    try {
+      const has = !!(taskObj && taskObj.driveFolderId);
+      const openBtn = row.querySelector("#gdriveOpenBtn");
+      if (openBtn) openBtn.style.display = has ? "" : "none";
+    } catch (_) {}
   }
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
