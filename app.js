@@ -4203,6 +4203,28 @@
     return String(s).replace(/['\\]/g, "\\$&");
   }
 
+  async function waitForDriveReady(fileId, tries = 4) {
+    // 等待新建的資料夾在各端可讀（尤其 iOS App Deep Link）
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (let i = 0; i < tries; i++) {
+      try {
+        const r = await gapi.client.drive.files.get({
+          fileId,
+          fields: "id, trashed",
+          supportsAllDrives: true,
+        });
+        if (r?.result?.id && !r.result.trashed) {
+          // 再小等一下，讓 App/Universal Link 也接上
+          await sleep(200 + i * 100);
+          return;
+        }
+      } catch (_) {
+        /* ignore and retry */
+      }
+      await sleep(250 + i * 200); // 250ms, 450ms, 650ms, ...
+    }
+  }
+
   async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
     const q = [
       `name = '${escapeForQuery(name)}'`,
@@ -4243,44 +4265,28 @@
     return parent; // 最底層資料夾 id
   }
 
-  function openDriveFolderWeb(id, preWin) {
-    const url = `https://drive.google.com/drive/folders/${id}`;
+  function openDriveFolderWeb(id, preWin, opts) {
+    const url = `https://drive.google.com/drive/folders/${id}`; // 可視需要加 &usp=opendrive
 
-    // ✅ 局部判斷，避免全域變數重複宣告衝突
-    const iOSPWA = (() => {
-      try {
-        const ua = navigator.userAgent || "";
-        const isiOS =
-          /iPad|iPhone|iPod/.test(ua) ||
-          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-        const standalone = !!(
-          window.matchMedia?.("(display-mode: standalone)")?.matches ||
-          navigator.standalone
-        );
-        return isiOS && standalone;
-      } catch {
-        return false;
-      }
-    })();
+    const preferSameTab = !!(opts && opts.preferSameTab);
 
-    if (preWin && !preWin.closed) {
+    // 先用“預留視窗”（只會在已同意後才建立，見下段）
+    if (!preferSameTab && preWin && !preWin.closed) {
       try {
         preWin.location.replace(url);
         return;
       } catch (_) {}
     }
+
+    // 嘗試新分頁
     let w = null;
     try {
-      w = window.open(url, "_blank", "noopener");
+      if (!preferSameTab) w = window.open(url, "_blank", "noopener");
     } catch (_) {}
     if (w) return;
 
-    if (iOSPWA) {
-      // iOS PWA 幾乎不允許新分頁，最後手段直接導走（可喚起 Drive App）
-      location.href = url;
-    } else {
-      alert("瀏覽器阻擋了新分頁，請允許快顯視窗。");
-    }
+    // 最後手段：同頁導向（僅限首次 consent；之後不會走到這裡）
+    location.assign(url);
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
@@ -4398,17 +4404,31 @@
     const t = getCurrentDetailTask();
     if (!t) return;
 
-    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
+    const alreadyConsented =
+      localStorage.getItem("gdrive_consent_done") === "1";
+
+    // 只有「已同意」時才預開分頁（避免首登變成雙彈窗）
     let preWin = null;
-    try {
-      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
-    } catch (_) {}
+    if (alreadyConsented) {
+      try {
+        preWin = window.open("about:blank", "_blank", "noopener");
+      } catch (_) {}
+    }
 
     try {
-      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
-      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
-      updateDriveButtonState(t); // 金黃發光狀態同步
-      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
+      await ensureDriveAuth(); // 首次會跳 consent；之後 50 分鐘靜默
+
+      const folderId = await ensureExistingOrRecreateFolder(t);
+
+      // ★ 重要：等 Drive 後端就緒（解 iOS PWA 第一次開到「找不到相符的項目」）
+      await waitForDriveReady(folderId);
+
+      updateDriveButtonState(t);
+
+      // 首次：preferSameTab=true（避免再被判快顯）
+      openDriveFolderWeb(folderId, preWin, {
+        preferSameTab: !alreadyConsented,
+      });
     } catch (e) {
       try {
         preWin && !preWin.closed && preWin.close();
