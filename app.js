@@ -4093,76 +4093,38 @@
   let __tokenClient = null;
 
   // === iOS PWA 偵測（供舊程式的 isIOSPWA 使用；不改舊碼）===
-  window.isIOSPWA = (() => {
-    try {
-      const ua = navigator.userAgent || "";
-      const isiOS =
-        /iPad|iPhone|iPod/.test(ua) ||
-        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-      const standalone = !!(
-        window.matchMedia?.("(display-mode: standalone)")?.matches ||
-        navigator.standalone
-      );
-      return isiOS && standalone;
-    } catch {
-      return false;
-    }
-  })();
+window.isIOSPWA = (() => {
+  try {
+    const ua = navigator.userAgent || "";
+    const isiOS = /iPad|iPhone|iPod/.test(ua) ||
+      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const standalone = !!(
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      navigator.standalone
+    );
+    return isiOS && standalone;
+  } catch { return false; }
+})();
 
-  // === iOS PWA 授權將同窗導回的固定 URI（與 GCP 設定「一字不差」）===
-  const IOS_PWA_REDIRECT_URI = "https://kj-reminder.onrender.com/index.html"; // ← 改成你實際頁面
+// === iOS PWA 授權將同窗導回的固定 URI（與 GCP 設定「一字不差」）===
+const IOS_PWA_REDIRECT_URI = "https://你的網域.com/index.html"; // ← 改成你實際頁面
 
-  // === 首次驗證完成後的小提示（2.5s 自動消失）===
-  function __showAuthDoneNotice() {
-    if (document.getElementById("__gdAuthNotice")) return;
-    const box = document.createElement("div");
-    box.id = "__gdAuthNotice";
-    box.textContent = "已完成驗證，再次點擊以建立資料夾。";
-    Object.assign(box.style, {
-      position: "fixed",
-      left: "50%",
-      bottom: "14%",
-      transform: "translateX(-50%)",
-      background: "rgba(0,0,0,.75)",
-      color: "#fff",
-      padding: "10px 14px",
-      borderRadius: "8px",
-      fontSize: "14px",
-      zIndex: "9999",
-    });
-    document.body.appendChild(box);
-    setTimeout(() => box.remove(), 2500);
-  }
-
-  // === 解析 OAuth 導回的 #access_token（iOS PWA 走 redirect 才會用到）===
-  (function __bootstrapFromOAuthHash() {
-    try {
-      if (location.hash && location.hash.includes("access_token=")) {
-        const qs = new URLSearchParams(location.hash.slice(1));
-        const at = qs.get("access_token");
-        const expiresIn = parseInt(qs.get("expires_in") || "3600", 10);
-        const state = qs.get("state");
-        const expect = sessionStorage.getItem("gd_state");
-        if (!expect || (state && state === expect)) {
-          const skew = 10 * 60 * 1000;
-          localStorage.setItem("gdrive_at", at || "");
-          localStorage.setItem(
-            "gdrive_token_exp",
-            String(Date.now() + expiresIn * 1000 - skew)
-          );
-          localStorage.setItem("gdrive_consent_done", "1");
-        }
-        // 清掉 URL hash
-        history.replaceState(null, "", location.pathname + location.search);
-
-        // 首次完成驗證 → 顯示提示
-        if (sessionStorage.getItem("gd_show_notice") === "1") {
-          sessionStorage.removeItem("gd_show_notice");
-          __showAuthDoneNotice();
-        }
-      }
-    } catch (_) {}
-  })();
+// === 首次驗證完成後的小提示（2.5s 自動消失）===
+function __showAuthDoneNotice() {
+  if (document.getElementById('__gdAuthNotice')) return;
+  const box = document.createElement('div');
+  box.id = '__gdAuthNotice';
+  box.textContent = '已完成驗證，再次點擊以建立資料夾。';
+  Object.assign(box.style, {
+    position: 'fixed', left: '50%', bottom: '14%',
+    transform: 'translateX(-50%)',
+    background: 'rgba(0,0,0,.75)', color: '#fff',
+    padding: '10px 14px', borderRadius: '8px',
+    fontSize: '14px', zIndex: '9999'
+  });
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 2500);
+}
 
   function loadGapiOnce() {
     return new Promise((res, rej) => {
@@ -4177,11 +4139,6 @@
           gapi.load("client", async () => {
             try {
               await gapi.client.init({});
-              try {
-                const at = localStorage.getItem("gdrive_at");
-                if (at) gapi.client.setToken({ access_token: at });
-              } catch (_) {}
-
               await gapi.client.load("drive", "v3"); // discovery
               __gapiReady = true;
               __tokenClient = google.accounts.oauth2.initTokenClient({
@@ -4209,7 +4166,7 @@
     return new Promise(async (resolve, reject) => {
       await loadGapiOnce();
 
-      // 仍有效 → 直接過
+      // 簡易有效期（預設 50 分鐘，留 10 分鐘提早刷新）
       const skew = 10 * 60 * 1000;
       const exp = +localStorage.getItem("gdrive_token_exp") || 0;
       const tok = gapi.client.getToken();
@@ -4217,24 +4174,6 @@
         return resolve();
       }
 
-      // ===== iOS PWA：改走同窗 redirect（避免首次點擊「沒反應」）=====
-      if (window.isIOSPWA) {
-        const state = Math.random().toString(36).slice(2);
-        sessionStorage.setItem("gd_state", state);
-        sessionStorage.setItem("gd_show_notice", "1"); // 回來後顯示提示
-        const p = new URLSearchParams({
-          client_id: GOOGLE_CLIENT_ID,
-          redirect_uri: IOS_PWA_REDIRECT_URI, // ← 必須與 GCP 設定一致
-          response_type: "token",
-          scope: GD_SCOPES,
-          include_granted_scopes: "true",
-          state,
-        });
-        location.href = `https://accounts.google.com/o/oauth2/v2/auth?${p.toString()}`;
-        return; // 跳走後不再執行；回來時由 bootstrap 進行後續
-      }
-
-      // ===== 其他平台：維持原本 GIS popup/靜默流程 =====
       const alreadyConsented =
         localStorage.getItem("gdrive_consent_done") === "1";
 
@@ -4246,13 +4185,6 @@
           String(Date.now() + ttl - skew)
         );
         localStorage.setItem("gdrive_consent_done", "1");
-
-        // 首次完成驗證 → 顯示提示
-        if (!alreadyConsented) {
-          try {
-            __showAuthDoneNotice();
-          } catch (_) {}
-        }
         resolve();
       };
       const finishErr = (err) =>
@@ -4263,11 +4195,13 @@
         return finishErr(resp?.error || "授權失敗");
       };
 
+      // 先試靜默；若已經同意過通常可成功（桌機/行動瀏覽器）
       try {
         __tokenClient.requestAccessToken({
           prompt: alreadyConsented ? "" : "consent",
         });
       } catch (e) {
+        // 少數環境（含 iOS PWA）可能仍需重新同意
         if (alreadyConsented) {
           try {
             __tokenClient.requestAccessToken({ prompt: "consent" });
