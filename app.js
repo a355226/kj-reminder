@@ -4077,6 +4077,23 @@
     }
   }
 
+  // 判斷是否在 iOS PWA（此環境通常無法用預開視窗）
+  const IS_IOS_PWA = (() => {
+    try {
+      const ua = navigator.userAgent || "";
+      const isiOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      const standalone = !!(
+        window.matchMedia?.("(display-mode: standalone)")?.matches ||
+        navigator.standalone
+      );
+      return isiOS && standalone;
+    } catch {
+      return false;
+    }
+  })();
+
   /* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
   /* ✅ 設定你的 Google OAuth Client ID（必填） */
   const GOOGLE_CLIENT_ID =
@@ -4246,35 +4263,18 @@
   function openDriveFolderWeb(id, preWin) {
     const url = `https://drive.google.com/drive/folders/${id}`;
 
-    // ✅ 局部判斷，避免全域變數重複宣告衝突
-    const iOSPWA = (() => {
-      try {
-        const ua = navigator.userAgent || "";
-        const isiOS =
-          /iPad|iPhone|iPod/.test(ua) ||
-          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-        const standalone = !!(
-          window.matchMedia?.("(display-mode: standalone)")?.matches ||
-          navigator.standalone
-        );
-        return isiOS && standalone;
-      } catch {
-        return false;
-      }
-    })();
-
+    // 優先用預開的 about:blank（100% 不會被擋）
     if (preWin && !preWin.closed) {
       try {
         preWin.location.replace(url);
         return;
       } catch (_) {}
     }
-    let w = null;
-    try {
-      w = window.open(url, "_blank", "noopener");
-    } catch (_) {}
-    if (w) return;
 
+    // 後備：再嘗試新分頁（某些環境仍可成功）
+    try {
+      window.open(url, "_blank", "noopener");
+    } catch (_) {}
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
