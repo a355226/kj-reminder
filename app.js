@@ -4392,30 +4392,78 @@
     updateDriveButtonState(taskObj);
   }
 
-  async function onDriveButtonClick() {
-    const t = getCurrentDetailTask();
-    if (!t) return;
+ async function onDriveButtonClick() {
+  const t = getCurrentDetailTask();
+  if (!t) return;
 
-    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
-    let preWin = null;
-    try {
-      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
-    } catch (_) {}
+  // 先嘗試預留一個分頁，之後用來開資料夾（避免被擋）
+  let preWin = null;
+  try { preWin = window.open("about:blank", "_blank", "noopener"); } catch (_) {}
 
-    try {
-      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
-      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
-      updateDriveButtonState(t); // 金黃發光狀態同步
-      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
-    } catch (e) {
+  // 確保 SDK 已啟動（通常已由 loadGapiOnce() 預熱完成；這裡若還在載，也只會很快）
+  try { await loadGapiOnce(); } catch (e) {
+    try { preWin && !preWin.closed && preWin.close(); } catch(_) {}
+    alert("Google 服務初始化失敗，稍後再試");
+    console.error(e);
+    return;
+  }
+
+  // 是否已有有效 token？
+  const skew = 10 * 60 * 1000;
+  const exp  = +localStorage.getItem("gdrive_token_exp") || 0;
+  const tok  = gapi.client.getToken();
+  const needAuth = !(tok?.access_token && Date.now() + skew < exp);
+
+  if (needAuth) {
+    const alreadyConsented = localStorage.getItem("gdrive_consent_done") === "1";
+
+    // 手勢內「同步」呼叫授權 → 不會被瀏覽器擋
+    __tokenClient.callback = (resp) => {
       try {
-        preWin && !preWin.closed && preWin.close();
-      } catch (_) {}
+        if (!resp || !resp.access_token) throw new Error(resp?.error || "授權失敗");
+        gapi.client.setToken({ access_token: resp.access_token });
+        const ttl = resp.expires_in ? resp.expires_in * 1000 : 3600 * 1000;
+        localStorage.setItem("gdrive_token_exp", String(Date.now() + ttl - skew));
+        const firstTime = !alreadyConsented;
+        localStorage.setItem("gdrive_consent_done", "1");
+
+        if (firstTime) {
+          // 首次：這次只做驗證；避免因手勢耗盡導致後續 open 被擋
+          try { preWin && !preWin.closed && preWin.close(); } catch(_) {}
+          alert("已完成驗證，再次點擊以建立資料夾。");
+          return;
+        }
+        // 非首次 → 繼續
+        proceed();
+      } catch (e) {
+        try { preWin && !preWin.closed && preWin.close(); } catch(_) {}
+        alert("Google 授權失敗：" + (e?.message || e));
+        console.error(e);
+      }
+    };
+    __tokenClient.requestAccessToken({ prompt: alreadyConsented ? "" : "consent" });
+    return; // 等 callback 繼續
+  }
+
+  // 已有 token → 直接走
+  proceed();
+
+  async function proceed() {
+    try {
+      const folderId = await ensureExistingOrRecreateFolder(t);
+      updateDriveButtonState(t);
+      openDriveFolderWeb(folderId, preWin);
+    } catch (e) {
+      try { preWin && !preWin.closed && preWin.close(); } catch(_) {}
       const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
       console.error("Drive error:", e);
     }
   }
+}
+  
+  // 頁面載入就預熱 Google 服務（不阻塞）
+loadGapiOnce();
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
@@ -4447,6 +4495,8 @@
     viewerRedo,
     viewerCopy,
   });
+  
+  
 
   // --- 這行以上 ---
 })();
