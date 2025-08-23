@@ -4110,8 +4110,10 @@
               __tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CLIENT_ID,
                 scope: GD_SCOPES,
-                callback: () => {}, // 真正要用時再覆寫
+                callback: () => {}, // 之後再覆寫
+                use_fedcm_for_prompt: true, // ✅ 有助於被擋問題
               });
+
               __gisReady = true;
               res();
             } catch (e) {
@@ -4130,73 +4132,71 @@
     return new Promise(async (resolve, reject) => {
       await loadGapiOnce();
 
-      const token = gapi.client.getToken();
-      if (token && token.access_token) return resolve();
+      // 簡易有效期（預設 50 分鐘，留 10 分鐘提早刷新）
+      const skew = 10 * 60 * 1000;
+      const exp = +localStorage.getItem("gdrive_token_exp") || 0;
+      const tok = gapi.client.getToken();
+      if (tok?.access_token && Date.now() + skew < exp) {
+        return resolve();
+      }
 
       const alreadyConsented =
         localStorage.getItem("gdrive_consent_done") === "1";
-      const promptMode = alreadyConsented ? "" : "consent";
+
+      const finishOk = (resp) => {
+        gapi.client.setToken({ access_token: resp.access_token });
+        const ttl = resp.expires_in ? resp.expires_in * 1000 : 60 * 60 * 1000;
+        localStorage.setItem(
+          "gdrive_token_exp",
+          String(Date.now() + ttl - skew)
+        );
+        localStorage.setItem("gdrive_consent_done", "1");
+        resolve();
+      };
+      const finishErr = (err) =>
+        reject(err instanceof Error ? err : new Error(err || "授權失敗"));
 
       __tokenClient.callback = (resp) => {
-        if (resp && resp.access_token) {
-          gapi.client.setToken({ access_token: resp.access_token });
-          localStorage.setItem("gdrive_consent_done", "1");
-          resolve();
-        } else if (resp && resp.error) {
-          reject(new Error(resp.error));
-        } else {
-          reject(new Error("授權失敗"));
-        }
+        if (resp && resp.access_token) return finishOk(resp);
+        return finishErr(resp?.error || "授權失敗");
       };
 
-      // 直接在「點擊事件」裡呼叫（避免被攔）
-      __tokenClient.requestAccessToken({ prompt: promptMode });
+      // 先試靜默；若已經同意過通常可成功（桌機/行動瀏覽器）
+      try {
+        __tokenClient.requestAccessToken({
+          prompt: alreadyConsented ? "" : "consent",
+        });
+      } catch (e) {
+        // 少數環境（含 iOS PWA）可能仍需重新同意
+        if (alreadyConsented) {
+          try {
+            __tokenClient.requestAccessToken({ prompt: "consent" });
+          } catch (e2) {
+            finishErr(e2);
+          }
+        } else {
+          finishErr(e);
+        }
+      }
     });
   }
 
   function ensureDriveGlowCss() {
     if (document.getElementById("driveGlowCss")) return;
     const css = `
-    .btn-gdrive { margin-left:.35rem;padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer; }
-    .btn-gdrive.has-folder { background:#FFD54F; border-color:#FFC107; box-shadow:0 0 .6rem rgba(255,193,7,.6); animation:drive-glow 1.2s ease-in-out infinite alternate; }
-    @keyframes drive-glow {
-      from { box-shadow:0 0 .35rem rgba(255,193,7,.45); }
-      to   { box-shadow:0 0 1rem rgba(255,193,7,.95); }
-    }`;
+      .btn-gdrive { margin-left:.35rem;padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer; }
+      .btn-gdrive.has-folder { background:#FFD54F; border-color:#FFC107; box-shadow:0 0 .6rem rgba(255,193,7,.6); animation:drive-glow 1.2s ease-in-out infinite alternate; }
+      @keyframes drive-glow { from { box-shadow:0 0 .35rem rgba(255,193,7,.45);} to { box-shadow:0 0 1rem rgba(255,193,7,.95);} }
+    `;
     const st = document.createElement("style");
     st.id = "driveGlowCss";
     st.textContent = css;
     document.head.appendChild(st);
   }
-
-  async function onDriveButtonClick() {
-    try {
-      const t = getCurrentDetailTask();
-      if (!t) return;
-
-      // 先確保有 token（第一次 consent、之後 silent）
-      await ensureDriveAuth();
-
-      // 有 ID 也先探測；找不到就重建
-      const folderId = await ensureExistingOrRecreateFolder(t);
-
-      // 視覺狀態（金黃＋發光）
-      updateDriveButtonState(t);
-
-      // 永遠用新分頁開啟
-      openDriveFolderWeb(folderId);
-    } catch (e) {
-      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-      alert("Google 雲端硬碟動作失敗：" + msg);
-      console.error("Drive error:", e);
-    }
-  }
-
   function updateDriveButtonState(taskObj) {
     const btn = document.getElementById("gdriveBtn");
     if (!btn) return;
-    const has = !!(taskObj && taskObj.driveFolderId);
-    btn.classList.toggle("has-folder", has); // 有紀錄 → 變金黃＋發光
+    btn.classList.toggle("has-folder", !!(taskObj && taskObj.driveFolderId));
   }
 
   function escapeForQuery(s) {
@@ -4243,14 +4243,43 @@
     return parent; // 最底層資料夾 id
   }
 
-  function openDriveFolderWeb(id) {
+  function openDriveFolderWeb(id, preWin) {
     const url = `https://drive.google.com/drive/folders/${id}`;
+
+    // ✅ 局部判斷，避免全域變數重複宣告衝突
+    const iOSPWA = (() => {
+      try {
+        const ua = navigator.userAgent || "";
+        const isiOS =
+          /iPad|iPhone|iPod/.test(ua) ||
+          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+        const standalone = !!(
+          window.matchMedia?.("(display-mode: standalone)")?.matches ||
+          navigator.standalone
+        );
+        return isiOS && standalone;
+      } catch {
+        return false;
+      }
+    })();
+
+    if (preWin && !preWin.closed) {
+      try {
+        preWin.location.replace(url);
+        return;
+      } catch (_) {}
+    }
     let w = null;
     try {
       w = window.open(url, "_blank", "noopener");
     } catch (_) {}
-    if (!w) {
-      alert("瀏覽器阻擋了新分頁。請允許快顯視窗，或以右鍵/長按在新分頁開啟。");
+    if (w) return;
+
+    if (iOSPWA) {
+      // iOS PWA 幾乎不允許新分頁，最後手段直接導走（可喚起 Drive App）
+      location.href = url;
+    } else {
+      alert("瀏覽器阻擋了新分頁，請允許快顯視窗。");
     }
   }
 
@@ -4307,7 +4336,7 @@
   }
 
   async function ensureExistingOrRecreateFolder(t) {
-    // 已記錄 ID → 先探測是否仍存在
+    // 有 ID 先驗證
     if (t.driveFolderId) {
       try {
         const r = await gapi.client.drive.files.get({
@@ -4316,17 +4345,16 @@
           supportsAllDrives: true,
         });
         if (r?.result?.id && !r.result.trashed) {
-          return t.driveFolderId; // OK 就用舊的
+          return t.driveFolderId; // 現存
         }
-      } catch (e) {
-        // 404 / notFound → 走重建
+      } catch (_) {
+        // 404 / 無權限 → 重建
       }
-      // 失效 → 清掉舊 ID
-      t.driveFolderId = null;
+      t.driveFolderId = null; // 清掉無效 ID
       saveTasksToFirebase?.();
     }
 
-    // 重建路徑
+    // 重建整條路徑
     const segs = [
       "MyTask",
       t.section || "未分類",
@@ -4350,7 +4378,6 @@
   /* 在詳情的「重要」右邊插入：💾（建立/開啟）與 🔍（僅開啟；有記錄才顯示） */
   function ensureDriveButtonsInlineUI(taskObj) {
     ensureDriveGlowCss();
-
     const row = document.querySelector("#detailForm .inline-row");
     if (!row) return;
 
@@ -4361,11 +4388,35 @@
       btn.title = "建立/開啟此任務的雲端資料夾";
       btn.textContent = "💾";
       btn.className = "btn-gdrive";
-      btn.onclick = onDriveButtonClick;
+      btn.onclick = onDriveButtonClick; // ← 這行需要 C) 的實作
       row.appendChild(btn);
     }
-
     updateDriveButtonState(taskObj);
+  }
+
+  async function onDriveButtonClick() {
+    const t = getCurrentDetailTask();
+    if (!t) return;
+
+    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
+    let preWin = null;
+    try {
+      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
+    } catch (_) {}
+
+    try {
+      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
+      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
+      updateDriveButtonState(t); // 金黃發光狀態同步
+      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
+    } catch (e) {
+      try {
+        preWin && !preWin.closed && preWin.close();
+      } catch (_) {}
+      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+      alert("Google 雲端硬碟動作失敗：" + msg);
+      console.error("Drive error:", e);
+    }
   }
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
