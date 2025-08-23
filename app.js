@@ -4092,48 +4092,6 @@
   let __gisReady = false;
   let __tokenClient = null;
 
-  // === iOS PWA 偵測（供舊程式的 isIOSPWA 使用；不改舊碼）===
-  window.isIOSPWA = (() => {
-    try {
-      const ua = navigator.userAgent || "";
-      const isiOS =
-        /iPad|iPhone|iPod/.test(ua) ||
-        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-      const standalone = !!(
-        window.matchMedia?.("(display-mode: standalone)")?.matches ||
-        navigator.standalone
-      );
-      return isiOS && standalone;
-    } catch {
-      return false;
-    }
-  })();
-
-  // === iOS PWA 授權將同窗導回的固定 URI（與 GCP 設定「一字不差」）===
-  const IOS_PWA_REDIRECT_URI = "https://kj-reminder.onrender.com/index.html"; // ← 改成你實際頁面
-
-  // === 首次驗證完成後的小提示（2.5s 自動消失）===
-  function __showAuthDoneNotice() {
-    if (document.getElementById("__gdAuthNotice")) return;
-    const box = document.createElement("div");
-    box.id = "__gdAuthNotice";
-    box.textContent = "已完成驗證，再次點擊以建立資料夾。";
-    Object.assign(box.style, {
-      position: "fixed",
-      left: "50%",
-      bottom: "14%",
-      transform: "translateX(-50%)",
-      background: "rgba(0,0,0,.75)",
-      color: "#fff",
-      padding: "10px 14px",
-      borderRadius: "8px",
-      fontSize: "14px",
-      zIndex: "9999",
-    });
-    document.body.appendChild(box);
-    setTimeout(() => box.remove(), 2500);
-  }
-
   function loadGapiOnce() {
     return new Promise((res, rej) => {
       if (__gapiReady && __gisReady && __tokenClient) return res();
@@ -4316,6 +4274,7 @@
       w = window.open(url, "_blank", "noopener");
     } catch (_) {}
     if (w) return;
+
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
