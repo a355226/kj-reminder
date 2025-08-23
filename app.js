@@ -4132,14 +4132,16 @@
     return new Promise(async (resolve, reject) => {
       await loadGapiOnce();
 
+      // 簡易有效期（預設 50 分鐘，留 10 分鐘提早刷新）
       const skew = 10 * 60 * 1000;
       const exp = +localStorage.getItem("gdrive_token_exp") || 0;
       const tok = gapi.client.getToken();
-      const hasToken = !!tok?.access_token;
-
-      if (hasToken && Date.now() + skew < exp) {
-        return resolve(); // token 有效，直接用
+      if (tok?.access_token && Date.now() + skew < exp) {
+        return resolve();
       }
+
+      const alreadyConsented =
+        localStorage.getItem("gdrive_consent_done") === "1";
 
       const finishOk = (resp) => {
         gapi.client.setToken({ access_token: resp.access_token });
@@ -4148,6 +4150,7 @@
           "gdrive_token_exp",
           String(Date.now() + ttl - skew)
         );
+        localStorage.setItem("gdrive_consent_done", "1");
         resolve();
       };
       const finishErr = (err) =>
@@ -4158,15 +4161,21 @@
         return finishErr(resp?.error || "授權失敗");
       };
 
+      // 先試靜默；若已經同意過通常可成功（桌機/行動瀏覽器）
       try {
-        // 已有 token → 走靜默；沒有 → 強制 consent
-        __tokenClient.requestAccessToken({ prompt: hasToken ? "" : "consent" });
+        __tokenClient.requestAccessToken({
+          prompt: alreadyConsented ? "" : "consent",
+        });
       } catch (e) {
-        // 再試一次強制 consent
-        try {
-          __tokenClient.requestAccessToken({ prompt: "consent" });
-        } catch (e2) {
-          finishErr(e2);
+        // 少數環境（含 iOS PWA）可能仍需重新同意
+        if (alreadyConsented) {
+          try {
+            __tokenClient.requestAccessToken({ prompt: "consent" });
+          } catch (e2) {
+            finishErr(e2);
+          }
+        } else {
+          finishErr(e);
         }
       }
     });
@@ -4192,28 +4201,6 @@
 
   function escapeForQuery(s) {
     return String(s).replace(/['\\]/g, "\\$&");
-  }
-
-  async function waitForDriveReady(fileId, tries = 4) {
-    // 等待新建的資料夾在各端可讀（尤其 iOS App Deep Link）
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    for (let i = 0; i < tries; i++) {
-      try {
-        const r = await gapi.client.drive.files.get({
-          fileId,
-          fields: "id, trashed",
-          supportsAllDrives: true,
-        });
-        if (r?.result?.id && !r.result.trashed) {
-          // 再小等一下，讓 App/Universal Link 也接上
-          await sleep(200 + i * 100);
-          return;
-        }
-      } catch (_) {
-        /* ignore and retry */
-      }
-      await sleep(250 + i * 200); // 250ms, 450ms, 650ms, ...
-    }
   }
 
   async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
@@ -4256,27 +4243,44 @@
     return parent; // 最底層資料夾 id
   }
 
-  function openDriveFolderWeb(id, preWin, opts) {
+  function openDriveFolderWeb(id, preWin) {
     const url = `https://drive.google.com/drive/folders/${id}`;
-    const preferSameTab = !!(opts && opts.preferSameTab);
 
-    // 有預留分頁 → 優先導向它（不會被擋）
-    if (!preferSameTab && preWin && !preWin.closed) {
+    // ✅ 局部判斷，避免全域變數重複宣告衝突
+    const iOSPWA = (() => {
       try {
-        preWin.location.href = url;
+        const ua = navigator.userAgent || "";
+        const isiOS =
+          /iPad|iPhone|iPod/.test(ua) ||
+          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+        const standalone = !!(
+          window.matchMedia?.("(display-mode: standalone)")?.matches ||
+          navigator.standalone
+        );
+        return isiOS && standalone;
+      } catch {
+        return false;
+      }
+    })();
+
+    if (preWin && !preWin.closed) {
+      try {
+        preWin.location.replace(url);
         return;
       } catch (_) {}
     }
-
-    // 嘗試新分頁（這步若不在使用者手勢中，可能被擋）
     let w = null;
     try {
-      if (!preferSameTab) w = window.open(url, "_blank");
+      w = window.open(url, "_blank", "noopener");
     } catch (_) {}
     if (w) return;
 
-    // 被擋或指定同頁 → 同頁導向
-    location.assign(url);
+    if (iOSPWA) {
+      // iOS PWA 幾乎不允許新分頁，最後手段直接導走（可喚起 Drive App）
+      location.href = url;
+    } else {
+      alert("瀏覽器阻擋了新分頁，請允許快顯視窗。");
+    }
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
@@ -4398,31 +4402,17 @@
     const t = getCurrentDetailTask();
     if (!t) return;
 
-    // ✅ 以 token 是否存在判斷「可否預開分頁」
-    const hasToken = !!gapi?.client?.getToken?.()?.access_token;
-
-    // 只有已授權（有 token）才開預留分頁，避免雙彈窗
+    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
     let preWin = null;
-    if (hasToken) {
-      try {
-        preWin = window.open("", "_blank"); // 不加 'noopener' 才能穩定改它的 location
-        if (preWin && preWin.document) {
-          preWin.document.write(
-            "<title>正在開啟 Google 雲端硬碟…</title><body style='font:14px/1.6 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;padding:16px;color:#444'>正在開啟 Google 雲端硬碟，請稍候…</body>"
-          );
-          preWin.document.close();
-        }
-      } catch (_) {}
-    }
+    try {
+      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
+    } catch (_) {}
 
     try {
-      await ensureDriveAuth(); // 首次會跳 consent；之後靜默
-      const folderId = await ensureExistingOrRecreateFolder(t);
-      await waitForDriveReady(folderId); // 降低 iOS PWA 首次「找不到項目」
-      updateDriveButtonState(t);
-
-      // 首次（沒 token）：preferSameTab = true，避免再被擋
-      openDriveFolderWeb(folderId, preWin, { preferSameTab: !hasToken });
+      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
+      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
+      updateDriveButtonState(t); // 金黃發光狀態同步
+      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
     } catch (e) {
       try {
         preWin && !preWin.closed && preWin.close();
