@@ -4091,81 +4091,42 @@
   let __gapiReady = false;
   let __gisReady = false;
   let __tokenClient = null;
-  
-  // --- Google SDK 預載（避免第一次點擊時才載 → 手勢中斷）---
-let __sdkLoading = null;
 
-function addGoogleSDKsOnce() {
-  if (__sdkLoading) return __sdkLoading;
-  __sdkLoading = new Promise((resolve, reject) => {
-    let gapiOk = !!window.gapi;
-    let gisOk  = !!(window.google && window.google.accounts && window.google.accounts.oauth2);
+  function loadGapiOnce() {
+    return new Promise((res, rej) => {
+      if (__gapiReady && __gisReady && __tokenClient) return res();
+      const wait = () => {
+        if (
+          window.gapi &&
+          window.google &&
+          google.accounts &&
+          google.accounts.oauth2
+        ) {
+          gapi.load("client", async () => {
+            try {
+              await gapi.client.init({});
+              await gapi.client.load("drive", "v3"); // discovery
+              __gapiReady = true;
+              __tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_CLIENT_ID,
+                scope: GD_SCOPES,
+                callback: () => {}, // 之後再覆寫
+                use_fedcm_for_prompt: true, // ✅ 有助於被擋問題
+              });
 
-    const doneIfReady = () => {
-      gapiOk = !!window.gapi;
-      gisOk  = !!(window.google && window.google.accounts && window.google.accounts.oauth2);
-      if (gapiOk && gisOk) resolve();
-    };
-
-    // gapi
-    if (!gapiOk) {
-      const s1 = document.createElement("script");
-      s1.src = "https://apis.google.com/js/api.js";
-      s1.async = true;
-      s1.onload = doneIfReady;
-      s1.onerror = () => reject(new Error("載入 gapi 失敗"));
-      document.head.appendChild(s1);
-    }
-
-    // gis
-    if (!gisOk) {
-      const s2 = document.createElement("script");
-      s2.src = "https://accounts.google.com/gsi/client";
-      s2.async = true; s2.defer = true;
-      s2.onload = doneIfReady;
-      s2.onerror = () => reject(new Error("載入 GIS 失敗"));
-      document.head.appendChild(s2);
-    }
-
-    // 若兩個本來就有
-    doneIfReady();
-  });
-  return __sdkLoading;
-}
-
-let __gapiReady = false;
-let __gisReady  = false;
-let __tokenClient = null;
-let __driveInitPromise = null;
-
-function loadGapiOnce() {
-  if (__driveInitPromise) return __driveInitPromise;
-  __driveInitPromise = (async () => {
-    await addGoogleSDKsOnce();
-
-    // gapi init + drive
-    await new Promise((res, rej) => {
-      gapi.load("client", async () => {
-        try {
-          await gapi.client.init({});
-          await gapi.client.load("drive", "v3");
-          __gapiReady = true;
-          res();
-        } catch (e) { rej(e); }
-      });
+              __gisReady = true;
+              res();
+            } catch (e) {
+              rej(e);
+            }
+          });
+        } else {
+          setTimeout(wait, 50);
+        }
+      };
+      wait();
     });
-
-    // token client（先建好，確保點擊時可同步呼叫）
-    __tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GD_SCOPES,
-      callback: () => {}, // 之後每次點擊都會即時覆蓋
-      use_fedcm_for_prompt: true,
-    });
-    __gisReady = true;
-  })();
-  return __driveInitPromise;
-}
+  }
 
   function ensureDriveAuth() {
     return new Promise(async (resolve, reject) => {
@@ -4431,84 +4392,30 @@ function loadGapiOnce() {
     updateDriveButtonState(taskObj);
   }
 
- async function onDriveButtonClick() {
-  const t = getCurrentDetailTask();
-  if (!t) return;
+  async function onDriveButtonClick() {
+    const t = getCurrentDetailTask();
+    if (!t) return;
 
-  // 先確認 SDK/Client 都就緒；若尚未就緒，先等（這裡很快，因為開場就預載了）
-  try {
-    await loadGapiOnce();
-  } catch (e) {
-    alert("Google 服務初始化失敗，稍後再試");
-    console.error(e);
-    return;
-  }
-
-  // 先開一個預留視窗（避免之後 open 被擋）
-  let preWin = null;
-  try {
-    preWin = window.open("about:blank", "_blank", "noopener");
-  } catch (_) {}
-
-  // === 關鍵：在「手勢事件」堆疊中馬上決定是否要叫出授權 UI ===
-  const skew = 10 * 60 * 1000;
-  const exp  = +localStorage.getItem("gdrive_token_exp") || 0;
-  const tok  = gapi.client.getToken();
-  const needAuth = !(tok?.access_token && Date.now() + skew < exp);
-
-  if (needAuth) {
-    // 設定一次性的 callback，確保在授權回來後繼續你的流程
-    const alreadyConsented = localStorage.getItem("gdrive_consent_done") === "1";
-    __tokenClient.callback = (resp) => {
-      try {
-        if (resp && resp.access_token) {
-          gapi.client.setToken({ access_token: resp.access_token });
-          const ttl = resp.expires_in ? resp.expires_in * 1000 : 60 * 60 * 1000;
-          localStorage.setItem("gdrive_token_exp", String(Date.now() + ttl - skew));
-          const firstTime = !alreadyConsented;
-          localStorage.setItem("gdrive_consent_done", "1");
-
-          if (firstTime) {
-            // 首次授權：這次不做其它動作，讓使用者第二次點就直接成功
-            try { preWin && !preWin.closed && preWin.close(); } catch (_) {}
-            alert("已完成驗證，再次點擊以建立資料夾。");
-            return;
-          }
-
-          // 非首次 → 繼續正常流程
-          proceedAfterAuth();
-        } else {
-          throw new Error(resp?.error || "授權失敗");
-        }
-      } catch (e) {
-        try { preWin && !preWin.closed && preWin.close(); } catch (_) {}
-        alert("Google 授權失敗：" + (e?.message || e));
-        console.error(e);
-      }
-    };
-
-    // ✅ 這一行**同步**執行在點擊手勢之內 → 不會被瀏覽器擋
-    __tokenClient.requestAccessToken({
-      prompt: alreadyConsented ? "" : "consent",
-    });
-  } else {
-    // 已有 token → 直接走後續
-    proceedAfterAuth();
-  }
-
-  async function proceedAfterAuth() {
+    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
+    let preWin = null;
     try {
-      const folderId = await ensureExistingOrRecreateFolder(t);
-      updateDriveButtonState(t);
-      openDriveFolderWeb(folderId, preWin);
+      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
+    } catch (_) {}
+
+    try {
+      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
+      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
+      updateDriveButtonState(t); // 金黃發光狀態同步
+      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
     } catch (e) {
-      try { preWin && !preWin.closed && preWin.close(); } catch (_) {}
+      try {
+        preWin && !preWin.closed && preWin.close();
+      } catch (_) {}
       const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
       console.error("Drive error:", e);
     }
   }
-}
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
@@ -4550,23 +4457,3 @@ if (document.readyState === "loading") {
 } else {
   // DOM 已就緒
 }
-
-// 頁面啟動就預載 SDK + Drive client，避免第一次點擊才初始化
-(function prewarmDrive() {
-  // 若你的 UI 有 #gdriveBtn，先暫時禁用，等就緒再啟用
-  const lockBtn = (on) => {
-    const b = document.getElementById("gdriveBtn");
-    if (!b) return;
-    b.disabled = !!on;
-    b.style.opacity = on ? 0.5 : "";
-    b.title = on ? "正在初始化 Google 服務…" : "建立/開啟此任務的雲端資料夾";
-  };
-
-  lockBtn(true);
-  loadGapiOnce()
-    .then(() => lockBtn(false))
-    .catch((e) => {
-      console.error("Drive 初始化失敗：", e);
-      lockBtn(true);
-    });
-})();
