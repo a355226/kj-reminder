@@ -4092,23 +4092,6 @@
   let __gisReady = false;
   let __tokenClient = null;
 
-  // 判斷是否在 iOS PWA（此環境通常無法用預開視窗）
-  const IS_IOS_PWA = (() => {
-    try {
-      const ua = navigator.userAgent || "";
-      const isiOS =
-        /iPad|iPhone|iPod/.test(ua) ||
-        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-      const standalone = !!(
-        window.matchMedia?.("(display-mode: standalone)")?.matches ||
-        navigator.standalone
-      );
-      return isiOS && standalone;
-    } catch {
-      return false;
-    }
-  })();
-
   function loadGapiOnce() {
     return new Promise((res, rej) => {
       if (__gapiReady && __gisReady && __tokenClient) return res();
@@ -4263,18 +4246,35 @@
   function openDriveFolderWeb(id, preWin) {
     const url = `https://drive.google.com/drive/folders/${id}`;
 
-    // 優先用預開的 about:blank（100% 不會被擋）
+    // ✅ 局部判斷，避免全域變數重複宣告衝突
+    const iOSPWA = (() => {
+      try {
+        const ua = navigator.userAgent || "";
+        const isiOS =
+          /iPad|iPhone|iPod/.test(ua) ||
+          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+        const standalone = !!(
+          window.matchMedia?.("(display-mode: standalone)")?.matches ||
+          navigator.standalone
+        );
+        return isiOS && standalone;
+      } catch {
+        return false;
+      }
+    })();
+
     if (preWin && !preWin.closed) {
       try {
         preWin.location.replace(url);
         return;
       } catch (_) {}
     }
-
-    // 後備：再嘗試新分頁（某些環境仍可成功）
+    let w = null;
     try {
-      window.open(url, "_blank", "noopener");
+      w = window.open(url, "_blank", "noopener");
     } catch (_) {}
+    if (w) return;
+
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
@@ -4392,46 +4392,28 @@
     updateDriveButtonState(taskObj);
   }
 
-  let __driveClickLock = false;
-  async function onDriveButtonClick(e) {
-    if (__driveClickLock) return; // 防止重入，避免一次點兩下造成混亂
-    __driveClickLock = true;
+  async function onDriveButtonClick() {
+    const t = getCurrentDetailTask();
+    if (!t) return;
 
-    // 1) 同步預開分頁（只有非 iOS PWA 才做，避免 iOS PWA 報錯/無效）
+    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
     let preWin = null;
     try {
-      if (!IS_IOS_PWA) {
-        preWin = window.open("about:blank", "_blank", "noopener"); // 取得彈窗白名單
-      }
+      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
     } catch (_) {}
 
     try {
-      // 2) 確保授權（仍在使用者手勢鏈上）
-      await ensureDriveAuth();
-
-      // 3) 取得目前任務與資料夾（保持你原本邏輯）
-      const t = getCurrentDetailTask();
-      if (!t) {
-        try {
-          preWin && !preWin.closed && preWin.close();
-        } catch (_) {}
-        return;
-      }
-      const folderId = await ensureExistingOrRecreateFolder(t);
-      updateDriveButtonState(t);
-
-      // 4) 使用預開視窗導向真正的雲端資料夾（避免被擋）
-      openDriveFolderWeb(folderId, preWin);
+      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
+      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
+      updateDriveButtonState(t); // 金黃發光狀態同步
+      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
     } catch (e) {
-      // 發生錯誤時把預留視窗關閉，避免殘留空白頁
       try {
         preWin && !preWin.closed && preWin.close();
       } catch (_) {}
       const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
       console.error("Drive error:", e);
-    } finally {
-      __driveClickLock = false;
     }
   }
 
