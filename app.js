@@ -4281,44 +4281,52 @@ const isIOSPWA = (() => {
   }
 
 function openDriveFolderWeb(id, preWin) {
-  const url = `https://drive.google.com/drive/folders/${id}`;
+  const webUrl = `https://drive.google.com/drive/folders/${id}`;
 
-  // 1) 優先用「使用者手勢打開」的預備視窗（最穩）
-  if (preWin && !preWin.closed) {
-    try {
-      // Safari/iOS 對 replace 偶爾不買單；href 最穩
-      preWin.location.href = url;
-      preWin.focus?.();
-      return;
-    } catch (_) {
-      // 失敗就把 preWin 丟掉，走下一層
+  // iOS/Android：優先嘗試打開 Drive App
+  const ua = (navigator.userAgent || "").toLowerCase();
+  const isAndroid = /android/.test(ua);
+  const isIOS = /iphone|ipad|ipod/.test(ua)
+    || ((navigator.userAgent || "").includes("Macintosh") && navigator.maxTouchPoints > 1);
+
+  // iOS：使用 scheme（失敗會回退到網頁）
+  const iosSchemeUrl = `googledrive://${webUrl}`;
+
+  // Android：使用 intent（失敗會回退到網頁）
+  const androidIntentUrl =
+    `intent://drive.google.com/drive/folders/${id}` +
+    `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+
+  // 優先利用「使用者手勢」當下開出的預備視窗，成功率最高
+  const tryNav = (url) => {
+    // 1) 預備視窗（若存在）
+    if (preWin && !preWin.closed) {
+      try { preWin.location.href = url; preWin.focus?.(); return true; } catch (_) {}
     }
+    // 2) 另開分頁（桌機/Android 常成功）
+    try {
+      const w = window.open(url, "_blank"); // 不加第三參數，避免拿不到控制權
+      if (w) { w.focus?.(); return true; }
+    } catch (_) {}
+    // 3) 最後退到同窗導向（iOS PWA/嚴格環境）
+    try { window.location.href = url; return true; } catch (_) {}
+    return false;
+  };
+
+  if (isAndroid) {
+    if (!tryNav(androidIntentUrl)) tryNav(webUrl);
+    return;
   }
 
-  // 2) 直接新開分頁（桌機常見）
-  try {
-    const w = window.open(url, "_blank"); // 不加第三參數，避免 noopener 造成限制
-    if (w) {
-      w.focus?.();
-      return;
-    }
-  } catch (_) {}
+  if (isIOS) {
+    // 先試 App；1.2 秒沒成功自動回退到網頁
+    tryNav(iosSchemeUrl);
+    setTimeout(() => tryNav(webUrl), 1200);
+    return;
+  }
 
-  // 3) 退階：iOS PWA/嚴格環境，改同窗導向（只在 PWA 上才這麼做）
-  try {
-    // 你前面全域就有 isIOSPWA，可直接用
-    if (typeof isIOSPWA !== "undefined" && isIOSPWA) {
-      window.location.href = url;
-      return;
-    }
-  } catch (_) {}
-
-  // 4) 最後保險：再試一次（極少數瀏覽器延遲允許）
-  setTimeout(() => {
-    try {
-      window.open(url, "_blank");
-    } catch (_) {}
-  }, 0);
+  // 桌機：直接開網頁版（新分頁）
+  tryNav(webUrl);
 }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
