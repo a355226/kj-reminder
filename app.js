@@ -1987,18 +1987,31 @@
   }
 
   //新增分類
-  function updateSectionOptions() {
-    const sections = document.querySelectorAll(".section");
-    const options = Array.from(sections)
-      .map((section) => {
-        const id = section.id;
-        return `<option value="${id}">${id}</option>`;
-      })
-      .join("");
+function updateSectionOptions() {
+  const sections = document.querySelectorAll(".section");
+  const options = Array.from(sections)
+    .map((section) => {
+      const id = section.id;
+      return `<option value="${id}">${id}</option>`;
+    })
+    .join("");
 
-    document.getElementById("taskSection").innerHTML = options;
-    document.getElementById("detailSection").innerHTML = options;
+  const createSel = document.getElementById("taskSection");
+  const detailSel = document.getElementById("detailSection");
+
+  const prevCreate = createSel ? createSel.value : null;
+  const prevDetail = detailSel ? detailSel.value : null;
+
+  if (createSel) createSel.innerHTML = options;
+  if (detailSel) detailSel.innerHTML = options;
+
+  if (createSel && prevCreate && createSel.querySelector(`option[value="${prevCreate}"]`)) {
+    createSel.value = prevCreate;
   }
+  if (detailSel && prevDetail && detailSel.querySelector(`option[value="${prevDetail}"]`)) {
+    detailSel.value = prevDetail;
+  }
+}
 
   //更多功能-篩選剩餘日
   let filterDay = "default"; // 預設：顯示所有分類(含空白)
@@ -4281,52 +4294,54 @@ const isIOSPWA = (() => {
   }
 
 function openDriveFolderWeb(id, preWin) {
-  const webUrl = `https://drive.google.com/drive/folders/${id}`;
-
-  // iOS/Android：優先嘗試打開 Drive App
+  const webUrl = `https://drive.google.com/drive/folders/${id}`; // 桌機仍用得到
   const ua = (navigator.userAgent || "").toLowerCase();
   const isAndroid = /android/.test(ua);
   const isIOS = /iphone|ipad|ipod/.test(ua)
     || ((navigator.userAgent || "").includes("Macintosh") && navigator.maxTouchPoints > 1);
 
-  // iOS：使用 scheme（失敗會回退到網頁）
+  // 深連結
   const iosSchemeUrl = `googledrive://${webUrl}`;
-
-  // Android：使用 intent（失敗會回退到網頁）
   const androidIntentUrl =
     `intent://drive.google.com/drive/folders/${id}` +
     `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
 
-  // 優先利用「使用者手勢」當下開出的預備視窗，成功率最高
-  const tryNav = (url) => {
-    // 1) 預備視窗（若存在）
-    if (preWin && !preWin.closed) {
-      try { preWin.location.href = url; preWin.focus?.(); return true; } catch (_) {}
-    }
-    // 2) 另開分頁（桌機/Android 常成功）
+  // 用使用者手勢開的預備分頁導向，成功率高
+  const usePreWin = (url) => {
     try {
-      const w = window.open(url, "_blank"); // 不加第三參數，避免拿不到控制權
-      if (w) { w.focus?.(); return true; }
+      if (preWin && !preWin.closed) {
+        preWin.location.href = url;
+        // 開 App 成功時，預備分頁通常會留著；1~2 秒後嘗試關閉
+        setTimeout(() => { try { preWin.close(); } catch(_){} }, 1500);
+        return true;
+      }
     } catch (_) {}
-    // 3) 最後退到同窗導向（iOS PWA/嚴格環境）
-    try { window.location.href = url; return true; } catch (_) {}
     return false;
   };
 
   if (isAndroid) {
-    if (!tryNav(androidIntentUrl)) tryNav(webUrl);
+    if (!usePreWin(androidIntentUrl)) {
+      // 不要任何 web 回退，直接在同窗送出深連結
+      try { window.location.href = androidIntentUrl; } catch(_) {}
+    }
     return;
   }
 
   if (isIOS) {
-    // 先試 App；1.2 秒沒成功自動回退到網頁
-    tryNav(iosSchemeUrl);
-    setTimeout(() => tryNav(webUrl), 1200);
+    if (!usePreWin(iosSchemeUrl)) {
+      try { window.location.href = iosSchemeUrl; } catch(_) {}
+    }
+    // ✅ 不再 setTimeout 回退 web
     return;
   }
 
-  // 桌機：直接開網頁版（新分頁）
-  tryNav(webUrl);
+  // 桌機：仍開網頁版（新分頁）
+  try {
+    const w = window.open(webUrl, "_blank");
+    w?.focus?.();
+  } catch (_) {
+    try { window.location.href = webUrl; } catch(_) {}
+  }
 }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
