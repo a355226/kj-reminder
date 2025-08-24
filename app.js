@@ -4092,7 +4092,9 @@
   let __gisReady = false;
   let __tokenClient = null;
   // ✅ 第一次授權後要自動補跑一次的旗標
+// ✅ 第一次授權後要自動補跑一次的旗標 & 預備視窗
 const GD_POST_OPEN_KEY = "gdrive_post_open";
+let __gd_prewin = null; // 只在「第一次授權」時短暫使用
   // 全域：一次判斷 iOS PWA（避免第一次 click 時 ReferenceError）
 const isIOSPWA = (() => {
   try {
@@ -4432,16 +4434,32 @@ async function onDriveButtonClick() {
   if (!t) return;
 
   try {
-    // ✅ 第一次授權前先立旗標（之後回來自動補跑一次）
-    if (localStorage.getItem("gdrive_consent_done") !== "1") {
+    // ✅ 第一次授權前：立旗標 + 以使用者手勢先開一個空白頁，避免之後被擋
+    const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
+    if (firstTime) {
       localStorage.setItem(GD_POST_OPEN_KEY, "1");
+      try {
+        __gd_prewin = window.open("about:blank", "_blank", "noopener");
+      } catch (_) {
+        __gd_prewin = null; // 若環境不允許也不致錯
+      }
     }
 
-    await ensureDriveAuth();                         // 拿 token（暖機已做）
+    await ensureDriveAuth();
     const folderId = await ensureExistingOrRecreateFolder(t);
     updateDriveButtonState(t);
-    openDriveFolderWeb(folderId);                    // ← 不再傳 preWin，也不開 about:blank
+
+    // ✅ 授權後直接把預備視窗導向目標（若沒有預備視窗就走原邏輯）
+    openDriveFolderWeb(folderId, __gd_prewin);
+
+    // 收尾
+    localStorage.removeItem(GD_POST_OPEN_KEY);
+    __gd_prewin = null;
   } catch (e) {
+    // 收尾保險
+    localStorage.removeItem(GD_POST_OPEN_KEY);
+    __gd_prewin = null;
+
     const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
     alert("Google 雲端硬碟動作失敗：" + msg);
     console.error("Drive error:", e);
