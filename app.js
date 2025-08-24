@@ -4262,12 +4262,13 @@ const isIOSPWA = (() => {
 
 function openDriveFolderWeb(id /* , preWin */) {
   const urlWeb  = `https://drive.google.com/drive/folders/${id}`;
-  // Universal Link 版本（很多時候比純 /drive/folders 更容易被 App 正確接手到指定資料夾）
+  // Universal Link（很多情況會帶你進 App，且能指向特定 ID）
   const urlOpen = `https://drive.google.com/open?id=${id}&usp=drive_app`;
 
-  // 裝置判斷
+  // 裝置判斷（僅此函式內部使用，不動你全域）
   const ua = navigator.userAgent || "";
-  const isAndroid = /Android/i.test(ua);
+  const isAndroid =
+    /Android/i.test(ua) || /\bAdr\b/i.test(ua);
   const isiOS =
     /iPad|iPhone|iPod/.test(ua) ||
     (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
@@ -4278,15 +4279,14 @@ function openDriveFolderWeb(id /* , preWin */) {
   const iOSPWA = isiOS && standalone;
   const isMobile = isAndroid || isiOS;
 
-  // === 手機：先直打 App；若未接手 → 試 Universal Link（仍期望進 App）→ 最後才回 Web ===
-  if (isMobile) {
-    // PWA 已經「單擊直入 App 成功」，保持原邏輯
-    if (iOSPWA) {
-      try { location.href = `googledrive://folder/${id}`; } catch(_) {}
-      return;
-    }
+  // ✅ iOS PWA：保持你目前成功的行為（一次就進 App 且直達資料夾）
+  if (iOSPWA) {
+    try { location.href = `googledrive://folder/${id}`; } catch (_) {}
+    return;
+  }
 
-    // 行動瀏覽器（Safari/Chrome）偵測是否被 App 接手
+  // ✅ 手機版瀏覽器（iOS/Android）：多段 Deep Link，確保「直達該資料夾」
+  if (isMobile) {
     let handedOff = false;
     const mark = () => { handedOff = true; cleanup(); };
     const onVis = () => { if (document.visibilityState === "hidden") mark(); };
@@ -4295,38 +4295,54 @@ function openDriveFolderWeb(id /* , preWin */) {
       window.removeEventListener("pagehide", mark);
       window.removeEventListener("blur", mark);
     };
+
     document.addEventListener("visibilitychange", onVis, { once: true });
     window.addEventListener("pagehide", mark, { once: true });
     window.addEventListener("blur", mark, { once: true });
 
-    try {
-      if (isiOS) {
-        // ① 先用 App scheme 直接指定資料夾（與 PWA 同一條路徑）
-        location.href = `googledrive://folder/${id}`;
-      } else {
-        // ① ANDROID 先用 intent 深連結
-        location.href =
+    // 依平台組合「最有機會直達 App 內該資料夾」的候選清單（從強到弱）
+    const candidates = isiOS
+      ? [
+          // 1) 與 PWA 相同：folder/<id>（多數情況可直達該資料夾）
+          `googledrive://folder/${id}`,
+          // 2) 官方 app scheme 的 open?id（有些版本更吃這個）
+          `googledrive://open?id=${id}`,
+          // 3) 在 deep link 前綴上原生 URL（部分瀏覽器更吃這招）
+          `googledrive://https://drive.google.com/open?id=${id}`,
+          // 4) Universal Link（仍常會跳 App，且帶著 id）
+          urlOpen,
+        ]
+      : [
+          // Android 1) 直接 intent 目標 open?id（多數可直達資料夾）
+          `intent://drive.google.com/open?id=${id}` +
+            `#Intent;package=com.google.android.apps.docs;scheme=https;end`,
+          // Android 2) 備用：舊的 folders/<id> 形式
           `intent://drive.google.com/drive/folders/${id}` +
-          `#Intent;package=com.google.android.apps.docs;scheme=https;end`;
+            `#Intent;package=com.google.android.apps.docs;scheme=https;end`,
+          // Android 3) Universal Link（常會喚起 App）
+          urlOpen,
+        ];
+
+    let idx = 0;
+    const stepDelay = isiOS ? 900 : 700; // iOS 稍長一點，避免還在顯示「在 App 開啟」的提示就被切走
+
+    const tryNext = () => {
+      if (handedOff) return;
+      if (idx >= candidates.length) {
+        // 仍未被 App 接手 → 最後同分頁回到 Web
+        try { location.href = urlWeb; } catch (_) {}
+        cleanup();
+        return;
       }
-    } catch (_) {}
+      try { location.href = candidates[idx++]; } catch (_) {}
+      setTimeout(() => { if (!handedOff) tryNext(); }, stepDelay);
+    };
 
-    // ② 若 800ms 內未被 App 接手，再嘗試 Universal Link（多數情況會跳 App 並直達該資料夾）
-    setTimeout(() => {
-      if (handedOff) return;
-      try { location.href = urlOpen; } catch(_) {}
-    }, 800);
-
-    // ③ 仍未接手，最後同分頁回到 Web（不開任何 about:blank）
-    setTimeout(() => {
-      if (handedOff) return;
-      try { location.href = urlWeb; } catch(_) {}
-    }, 2600);
-
+    tryNext();
     return;
   }
 
-  // === 桌機：維持原先體驗（新分頁；被擋則同分頁）。不預開空白頁 ===
+  // ✅ 桌機：維持你的體驗，但不開 about:blank
   try {
     const w = window.open(urlWeb, "_blank", "noopener");
     if (!w) location.href = urlWeb;
