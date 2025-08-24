@@ -4091,6 +4091,8 @@
   let __gapiReady = false;
   let __gisReady = false;
   let __tokenClient = null;
+  // ✅ 第一次授權後要自動補跑一次的旗標
+const GD_POST_OPEN_KEY = "gdrive_post_open";
   // 全域：一次判斷 iOS PWA（避免第一次 click 時 ReferenceError）
 const isIOSPWA = (() => {
   try {
@@ -4159,16 +4161,33 @@ const isIOSPWA = (() => {
       const alreadyConsented =
         localStorage.getItem("gdrive_consent_done") === "1";
 
-      const finishOk = (resp) => {
-        gapi.client.setToken({ access_token: resp.access_token });
-        const ttl = resp.expires_in ? resp.expires_in * 1000 : 60 * 60 * 1000;
-        localStorage.setItem(
-          "gdrive_token_exp",
-          String(Date.now() + ttl - skew)
-        );
-        localStorage.setItem("gdrive_consent_done", "1");
-        resolve();
-      };
+ const finishOk = (resp) => {
+  gapi.client.setToken({ access_token: resp.access_token });
+  const ttl = resp.expires_in ? resp.expires_in * 1000 : 60 * 60 * 1000;
+  localStorage.setItem(
+    "gdrive_token_exp",
+    String(Date.now() + ttl - skew)
+  );
+  localStorage.setItem("gdrive_consent_done", "1");
+
+  // ✅ 若是第一次授權且頁面沒有被跳走，直接補跑一次開啟
+  if (localStorage.getItem(GD_POST_OPEN_KEY) === "1") {
+    setTimeout(async () => {
+      try {
+        const t = getCurrentDetailTask();
+        if (t) {
+          const id = await ensureExistingOrRecreateFolder(t);
+          updateDriveButtonState(t);
+          openDriveFolderWeb(id);
+        }
+      } finally {
+        localStorage.removeItem(GD_POST_OPEN_KEY);
+      }
+    }, 0);
+  }
+
+  resolve();
+};
       const finishErr = (err) =>
         reject(err instanceof Error ? err : new Error(err || "授權失敗"));
 
@@ -4413,6 +4432,11 @@ async function onDriveButtonClick() {
   if (!t) return;
 
   try {
+    // ✅ 第一次授權前先立旗標（之後回來自動補跑一次）
+    if (localStorage.getItem("gdrive_consent_done") !== "1") {
+      localStorage.setItem(GD_POST_OPEN_KEY, "1");
+    }
+
     await ensureDriveAuth();                         // 拿 token（暖機已做）
     const folderId = await ensureExistingOrRecreateFolder(t);
     updateDriveButtonState(t);
@@ -4438,11 +4462,32 @@ async function onDriveButtonClick() {
   }
 
   // iOS/Safari 有時在 pageshow 後才穩定，補一槍
-  window.addEventListener("pageshow", () => {
+ window.addEventListener(
+  "pageshow",
+  () => {
     if (!__gapiReady || !__gisReady || !__tokenClient) {
       loadGapiOnce().catch(() => {});
     }
-  }, { once: true });
+
+    // ✅ 若第一次授權剛完成且回到 App，就自動補跑一次
+    if (localStorage.getItem(GD_POST_OPEN_KEY) === "1") {
+      (async () => {
+        try {
+          await ensureDriveAuth(); // 確保 token 在手
+          const t = getCurrentDetailTask();
+          if (t) {
+            const id = await ensureExistingOrRecreateFolder(t);
+            updateDriveButtonState(t);
+            openDriveFolderWeb(id);
+          }
+        } finally {
+          localStorage.removeItem(GD_POST_OPEN_KEY);
+        }
+      })().catch(() => {});
+    }
+  },
+  { once: true }
+);
 })();
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
