@@ -4087,6 +4087,23 @@
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
   ].join(" ");
+  
+  // 全域：一次判斷 iOS PWA（避免第一次 click 時 ReferenceError）
+const isIOSPWA = (() => {
+  try {
+    const ua = navigator.userAgent || "";
+    const isiOS =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const standalone = !!(
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      navigator.standalone
+    );
+    return isiOS && standalone;
+  } catch {
+    return false;
+  }
+})();
 
   let __gapiReady = false;
   let __gisReady = false;
@@ -4469,6 +4486,27 @@ function openDriveFolderWeb(id, preWin) {
       console.error("Drive error:", e);
     }
   }
+  
+  // 開頁即暖機，確保第一次點擊前就把 gapi/gis/tokenClient 準備好
+(function driveWarmup() {
+  const kickoff = () => {
+    // 提早載入，可大幅降低「第一次點失靈」
+    loadGapiOnce().catch((e) => console.warn("Drive warmup failed:", e));
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", kickoff, { once: true });
+  } else {
+    // 已就緒就直接暖機
+    kickoff();
+  }
+
+  // iOS/Safari 有時在 pageshow 後才穩定，補一槍
+  window.addEventListener("pageshow", () => {
+    if (!__gapiReady || !__gisReady || !__tokenClient) {
+      loadGapiOnce().catch(() => {});
+    }
+  }, { once: true });
+})();
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
