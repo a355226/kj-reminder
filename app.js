@@ -4286,21 +4286,44 @@ async function fetchAndCacheFolderMeta(folderId) {
   }
 
 function openDriveFolderWeb(id /* , preWin */) {
-  // 取 meta（若沒抓到也會有預設空字串）
+  // 先取快取的 meta（沒有也會是空字串）
   const meta = __driveFolderMeta.get(id) || { resourceKey: "", webViewLink: "" };
-  const rk = meta.resourceKey ? `&resourcekey=${encodeURIComponent(meta.resourceKey)}` : "";
 
-  // —— 把 resourceKey 帶進所有可能的連結變體 —— 
-  const urlWeb   = `https://drive.google.com/drive/folders/${id}${rk}`;
-  const urlU0    = `https://drive.google.com/drive/u/0/folders/${id}${rk}`;
-  const urlOpen  = `https://drive.google.com/open?id=${id}${rk}&usp=drive_app`; // Universal Link（首選）
-  const schOpen  = `googledrive://open?id=${id}${rk}`;                           // App Scheme（直指 ID）
-  const schFold  = `googledrive://folder/${id}${rk}`;                            // App Scheme（備援）
+  // 從 webViewLink 解析出 authuser（若有）
+  let authuser = "";
+  try {
+    if (meta.webViewLink) {
+      const u = new URL(meta.webViewLink);
+      const au = u.searchParams.get("authuser");
+      if (au) authuser = au;
+    }
+  } catch {}
+
+  const rkParam = meta.resourceKey ? `&resourcekey=${encodeURIComponent(meta.resourceKey)}` : "";
+  const auParam = authuser ? `&authuser=${encodeURIComponent(authuser)}` : "";
+
+  // —— 以「能攜帶 id + resourceKey(+ authuser)」為原則組合所有候選 —— 
+  const urlWeb  = `https://drive.google.com/drive/folders/${id}${rkParam}${auParam}`;
+  const urlU0   = `https://drive.google.com/drive/u/0/folders/${id}${rkParam}${auParam}`;
+  const urlOpen = `https://drive.google.com/open?id=${id}${rkParam}${auParam}&usp=drive_app`; // ★ UL（首選）
+  // 直接用後端回來的 webViewLink（通常已帶 rk/au），並附上 usp
+  const urlFromMeta = meta.webViewLink
+    ? (() => {
+        try {
+          const u = new URL(meta.webViewLink);
+          if (!u.searchParams.has("usp")) u.searchParams.set("usp", "drive_app");
+          return u.toString();
+        } catch { return ""; }
+      })()
+    : "";
+
+  // App scheme/intent（備援；也把 rk/au 帶上）
+  const schOpen = `googledrive://open?id=${id}${rkParam}${auParam}`;
+  const schFold = `googledrive://folder/${id}${rkParam}${auParam}`;
 
   // —— 裝置偵測（僅本函式內使用）——
   const ua = navigator.userAgent || "";
-  const isAndroid =
-    /Android/i.test(ua) || /\bAdr\b/i.test(ua);
+  const isAndroid = /Android/i.test(ua) || /\bAdr\b/i.test(ua);
   const isiOS =
     /iPad|iPhone|iPod/.test(ua) ||
     (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
@@ -4311,13 +4334,13 @@ function openDriveFolderWeb(id /* , preWin */) {
   const iOSPWA = isiOS && standalone;
   const isMobile = isAndroid || isiOS;
 
-  // ✅ iOS PWA：你已驗證單擊可直入 App；為更穩，改成 open?id 形式（仍直指該資料夾）
+  // ✅ iOS PWA：維持一次直入 App；為更穩，優先 open?id（帶 rk/au）
   if (iOSPWA) {
     try { location.href = schOpen; } catch (_) {}
     return;
   }
 
-  // ✅ 手機瀏覽器：先 Universal Link（多數會帶 App 且吃 resourceKey）→ 再 scheme/intent → 最後 web
+  // ✅ 手機瀏覽器：先走「帶 rk/au 的 UL」（最能被 App 精準攔截）→ 再 scheme/intent → 最後回 Web
   if (isMobile) {
     let handedOff = false;
     const mark = () => { handedOff = true; cleanup(); };
@@ -4331,36 +4354,31 @@ function openDriveFolderWeb(id /* , preWin */) {
     window.addEventListener("pagehide", mark, { once: true });
     window.addEventListener("blur", mark, { once: true });
 
+    // iOS/Android 都先嘗試「最完整的 UL」
     const tries = isiOS
       ? [
-          () => { location.href = urlOpen; },  // #1 iOS：UL + resourceKey（最穩）
-          () => { location.href = schOpen; },  // #2 iOS：scheme open?id + rk
-          () => { location.href = schFold; },  // #3 iOS：scheme folder/id + rk
-          () => { location.href = urlU0; },    // #4 iOS：UL /u/0 變體
-          () => { location.href = urlWeb; },   // #5 iOS：最後回 Web
+          () => { if (urlFromMeta) { location.href = urlFromMeta; return; } location.href = urlOpen; },
+          () => { location.href = schOpen; }, // scheme + rk/au
+          () => { location.href = schFold; },
+          () => { location.href = urlU0; },
+          () => { location.href = urlWeb; },
         ]
       : [
-          () => { location.href = urlOpen; },  // #1 Android：UL + rk（多數會直帶入 App）
+          () => { if (urlFromMeta) { location.href = urlFromMeta; return; } location.href = urlOpen; },
           () => { location.href =
-                `intent://drive.google.com/open?id=${id}${rk}` +
-                `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #2 Android：intent open?id + rk
+            `intent://drive.google.com/open?id=${id}${rkParam}${auParam}#Intent;package=com.google.android.apps.docs;scheme=https;end`; },
           () => { location.href =
-                `intent://drive.google.com/drive/folders/${id}${rk}` +
-                `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #3 Android：intent folders/id + rk
-          () => { location.href = urlU0; },    // #4 Android：/u/0 變體
-          () => { location.href = urlWeb; },   // #5 Android：最後回 Web
+            `intent://drive.google.com/drive/folders/${id}${rkParam}${auParam}#Intent;package=com.google.android.apps.docs;scheme=https;end`; },
+          () => { location.href = urlU0; },
+          () => { location.href = urlWeb; },
         ];
 
     const delays = isiOS ? [0, 900, 1900, 3000, 4200] : [0, 700, 1500, 2200, 3000];
-
     delays.forEach((ms, idx) => {
       setTimeout(() => {
         if (handedOff) return;
-        if (idx < tries.length) {
-          try { tries[idx](); } catch (_) {}
-        } else {
-          cleanup();
-        }
+        if (idx < tries.length) { try { tries[idx](); } catch {} }
+        else { cleanup(); }
       }, ms);
     });
     return;
