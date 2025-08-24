@@ -4260,12 +4260,18 @@ const isIOSPWA = (() => {
     return parent; // 最底層資料夾 id
   }
 
-function openDriveFolderWeb(id, preWin) {
-  const urlWeb = `https://drive.google.com/drive/folders/${id}`;
+function openDriveFolderWeb(id /* , preWin */) {
+  // —— 準備所有可能會正確「直達該資料夾」的連結變體（都帶 folderId）——
+  const urlWeb   = `https://drive.google.com/drive/folders/${id}`;
+  const urlOpen  = `https://drive.google.com/open?id=${id}&usp=drive_app`;      // ★ 官方 Universal Link，最優先
+  const urlU0    = `https://drive.google.com/drive/u/0/folders/${id}`;         // 某些瀏覽器/登入態較吃這個
+  const schOpen  = `googledrive://open?id=${id}`;                               // App Scheme（直指 ID）
+  const schFold  = `googledrive://folder/${id}`;                                // App Scheme（直指資料夾）
 
-  // 判斷裝置
+  // —— 裝置偵測（僅本函式內使用）——
   const ua = navigator.userAgent || "";
-  const isAndroid = /Android/i.test(ua);
+  const isAndroid =
+    /Android/i.test(ua) || /\bAdr\b/i.test(ua);
   const isiOS =
     /iPad|iPhone|iPod/.test(ua) ||
     (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
@@ -4276,72 +4282,72 @@ function openDriveFolderWeb(id, preWin) {
   const iOSPWA = isiOS && standalone;
   const isMobile = isAndroid || isiOS;
 
-  // ===== 手機：先嘗試「直接開 App」，若沒接手，再退回你的原邏輯 =====
+  // ✅ iOS PWA：保持你目前成功的行為（一次就進 App 且直達『任務標題』資料夾）
+  if (iOSPWA) {
+    try { location.href = schFold; } catch (_) {}
+    return;
+  }
+
+  // ✅ 手機「瀏覽器」（iOS/Android）：優先 Universal Link → 其它變體；全程不開 about:blank
   if (isMobile) {
     let handedOff = false;
-    const mark = () => { handedOff = true; };
-    const onVis = () => {
-      if (document.visibilityState === "hidden") {
-        handedOff = true;
-        cleanup();
-      }
-    };
+    const mark = () => { handedOff = true; cleanup(); };
+    const onVis = () => { if (document.visibilityState === "hidden") mark(); };
     const cleanup = () => {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pagehide", mark);
       window.removeEventListener("blur", mark);
     };
 
-    // 若成功跳到 App，通常頁面會 hidden / blur / pagehide
+    // App 接手時常會觸發 hidden / pagehide / blur
     document.addEventListener("visibilitychange", onVis, { once: true });
     window.addEventListener("pagehide", mark, { once: true });
     window.addEventListener("blur", mark, { once: true });
 
-    try {
-      if (isiOS) {
-        // iOS：先嘗試 App Scheme（第一次就直達 App）
-        window.location.href = `googledrive://folder/${id}`;
-      } else if (isAndroid) {
-        // Android：使用 intent deep link 直達 App
-        window.location.href = `intent://drive.google.com/drive/folders/${id}#Intent;package=com.google.android.apps.docs;scheme=https;end`;
-      }
-    } catch (_) {}
+    // —— 嘗試順序：iOS 與 Android 都先試 Universal Link，其次再試其它變體 —— 
+    // 設計原則：每次僅「同分頁導向」；若 App 沒接手，下一個候選在延時後自動出手。
+    const tries = isiOS
+      ? [ () => { location.href = urlOpen; },   // #1 iOS：Universal Link（最穩能把 folderId 帶進 App）
+          () => { location.href = urlU0; },     // #2 iOS：/u/0 變體（某些登入態更穩）
+          () => { location.href = schOpen; },   // #3 iOS：App Scheme open?id
+          () => { location.href = schFold; },   // #4 iOS：App Scheme folder/<id>
+          () => { location.href = urlWeb; },    // #5 iOS：最後回 Web
+        ]
+      : [ () => { location.href = urlOpen; },   // #1 Android：Universal Link（多數會直帶入 App）
+          () => { location.href =
+                 `intent://drive.google.com/open?id=${id}` +
+                 `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #2 Android：intent + open?id
+          () => { location.href =
+                 `intent://drive.google.com/drive/folders/${id}` +
+                 `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #3 Android：intent + folders/<id>
+          () => { location.href = urlU0; },     // #4 Android：/u/0 變體
+          () => { location.href = urlWeb; },    // #5 Android：最後回 Web
+        ];
 
-    // 1.2 秒後若仍未被 App 接手，就退回原 web 開法（PWA 用同分頁最穩）
-    setTimeout(() => {
-      cleanup();
-      if (handedOff) return;
+    // iOS 等久一點（避免你在點「在 App 開啟」時被過早覆蓋）；Android 可短些
+    const delays = isiOS ? [0, 900, 1900, 3000, 4200] : [0, 700, 1500, 2200, 3000];
 
-      if (iOSPWA) {
-        try { location.href = urlWeb; return; } catch (_) {}
-      }
-
-      // 非 PWA 或 Android 行動瀏覽器：優先新分頁，失敗再同分頁
-      if (preWin && !preWin.closed) {
-        try { preWin.location.replace(urlWeb); return; } catch (_) {}
-      }
-      let w = null;
-      try { w = window.open(urlWeb, "_blank", "noopener"); } catch (_) {}
-      if (!w) {
-        try { location.href = urlWeb; } catch (_) {}
-      }
-    }, 1200);
+    delays.forEach((ms, idx) => {
+      setTimeout(() => {
+        if (handedOff) return;
+        if (idx < tries.length) {
+          try { tries[idx](); } catch (_) {}
+        } else {
+          cleanup();
+        }
+      }, ms);
+    });
 
     return;
   }
 
-  // ===== 桌機：維持你的原邏輯（preWin 優先，其次新分頁）=====
-  if (preWin && !preWin.closed) {
-    try {
-      preWin.location.replace(urlWeb);
-      return;
-    } catch (_) {}
-  }
-  let w = null;
+  // ✅ 桌機：維持原體驗（新分頁；被擋則同分頁），不開 about:blank
   try {
-    w = window.open(urlWeb, "_blank", "noopener");
-  } catch (_) {}
-  if (w) return;
+    const w = window.open(urlWeb, "_blank", "noopener");
+    if (!w) location.href = urlWeb;
+  } catch (_) {
+    location.href = urlWeb;
+  }
 }
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
   function getCurrentDetailTask() {
