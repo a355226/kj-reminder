@@ -4261,91 +4261,87 @@ const isIOSPWA = (() => {
   }
 
 function openDriveFolderWeb(id, preWin) {
-  const url = `https://drive.google.com/drive/folders/${id}`;
+  const urlWeb = `https://drive.google.com/drive/folders/${id}`;
 
-  // 局部 iOS PWA 判斷（保留原寫法風格）
-  const iOSPWA = (() => {
+  // 判斷裝置
+  const ua = navigator.userAgent || "";
+  const isAndroid = /Android/i.test(ua);
+  const isiOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const standalone = !!(
+    window.matchMedia?.("(display-mode: standalone)")?.matches ||
+    navigator.standalone
+  );
+  const iOSPWA = isiOS && standalone;
+  const isMobile = isAndroid || isiOS;
+
+  // ===== 手機：先嘗試「直接開 App」，若沒接手，再退回你的原邏輯 =====
+  if (isMobile) {
+    let handedOff = false;
+    const mark = () => { handedOff = true; };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") {
+        handedOff = true;
+        cleanup();
+      }
+    };
+    const cleanup = () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pagehide", mark);
+      window.removeEventListener("blur", mark);
+    };
+
+    // 若成功跳到 App，通常頁面會 hidden / blur / pagehide
+    document.addEventListener("visibilitychange", onVis, { once: true });
+    window.addEventListener("pagehide", mark, { once: true });
+    window.addEventListener("blur", mark, { once: true });
+
     try {
-      const ua = navigator.userAgent || "";
-      const isiOS =
-        /iPad|iPhone|iPod/.test(ua) ||
-        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-      const standalone = !!(
-        window.matchMedia?.("(display-mode: standalone)")?.matches ||
-        navigator.standalone
-      );
-      return isiOS && standalone;
-    } catch {
-      return false;
-    }
-  })();
+      if (isiOS) {
+        // iOS：先嘗試 App Scheme（第一次就直達 App）
+        window.location.href = `googledrive://folder/${id}`;
+      } else if (isAndroid) {
+        // Android：使用 intent deep link 直達 App
+        window.location.href = `intent://drive.google.com/drive/folders/${id}#Intent;package=com.google.android.apps.docs;scheme=https;end`;
+      }
+    } catch (_) {}
 
-  // === 第一步：照你原邏輯嘗試打開 ===
-  let openedWin = null;
+    // 1.2 秒後若仍未被 App 接手，就退回原 web 開法（PWA 用同分頁最穩）
+    setTimeout(() => {
+      cleanup();
+      if (handedOff) return;
+
+      if (iOSPWA) {
+        try { location.href = urlWeb; return; } catch (_) {}
+      }
+
+      // 非 PWA 或 Android 行動瀏覽器：優先新分頁，失敗再同分頁
+      if (preWin && !preWin.closed) {
+        try { preWin.location.replace(urlWeb); return; } catch (_) {}
+      }
+      let w = null;
+      try { w = window.open(urlWeb, "_blank", "noopener"); } catch (_) {}
+      if (!w) {
+        try { location.href = urlWeb; } catch (_) {}
+      }
+    }, 1200);
+
+    return;
+  }
+
+  // ===== 桌機：維持你的原邏輯（preWin 優先，其次新分頁）=====
   if (preWin && !preWin.closed) {
     try {
-      preWin.location.replace(url);
-      openedWin = preWin; // 有 preWin 就視為已嘗試開啟
-    } catch (_) {}
-  } else {
-    try {
-      openedWin = window.open(url, "_blank", "noopener");
-    } catch (_) {}
-  }
-  if (iOSPWA && !openedWin) {
-    // iOS PWA 退回同分頁最穩
-    try {
-      location.href = url;
+      preWin.location.replace(urlWeb);
       return;
     } catch (_) {}
   }
-
-  // === 第二步：啟動 watchdog，自動判斷與重試 ===
-  // 成功判定：1) 頁面進入 hidden（常見於同頁跳轉/切換），或 2) 有開到新視窗(openedWin存在)
-  // 失敗時：最多重試 3 次（可自行調整），策略：優先把 preWin/openedWin 導向；否則同分頁 assign。
-  let attempts = 0;
-  const maxAttempts = 3;
-  const startTs = Date.now();
-
-  const ok = () =>
-    document.visibilityState === "hidden" || !!openedWin;
-
-  const retryOnce = () => {
-    attempts++;
-    if (ok()) return; // 已成功就不再重試
-
-    // 優先使用可用的視窗導向（避免彈窗阻擋問題）
-    try {
-      if (preWin && !preWin.closed) {
-        preWin.location.replace(url);
-        openedWin = preWin;
-      } else if (openedWin && !openedWin.closed) {
-        openedWin.location.replace(url);
-      } else {
-        // 退回同分頁，這不需要 user activation
-        location.assign(url);
-      }
-    } catch (_) {
-      // 如果上述仍失敗，直接同分頁保底
-      try { location.assign(url); } catch (_) {}
-    }
-  };
-
-  // 依序在 300ms / 800ms / 1500ms 檢查與重試
-  const schedule = [300, 800, 1500];
-  schedule.forEach((ms, idx) => {
-    setTimeout(() => {
-      if (ok()) return;
-      if (attempts < maxAttempts) retryOnce();
-    }, ms);
-  });
-
-  // 額外保險：若 3 秒仍可見、且沒有 openedWin，最後再推一次同分頁
-  setTimeout(() => {
-    if (!ok()) {
-      try { location.assign(url); } catch (_) {}
-    }
-  }, 3000);
+  let w = null;
+  try {
+    w = window.open(urlWeb, "_blank", "noopener");
+  } catch (_) {}
+  if (w) return;
 }
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
   function getCurrentDetailTask() {
