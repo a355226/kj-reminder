@@ -4243,40 +4243,93 @@
     return parent; // 最底層資料夾 id
   }
 
-  function openDriveFolderWeb(id, preWin) {
-    const url = `https://drive.google.com/drive/folders/${id}`;
+function openDriveFolderWeb(id, preWin) {
+  const url = `https://drive.google.com/drive/folders/${id}`;
 
-    // ✅ 局部判斷，避免全域變數重複宣告衝突
-    const iOSPWA = (() => {
-      try {
-        const ua = navigator.userAgent || "";
-        const isiOS =
-          /iPad|iPhone|iPod/.test(ua) ||
-          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-        const standalone = !!(
-          window.matchMedia?.("(display-mode: standalone)")?.matches ||
-          navigator.standalone
-        );
-        return isiOS && standalone;
-      } catch {
-        return false;
-      }
-    })();
-
-    if (preWin && !preWin.closed) {
-      try {
-        preWin.location.replace(url);
-        return;
-      } catch (_) {}
-    }
-    let w = null;
+  // 局部 iOS PWA 判斷（保留原寫法風格）
+  const iOSPWA = (() => {
     try {
-      w = window.open(url, "_blank", "noopener");
-    } catch (_) {}
-    if (w) return;
+      const ua = navigator.userAgent || "";
+      const isiOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      const standalone = !!(
+        window.matchMedia?.("(display-mode: standalone)")?.matches ||
+        navigator.standalone
+      );
+      return isiOS && standalone;
+    } catch {
+      return false;
+    }
+  })();
 
+  // === 第一步：照你原邏輯嘗試打開 ===
+  let openedWin = null;
+  if (preWin && !preWin.closed) {
+    try {
+      preWin.location.replace(url);
+      openedWin = preWin; // 有 preWin 就視為已嘗試開啟
+    } catch (_) {}
+  } else {
+    try {
+      openedWin = window.open(url, "_blank", "noopener");
+    } catch (_) {}
+  }
+  if (iOSPWA && !openedWin) {
+    // iOS PWA 退回同分頁最穩
+    try {
+      location.href = url;
+      return;
+    } catch (_) {}
   }
 
+  // === 第二步：啟動 watchdog，自動判斷與重試 ===
+  // 成功判定：1) 頁面進入 hidden（常見於同頁跳轉/切換），或 2) 有開到新視窗(openedWin存在)
+  // 失敗時：最多重試 3 次（可自行調整），策略：優先把 preWin/openedWin 導向；否則同分頁 assign。
+  let attempts = 0;
+  const maxAttempts = 3;
+  const startTs = Date.now();
+
+  const ok = () =>
+    document.visibilityState === "hidden" || !!openedWin;
+
+  const retryOnce = () => {
+    attempts++;
+    if (ok()) return; // 已成功就不再重試
+
+    // 優先使用可用的視窗導向（避免彈窗阻擋問題）
+    try {
+      if (preWin && !preWin.closed) {
+        preWin.location.replace(url);
+        openedWin = preWin;
+      } else if (openedWin && !openedWin.closed) {
+        openedWin.location.replace(url);
+      } else {
+        // 退回同分頁，這不需要 user activation
+        location.assign(url);
+      }
+    } catch (_) {
+      // 如果上述仍失敗，直接同分頁保底
+      try { location.assign(url); } catch (_) {}
+    }
+  };
+
+  // 依序在 300ms / 800ms / 1500ms 檢查與重試
+  const schedule = [300, 800, 1500];
+  schedule.forEach((ms, idx) => {
+    setTimeout(() => {
+      if (ok()) return;
+      if (attempts < maxAttempts) retryOnce();
+    }, ms);
+  });
+
+  // 額外保險：若 3 秒仍可見、且沒有 openedWin，最後再推一次同分頁
+  setTimeout(() => {
+    if (!ok()) {
+      try { location.assign(url); } catch (_) {}
+    }
+  }, 3000);
+}
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
   function getCurrentDetailTask() {
     if (selectedTaskId) {
