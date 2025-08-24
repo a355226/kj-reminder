@@ -4087,52 +4087,10 @@
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
   ].join(" ");
-  
-  // 全域：一次判斷 iOS PWA（避免第一次 click 時 ReferenceError）
-const isIOSPWA = (() => {
-  try {
-    const ua = navigator.userAgent || "";
-    const isiOS =
-      /iPad|iPhone|iPod/.test(ua) ||
-      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-    const standalone = !!(
-      window.matchMedia?.("(display-mode: standalone)")?.matches ||
-      navigator.standalone
-    );
-    return isiOS && standalone;
-  } catch {
-    return false;
-  }
-})();
 
   let __gapiReady = false;
   let __gisReady = false;
   let __tokenClient = null;
-  
- // 以 folderId 為 key 快取 resourceKey / webViewLink
-const __driveFolderMeta = new Map();
-
-/** 取回並快取資料夾 meta（resourceKey、webViewLink） */
-async function fetchAndCacheFolderMeta(folderId) {
-  try {
-    const r = await gapi.client.drive.files.get({
-      fileId: folderId,
-      fields: "id, resourceKey, webViewLink, name, parents",
-      supportsAllDrives: true,
-    });
-    const meta = {
-      resourceKey: r?.result?.resourceKey || "",
-      webViewLink: r?.result?.webViewLink || "",
-    };
-    __driveFolderMeta.set(folderId, meta);
-    return meta;
-  } catch (e) {
-    console.warn("fetchAndCacheFolderMeta failed:", e);
-    const meta = { resourceKey: "", webViewLink: "" };
-    __driveFolderMeta.set(folderId, meta);
-    return meta;
-  }
-}
 
   function loadGapiOnce() {
     return new Promise((res, rej) => {
@@ -4285,111 +4243,40 @@ async function fetchAndCacheFolderMeta(folderId) {
     return parent; // 最底層資料夾 id
   }
 
-function openDriveFolderWeb(id /* , preWin */) {
-  // 取用快取的 meta（可能還沒抓到就為空字串）
-  const meta = __driveFolderMeta.get(id) || { resourceKey: "", webViewLink: "" };
+  function openDriveFolderWeb(id, preWin) {
+    const url = `https://drive.google.com/drive/folders/${id}`;
 
-  // 解析 webViewLink 是否已帶帳號參數（authuser 等），原樣保留最穩
-  let linkFromMeta = "";
-  try {
-    if (meta.webViewLink) {
-      const u = new URL(meta.webViewLink);
-      // 確保有 usp（不改其它參數），這樣在行動裝置上較容易交給 App
-      if (!u.searchParams.has("usp")) u.searchParams.set("usp", "drive_app");
-      linkFromMeta = u.toString();
+    // ✅ 局部判斷，避免全域變數重複宣告衝突
+    const iOSPWA = (() => {
+      try {
+        const ua = navigator.userAgent || "";
+        const isiOS =
+          /iPad|iPhone|iPod/.test(ua) ||
+          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+        const standalone = !!(
+          window.matchMedia?.("(display-mode: standalone)")?.matches ||
+          navigator.standalone
+        );
+        return isiOS && standalone;
+      } catch {
+        return false;
+      }
+    })();
+
+    if (preWin && !preWin.closed) {
+      try {
+        preWin.location.replace(url);
+        return;
+      } catch (_) {}
     }
-  } catch {}
+    let w = null;
+    try {
+      w = window.open(url, "_blank", "noopener");
+    } catch (_) {}
+    if (w) return;
 
-  // 補強參數（供非 webViewLink 情境）
-  const rk = meta.resourceKey ? `&resourcekey=${encodeURIComponent(meta.resourceKey)}` : "";
-  const urlOpen = `https://drive.google.com/open?id=${id}${rk}&usp=drive_app`;
-  const urlWeb  = `https://drive.google.com/drive/folders/${id}${rk}`;
-  const urlU0   = `https://drive.google.com/drive/u/0/folders/${id}${rk}`;
-
-  // 準備 scheme/intent（備援）
-  const schOpen = `googledrive://open?id=${id}${rk}`;
-  const schFold = `googledrive://folder/${id}${rk}`;
-
-  // 裝置偵測
-  const ua = navigator.userAgent || "";
-  const isAndroid = /Android/i.test(ua) || /\bAdr\b/i.test(ua);
-  const isiOS =
-    /iPad|iPhone|iPod/.test(ua) ||
-    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-  const standalone = !!(
-    window.matchMedia?.("(display-mode: standalone)")?.matches ||
-    navigator.standalone
-  );
-  const iOSPWA = isiOS && standalone;
-  const isMobile = isAndroid || isiOS;
-
-  // ✅ PWA：保持你原本成功的行為
-  if (iOSPWA) {
-    try { location.href = schFold; } catch (_) {}
-    return;
   }
 
-  // ✅ 手機瀏覽器：先 webViewLink（原樣）→ 再 UL → 再 scheme/intent → 最後 web
-  if (isMobile) {
-    let handedOff = false;
-    const mark = () => { handedOff = true; cleanup(); };
-    const onVis = () => { if (document.visibilityState === "hidden") mark(); };
-    const cleanup = () => {
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("pagehide", mark);
-      window.removeEventListener("blur", mark);
-    };
-    document.addEventListener("visibilitychange", onVis, { once: true });
-    window.addEventListener("pagehide", mark, { once: true });
-    window.addEventListener("blur", mark, { once: true });
-
-    const tries = isiOS
-      ? [
-          () => { if (linkFromMeta) { location.href = linkFromMeta; return; } location.href = urlOpen; },
-          () => { location.href = schOpen; },
-          () => { location.href = schFold; },
-          () => { location.href = urlU0; },
-          () => { location.href = urlWeb; },
-        ]
-      : [
-          // Android：帶 fallback 的 intent，確保沒接手也會回正確網址（含 resourceKey）
-          () => {
-            const fb = encodeURIComponent(linkFromMeta || urlOpen);
-            location.href =
-              `intent://drive.google.com/open?id=${id}${rk}` +
-              `#Intent;scheme=https;package=com.google.android.apps.docs;S.browser_fallback_url=${fb};end`;
-          },
-          // 備援：folders/<id> 形式
-          () => {
-            const fb = encodeURIComponent(linkFromMeta || urlOpen);
-            location.href =
-              `intent://drive.google.com/drive/folders/${id}${rk}` +
-              `#Intent;scheme=https;package=com.google.android.apps.docs;S.browser_fallback_url=${fb};end`;
-          },
-          () => { location.href = linkFromMeta || urlOpen; },
-          () => { location.href = urlU0; },
-          () => { location.href = urlWeb; },
-        ];
-
-    const delays = isiOS ? [0, 900, 1900, 3000, 4200] : [0, 700, 1500, 2200, 3000];
-    delays.forEach((ms, idx) => {
-      setTimeout(() => {
-        if (handedOff) return;
-        if (idx < tries.length) { try { tries[idx](); } catch {} }
-        else { cleanup(); }
-      }, ms);
-    });
-    return;
-  }
-
-  // ✅ 桌機：維持原體驗（新分頁；被擋則同分頁），不開 about:blank
-  try {
-    const w = window.open(urlWeb, "_blank", "noopener");
-    if (!w) location.href = urlWeb;
-  } catch (_) {
-    location.href = urlWeb;
-  }
-}
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
   function getCurrentDetailTask() {
     if (selectedTaskId) {
@@ -4427,8 +4314,6 @@ function openDriveFolderWeb(id /* , preWin */) {
       // 記住資料夾 ID（之後就能顯示 🔍，下次直接開）
       t.driveFolderId = folderId;
       saveTasksToFirebase?.();
-      
-      await fetchAndCacheFolderMeta(folderId);
 
       // UI：顯示 🔍
       try {
@@ -4473,7 +4358,6 @@ function openDriveFolderWeb(id /* , preWin */) {
     t.driveFolderId = newId;
     saveTasksToFirebase?.();
     updateDriveButtonState(t);
-    await fetchAndCacheFolderMeta(newId);
     return newId;
   }
 
@@ -4508,42 +4392,30 @@ function openDriveFolderWeb(id /* , preWin */) {
     updateDriveButtonState(taskObj);
   }
 
-async function onDriveButtonClick() {
-  const t = getCurrentDetailTask();
-  if (!t) return;
+  async function onDriveButtonClick() {
+    const t = getCurrentDetailTask();
+    if (!t) return;
 
-  try {
-    await ensureDriveAuth();                         // 拿 token（暖機已做）
-    const folderId = await ensureExistingOrRecreateFolder(t);
-    updateDriveButtonState(t);
-    openDriveFolderWeb(folderId);                    // ← 不再傳 preWin，也不開 about:blank
-  } catch (e) {
-    const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-    alert("Google 雲端硬碟動作失敗：" + msg);
-    console.error("Drive error:", e);
-  }
-}
-  
-  // 開頁即暖機，確保第一次點擊前就把 gapi/gis/tokenClient 準備好
-(function driveWarmup() {
-  const kickoff = () => {
-    // 提早載入，可大幅降低「第一次點失靈」
-    loadGapiOnce().catch((e) => console.warn("Drive warmup failed:", e));
-  };
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", kickoff, { once: true });
-  } else {
-    // 已就緒就直接暖機
-    kickoff();
-  }
+    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
+    let preWin = null;
+    try {
+      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
+    } catch (_) {}
 
-  // iOS/Safari 有時在 pageshow 後才穩定，補一槍
-  window.addEventListener("pageshow", () => {
-    if (!__gapiReady || !__gisReady || !__tokenClient) {
-      loadGapiOnce().catch(() => {});
+    try {
+      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
+      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
+      updateDriveButtonState(t); // 金黃發光狀態同步
+      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
+    } catch (e) {
+      try {
+        preWin && !preWin.closed && preWin.close();
+      } catch (_) {}
+      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+      alert("Google 雲端硬碟動作失敗：" + msg);
+      console.error("Drive error:", e);
     }
-  }, { once: true });
-})();
+  }
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
