@@ -4408,30 +4408,21 @@ const isIOSPWA = (() => {
     updateDriveButtonState(taskObj);
   }
 
-  async function onDriveButtonClick() {
-    const t = getCurrentDetailTask();
-    if (!t) return;
+async function onDriveButtonClick() {
+  const t = getCurrentDetailTask();
+  if (!t) return;
 
-    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
-    let preWin = null;
-    try {
-      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
-    } catch (_) {}
-
-    try {
-      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
-      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
-      updateDriveButtonState(t); // 金黃發光狀態同步
-      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
-    } catch (e) {
-      try {
-        preWin && !preWin.closed && preWin.close();
-      } catch (_) {}
-      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-      alert("Google 雲端硬碟動作失敗：" + msg);
-      console.error("Drive error:", e);
-    }
+  try {
+    await ensureDriveAuth();                         // 拿 token（暖機已做）
+    const folderId = await ensureExistingOrRecreateFolder(t);
+    updateDriveButtonState(t);
+    openDriveFolderWeb(folderId);                    // ← 不再傳 preWin，也不開 about:blank
+  } catch (e) {
+    const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+    alert("Google 雲端硬碟動作失敗：" + msg);
+    console.error("Drive error:", e);
   }
+}
   
   // 開頁即暖機，確保第一次點擊前就把 gapi/gis/tokenClient 準備好
 (function driveWarmup() {
