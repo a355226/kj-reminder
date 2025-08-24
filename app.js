@@ -4280,39 +4280,46 @@ const isIOSPWA = (() => {
     return parent; // 最底層資料夾 id
   }
 
-  function openDriveFolderWeb(id, preWin) {
-    const url = `https://drive.google.com/drive/folders/${id}`;
+function openDriveFolderWeb(id, preWin) {
+  const url = `https://drive.google.com/drive/folders/${id}`;
 
-    // ✅ 局部判斷，避免全域變數重複宣告衝突
-    const iOSPWA = (() => {
-      try {
-        const ua = navigator.userAgent || "";
-        const isiOS =
-          /iPad|iPhone|iPod/.test(ua) ||
-          (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-        const standalone = !!(
-          window.matchMedia?.("(display-mode: standalone)")?.matches ||
-          navigator.standalone
-        );
-        return isiOS && standalone;
-      } catch {
-        return false;
-      }
-    })();
-
-    if (preWin && !preWin.closed) {
-      try {
-        preWin.location.replace(url);
-        return;
-      } catch (_) {}
-    }
-    let w = null;
+  // 1) 優先用「使用者手勢打開」的預備視窗（最穩）
+  if (preWin && !preWin.closed) {
     try {
-      w = window.open(url, "_blank", "noopener");
-    } catch (_) {}
-    if (w) return;
-
+      // Safari/iOS 對 replace 偶爾不買單；href 最穩
+      preWin.location.href = url;
+      preWin.focus?.();
+      return;
+    } catch (_) {
+      // 失敗就把 preWin 丟掉，走下一層
+    }
   }
+
+  // 2) 直接新開分頁（桌機常見）
+  try {
+    const w = window.open(url, "_blank"); // 不加第三參數，避免 noopener 造成限制
+    if (w) {
+      w.focus?.();
+      return;
+    }
+  } catch (_) {}
+
+  // 3) 退階：iOS PWA/嚴格環境，改同窗導向（只在 PWA 上才這麼做）
+  try {
+    // 你前面全域就有 isIOSPWA，可直接用
+    if (typeof isIOSPWA !== "undefined" && isIOSPWA) {
+      window.location.href = url;
+      return;
+    }
+  } catch (_) {}
+
+  // 4) 最後保險：再試一次（極少數瀏覽器延遲允許）
+  setTimeout(() => {
+    try {
+      window.open(url, "_blank");
+    } catch (_) {}
+  }, 0);
+}
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
   function getCurrentDetailTask() {
@@ -4439,7 +4446,7 @@ async function onDriveButtonClick() {
     if (firstTime) {
       localStorage.setItem(GD_POST_OPEN_KEY, "1");
       try {
-        __gd_prewin = window.open("about:blank", "_blank", "noopener");
+        __gd_prewin = window.open("", "_blank");
       } catch (_) {
         __gd_prewin = null; // 若環境不允許也不致錯
       }
