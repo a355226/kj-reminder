@@ -4108,6 +4108,31 @@ const isIOSPWA = (() => {
   let __gapiReady = false;
   let __gisReady = false;
   let __tokenClient = null;
+  
+  // 快取每個資料夾的 meta（resourceKey / webViewLink）
+const __driveFolderMeta = new Map();
+
+/** 取回並快取資料夾的 meta（包含 resourceKey） */
+async function fetchAndCacheFolderMeta(folderId) {
+  try {
+    const r = await gapi.client.drive.files.get({
+      fileId: folderId,
+      fields: "id, resourceKey, webViewLink",
+      supportsAllDrives: true,
+    });
+    const meta = {
+      resourceKey: r?.result?.resourceKey || "",
+      webViewLink: r?.result?.webViewLink || "",
+    };
+    __driveFolderMeta.set(folderId, meta);
+    return meta;
+  } catch (e) {
+    console.warn("fetchAndCacheFolderMeta failed:", e);
+    const meta = { resourceKey: "", webViewLink: "" };
+    __driveFolderMeta.set(folderId, meta);
+    return meta;
+  }
+}
 
   function loadGapiOnce() {
     return new Promise((res, rej) => {
@@ -4261,12 +4286,16 @@ const isIOSPWA = (() => {
   }
 
 function openDriveFolderWeb(id /* , preWin */) {
-  // —— 準備所有可能會正確「直達該資料夾」的連結變體（都帶 folderId）——
-  const urlWeb   = `https://drive.google.com/drive/folders/${id}`;
-  const urlOpen  = `https://drive.google.com/open?id=${id}&usp=drive_app`;      // ★ 官方 Universal Link，最優先
-  const urlU0    = `https://drive.google.com/drive/u/0/folders/${id}`;         // 某些瀏覽器/登入態較吃這個
-  const schOpen  = `googledrive://open?id=${id}`;                               // App Scheme（直指 ID）
-  const schFold  = `googledrive://folder/${id}`;                                // App Scheme（直指資料夾）
+  // 取 meta（若沒抓到也會有預設空字串）
+  const meta = __driveFolderMeta.get(id) || { resourceKey: "", webViewLink: "" };
+  const rk = meta.resourceKey ? `&resourcekey=${encodeURIComponent(meta.resourceKey)}` : "";
+
+  // —— 把 resourceKey 帶進所有可能的連結變體 —— 
+  const urlWeb   = `https://drive.google.com/drive/folders/${id}${rk}`;
+  const urlU0    = `https://drive.google.com/drive/u/0/folders/${id}${rk}`;
+  const urlOpen  = `https://drive.google.com/open?id=${id}${rk}&usp=drive_app`; // Universal Link（首選）
+  const schOpen  = `googledrive://open?id=${id}${rk}`;                           // App Scheme（直指 ID）
+  const schFold  = `googledrive://folder/${id}${rk}`;                            // App Scheme（備援）
 
   // —— 裝置偵測（僅本函式內使用）——
   const ua = navigator.userAgent || "";
@@ -4282,13 +4311,13 @@ function openDriveFolderWeb(id /* , preWin */) {
   const iOSPWA = isiOS && standalone;
   const isMobile = isAndroid || isiOS;
 
-  // ✅ iOS PWA：保持你目前成功的行為（一次就進 App 且直達『任務標題』資料夾）
+  // ✅ iOS PWA：你已驗證單擊可直入 App；為更穩，改成 open?id 形式（仍直指該資料夾）
   if (iOSPWA) {
-    try { location.href = schFold; } catch (_) {}
+    try { location.href = schOpen; } catch (_) {}
     return;
   }
 
-  // ✅ 手機「瀏覽器」（iOS/Android）：優先 Universal Link → 其它變體；全程不開 about:blank
+  // ✅ 手機瀏覽器：先 Universal Link（多數會帶 App 且吃 resourceKey）→ 再 scheme/intent → 最後 web
   if (isMobile) {
     let handedOff = false;
     const mark = () => { handedOff = true; cleanup(); };
@@ -4298,33 +4327,30 @@ function openDriveFolderWeb(id /* , preWin */) {
       window.removeEventListener("pagehide", mark);
       window.removeEventListener("blur", mark);
     };
-
-    // App 接手時常會觸發 hidden / pagehide / blur
     document.addEventListener("visibilitychange", onVis, { once: true });
     window.addEventListener("pagehide", mark, { once: true });
     window.addEventListener("blur", mark, { once: true });
 
-    // —— 嘗試順序：iOS 與 Android 都先試 Universal Link，其次再試其它變體 —— 
-    // 設計原則：每次僅「同分頁導向」；若 App 沒接手，下一個候選在延時後自動出手。
     const tries = isiOS
-      ? [ () => { location.href = urlOpen; },   // #1 iOS：Universal Link（最穩能把 folderId 帶進 App）
-          () => { location.href = urlU0; },     // #2 iOS：/u/0 變體（某些登入態更穩）
-          () => { location.href = schOpen; },   // #3 iOS：App Scheme open?id
-          () => { location.href = schFold; },   // #4 iOS：App Scheme folder/<id>
-          () => { location.href = urlWeb; },    // #5 iOS：最後回 Web
+      ? [
+          () => { location.href = urlOpen; },  // #1 iOS：UL + resourceKey（最穩）
+          () => { location.href = schOpen; },  // #2 iOS：scheme open?id + rk
+          () => { location.href = schFold; },  // #3 iOS：scheme folder/id + rk
+          () => { location.href = urlU0; },    // #4 iOS：UL /u/0 變體
+          () => { location.href = urlWeb; },   // #5 iOS：最後回 Web
         ]
-      : [ () => { location.href = urlOpen; },   // #1 Android：Universal Link（多數會直帶入 App）
+      : [
+          () => { location.href = urlOpen; },  // #1 Android：UL + rk（多數會直帶入 App）
           () => { location.href =
-                 `intent://drive.google.com/open?id=${id}` +
-                 `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #2 Android：intent + open?id
+                `intent://drive.google.com/open?id=${id}${rk}` +
+                `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #2 Android：intent open?id + rk
           () => { location.href =
-                 `intent://drive.google.com/drive/folders/${id}` +
-                 `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #3 Android：intent + folders/<id>
-          () => { location.href = urlU0; },     // #4 Android：/u/0 變體
-          () => { location.href = urlWeb; },    // #5 Android：最後回 Web
+                `intent://drive.google.com/drive/folders/${id}${rk}` +
+                `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #3 Android：intent folders/id + rk
+          () => { location.href = urlU0; },    // #4 Android：/u/0 變體
+          () => { location.href = urlWeb; },   // #5 Android：最後回 Web
         ];
 
-    // iOS 等久一點（避免你在點「在 App 開啟」時被過早覆蓋）；Android 可短些
     const delays = isiOS ? [0, 900, 1900, 3000, 4200] : [0, 700, 1500, 2200, 3000];
 
     delays.forEach((ms, idx) => {
@@ -4337,7 +4363,6 @@ function openDriveFolderWeb(id /* , preWin */) {
         }
       }, ms);
     });
-
     return;
   }
 
@@ -4386,6 +4411,8 @@ function openDriveFolderWeb(id /* , preWin */) {
       // 記住資料夾 ID（之後就能顯示 🔍，下次直接開）
       t.driveFolderId = folderId;
       saveTasksToFirebase?.();
+      
+      await fetchAndCacheFolderMeta(folderId);
 
       // UI：顯示 🔍
       try {
@@ -4430,6 +4457,7 @@ function openDriveFolderWeb(id /* , preWin */) {
     t.driveFolderId = newId;
     saveTasksToFirebase?.();
     updateDriveButtonState(t);
+    await fetchAndCacheFolderMeta(newId);
     return newId;
   }
 
