@@ -4261,7 +4261,9 @@ const isIOSPWA = (() => {
   }
 
 function openDriveFolderWeb(id /* , preWin */) {
-  const urlWeb = `https://drive.google.com/drive/folders/${id}`;
+  const urlWeb  = `https://drive.google.com/drive/folders/${id}`;
+  // Universal Link 版本（很多時候比純 /drive/folders 更容易被 App 正確接手到指定資料夾）
+  const urlOpen = `https://drive.google.com/open?id=${id}&usp=drive_app`;
 
   // 裝置判斷
   const ua = navigator.userAgent || "";
@@ -4276,8 +4278,15 @@ function openDriveFolderWeb(id /* , preWin */) {
   const iOSPWA = isiOS && standalone;
   const isMobile = isAndroid || isiOS;
 
-  // === 手機（含 iOS Safari/Chrome、Android Chrome）：先直打 App，未接手才回 Web ===
+  // === 手機：先直打 App；若未接手 → 試 Universal Link（仍期望進 App）→ 最後才回 Web ===
   if (isMobile) {
+    // PWA 已經「單擊直入 App 成功」，保持原邏輯
+    if (iOSPWA) {
+      try { location.href = `googledrive://folder/${id}`; } catch(_) {}
+      return;
+    }
+
+    // 行動瀏覽器（Safari/Chrome）偵測是否被 App 接手
     let handedOff = false;
     const mark = () => { handedOff = true; cleanup(); };
     const onVis = () => { if (document.visibilityState === "hidden") mark(); };
@@ -4286,36 +4295,38 @@ function openDriveFolderWeb(id /* , preWin */) {
       window.removeEventListener("pagehide", mark);
       window.removeEventListener("blur", mark);
     };
-
     document.addEventListener("visibilitychange", onVis, { once: true });
     window.addEventListener("pagehide", mark, { once: true });
     window.addEventListener("blur", mark, { once: true });
 
     try {
       if (isiOS) {
-        // 與 PWA 一致：第一次就走 App scheme
+        // ① 先用 App scheme 直接指定資料夾（與 PWA 同一條路徑）
         location.href = `googledrive://folder/${id}`;
       } else {
-        // Android 直達 App
+        // ① ANDROID 先用 intent 深連結
         location.href =
           `intent://drive.google.com/drive/folders/${id}` +
           `#Intent;package=com.google.android.apps.docs;scheme=https;end`;
       }
     } catch (_) {}
 
-    // iOS 稍微等久一點，避免還在顯示「打開 App」時被我們回退
-    const waitMs = isiOS ? 1800 : 1200;
-
+    // ② 若 800ms 內未被 App 接手，再嘗試 Universal Link（多數情況會跳 App 並直達該資料夾）
     setTimeout(() => {
       if (handedOff) return;
-      // 回退：同分頁開 Web（不開任何 about:blank）
-      try { location.href = urlWeb; } catch (_) {}
-    }, waitMs);
+      try { location.href = urlOpen; } catch(_) {}
+    }, 800);
+
+    // ③ 仍未接手，最後同分頁回到 Web（不開任何 about:blank）
+    setTimeout(() => {
+      if (handedOff) return;
+      try { location.href = urlWeb; } catch(_) {}
+    }, 2600);
 
     return;
   }
 
-  // === 桌機：保留新分頁優先；若被擋，改同分頁。全程不開 about:blank ===
+  // === 桌機：維持原先體驗（新分頁；被擋則同分頁）。不預開空白頁 ===
   try {
     const w = window.open(urlWeb, "_blank", "noopener");
     if (!w) location.href = urlWeb;
