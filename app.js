@@ -4109,15 +4109,15 @@ const isIOSPWA = (() => {
   let __gisReady = false;
   let __tokenClient = null;
   
-  // 快取每個資料夾的 meta（resourceKey / webViewLink）
+ // 以 folderId 為 key 快取 resourceKey / webViewLink
 const __driveFolderMeta = new Map();
 
-/** 取回並快取資料夾的 meta（包含 resourceKey） */
+/** 取回並快取資料夾 meta（resourceKey、webViewLink） */
 async function fetchAndCacheFolderMeta(folderId) {
   try {
     const r = await gapi.client.drive.files.get({
       fileId: folderId,
-      fields: "id, resourceKey, webViewLink",
+      fields: "id, resourceKey, webViewLink, name, parents",
       supportsAllDrives: true,
     });
     const meta = {
@@ -4286,42 +4286,31 @@ async function fetchAndCacheFolderMeta(folderId) {
   }
 
 function openDriveFolderWeb(id /* , preWin */) {
-  // 先取快取的 meta（沒有也會是空字串）
+  // 取用快取的 meta（可能還沒抓到就為空字串）
   const meta = __driveFolderMeta.get(id) || { resourceKey: "", webViewLink: "" };
 
-  // 從 webViewLink 解析出 authuser（若有）
-  let authuser = "";
+  // 解析 webViewLink 是否已帶帳號參數（authuser 等），原樣保留最穩
+  let linkFromMeta = "";
   try {
     if (meta.webViewLink) {
       const u = new URL(meta.webViewLink);
-      const au = u.searchParams.get("authuser");
-      if (au) authuser = au;
+      // 確保有 usp（不改其它參數），這樣在行動裝置上較容易交給 App
+      if (!u.searchParams.has("usp")) u.searchParams.set("usp", "drive_app");
+      linkFromMeta = u.toString();
     }
   } catch {}
 
-  const rkParam = meta.resourceKey ? `&resourcekey=${encodeURIComponent(meta.resourceKey)}` : "";
-  const auParam = authuser ? `&authuser=${encodeURIComponent(authuser)}` : "";
+  // 補強參數（供非 webViewLink 情境）
+  const rk = meta.resourceKey ? `&resourcekey=${encodeURIComponent(meta.resourceKey)}` : "";
+  const urlOpen = `https://drive.google.com/open?id=${id}${rk}&usp=drive_app`;
+  const urlWeb  = `https://drive.google.com/drive/folders/${id}${rk}`;
+  const urlU0   = `https://drive.google.com/drive/u/0/folders/${id}${rk}`;
 
-  // —— 以「能攜帶 id + resourceKey(+ authuser)」為原則組合所有候選 —— 
-  const urlWeb  = `https://drive.google.com/drive/folders/${id}${rkParam}${auParam}`;
-  const urlU0   = `https://drive.google.com/drive/u/0/folders/${id}${rkParam}${auParam}`;
-  const urlOpen = `https://drive.google.com/open?id=${id}${rkParam}${auParam}&usp=drive_app`; // ★ UL（首選）
-  // 直接用後端回來的 webViewLink（通常已帶 rk/au），並附上 usp
-  const urlFromMeta = meta.webViewLink
-    ? (() => {
-        try {
-          const u = new URL(meta.webViewLink);
-          if (!u.searchParams.has("usp")) u.searchParams.set("usp", "drive_app");
-          return u.toString();
-        } catch { return ""; }
-      })()
-    : "";
+  // 準備 scheme/intent（備援）
+  const schOpen = `googledrive://open?id=${id}${rk}`;
+  const schFold = `googledrive://folder/${id}${rk}`;
 
-  // App scheme/intent（備援；也把 rk/au 帶上）
-  const schOpen = `googledrive://open?id=${id}${rkParam}${auParam}`;
-  const schFold = `googledrive://folder/${id}${rkParam}${auParam}`;
-
-  // —— 裝置偵測（僅本函式內使用）——
+  // 裝置偵測
   const ua = navigator.userAgent || "";
   const isAndroid = /Android/i.test(ua) || /\bAdr\b/i.test(ua);
   const isiOS =
@@ -4334,13 +4323,13 @@ function openDriveFolderWeb(id /* , preWin */) {
   const iOSPWA = isiOS && standalone;
   const isMobile = isAndroid || isiOS;
 
-  // ✅ iOS PWA：維持一次直入 App；為更穩，優先 open?id（帶 rk/au）
+  // ✅ PWA：保持你原本成功的行為
   if (iOSPWA) {
-    try { location.href = schOpen; } catch (_) {}
+    try { location.href = schFold; } catch (_) {}
     return;
   }
 
-  // ✅ 手機瀏覽器：先走「帶 rk/au 的 UL」（最能被 App 精準攔截）→ 再 scheme/intent → 最後回 Web
+  // ✅ 手機瀏覽器：先 webViewLink（原樣）→ 再 UL → 再 scheme/intent → 最後 web
   if (isMobile) {
     let handedOff = false;
     const mark = () => { handedOff = true; cleanup(); };
@@ -4354,21 +4343,30 @@ function openDriveFolderWeb(id /* , preWin */) {
     window.addEventListener("pagehide", mark, { once: true });
     window.addEventListener("blur", mark, { once: true });
 
-    // iOS/Android 都先嘗試「最完整的 UL」
     const tries = isiOS
       ? [
-          () => { if (urlFromMeta) { location.href = urlFromMeta; return; } location.href = urlOpen; },
-          () => { location.href = schOpen; }, // scheme + rk/au
+          () => { if (linkFromMeta) { location.href = linkFromMeta; return; } location.href = urlOpen; },
+          () => { location.href = schOpen; },
           () => { location.href = schFold; },
           () => { location.href = urlU0; },
           () => { location.href = urlWeb; },
         ]
       : [
-          () => { if (urlFromMeta) { location.href = urlFromMeta; return; } location.href = urlOpen; },
-          () => { location.href =
-            `intent://drive.google.com/open?id=${id}${rkParam}${auParam}#Intent;package=com.google.android.apps.docs;scheme=https;end`; },
-          () => { location.href =
-            `intent://drive.google.com/drive/folders/${id}${rkParam}${auParam}#Intent;package=com.google.android.apps.docs;scheme=https;end`; },
+          // Android：帶 fallback 的 intent，確保沒接手也會回正確網址（含 resourceKey）
+          () => {
+            const fb = encodeURIComponent(linkFromMeta || urlOpen);
+            location.href =
+              `intent://drive.google.com/open?id=${id}${rk}` +
+              `#Intent;scheme=https;package=com.google.android.apps.docs;S.browser_fallback_url=${fb};end`;
+          },
+          // 備援：folders/<id> 形式
+          () => {
+            const fb = encodeURIComponent(linkFromMeta || urlOpen);
+            location.href =
+              `intent://drive.google.com/drive/folders/${id}${rk}` +
+              `#Intent;scheme=https;package=com.google.android.apps.docs;S.browser_fallback_url=${fb};end`;
+          },
+          () => { location.href = linkFromMeta || urlOpen; },
           () => { location.href = urlU0; },
           () => { location.href = urlWeb; },
         ];
