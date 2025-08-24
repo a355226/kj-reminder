@@ -4262,10 +4262,9 @@ const isIOSPWA = (() => {
 
 function openDriveFolderWeb(id /* , preWin */) {
   const urlWeb  = `https://drive.google.com/drive/folders/${id}`;
-  // Universal Link（很多情況會帶你進 App，且能指向特定 ID）
-  const urlOpen = `https://drive.google.com/open?id=${id}&usp=drive_app`;
+  const urlOpen = `https://drive.google.com/open?id=${id}&usp=drive_app`; // Universal Link：多數情況會帶 App 並定位到 id
 
-  // 裝置判斷（僅此函式內部使用，不動你全域）
+  // —— 裝置偵測（僅本函式內使用）——
   const ua = navigator.userAgent || "";
   const isAndroid =
     /Android/i.test(ua) || /\bAdr\b/i.test(ua);
@@ -4279,13 +4278,13 @@ function openDriveFolderWeb(id /* , preWin */) {
   const iOSPWA = isiOS && standalone;
   const isMobile = isAndroid || isiOS;
 
-  // ✅ iOS PWA：保持你目前成功的行為（一次就進 App 且直達資料夾）
+  // ✅ iOS PWA：保持你目前成功的行為（一次就進 App 且直達『任務標題』資料夾）
   if (iOSPWA) {
     try { location.href = `googledrive://folder/${id}`; } catch (_) {}
     return;
   }
 
-  // ✅ 手機版瀏覽器（iOS/Android）：多段 Deep Link，確保「直達該資料夾」
+  // ✅ 手機瀏覽器（iOS/Android）：多段深連結，目標＝App 內「該資料夾」
   if (isMobile) {
     let handedOff = false;
     const mark = () => { handedOff = true; cleanup(); };
@@ -4295,54 +4294,46 @@ function openDriveFolderWeb(id /* , preWin */) {
       window.removeEventListener("pagehide", mark);
       window.removeEventListener("blur", mark);
     };
-
     document.addEventListener("visibilitychange", onVis, { once: true });
     window.addEventListener("pagehide", mark, { once: true });
     window.addEventListener("blur", mark, { once: true });
 
-    // 依平台組合「最有機會直達 App 內該資料夾」的候選清單（從強到弱）
-    const candidates = isiOS
+    const tryList = isiOS
       ? [
-          // 1) 與 PWA 相同：folder/<id>（多數情況可直達該資料夾）
-          `googledrive://folder/${id}`,
-          // 2) 官方 app scheme 的 open?id（有些版本更吃這個）
-          `googledrive://open?id=${id}`,
-          // 3) 在 deep link 前綴上原生 URL（部分瀏覽器更吃這招）
-          `googledrive://https://drive.google.com/open?id=${id}`,
-          // 4) Universal Link（仍常會跳 App，且帶著 id）
-          urlOpen,
+          () => { location.href = `googledrive://open?id=${id}`; },          // #1：iOS 直指該資料夾
+          () => { location.href = `googledrive://folder/${id}`; },            // #2：備援 scheme
+          () => { location.href = urlOpen; },                                 // #3：Universal Link（常會帶 App 並定位 id）
         ]
       : [
-          // Android 1) 直接 intent 目標 open?id（多數可直達資料夾）
-          `intent://drive.google.com/open?id=${id}` +
-            `#Intent;package=com.google.android.apps.docs;scheme=https;end`,
-          // Android 2) 備用：舊的 folders/<id> 形式
-          `intent://drive.google.com/drive/folders/${id}` +
-            `#Intent;package=com.google.android.apps.docs;scheme=https;end`,
-          // Android 3) Universal Link（常會喚起 App）
-          urlOpen,
+          () => { location.href =
+            `intent://drive.google.com/open?id=${id}` +
+            `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #1：Android 直指該資料夾
+          () => { location.href =
+            `intent://drive.google.com/drive/folders/${id}` +
+            `#Intent;package=com.google.android.apps.docs;scheme=https;end`; }, // #2：備援 intent
+          () => { location.href = urlOpen; },                                  // #3：Universal Link
         ];
 
-    let idx = 0;
-    const stepDelay = isiOS ? 900 : 700; // iOS 稍長一點，避免還在顯示「在 App 開啟」的提示就被切走
+    // 依序嘗試：iOS 稍等久一點，避免使用者點「在 App 開啟」時被過早覆蓋
+    const schedule = isiOS ? [0, 900, 1900, 3200] : [0, 700, 1600, 2600];
 
-    const tryNext = () => {
-      if (handedOff) return;
-      if (idx >= candidates.length) {
-        // 仍未被 App 接手 → 最後同分頁回到 Web
-        try { location.href = urlWeb; } catch (_) {}
-        cleanup();
-        return;
-      }
-      try { location.href = candidates[idx++]; } catch (_) {}
-      setTimeout(() => { if (!handedOff) tryNext(); }, stepDelay);
-    };
+    schedule.forEach((ms, idx) => {
+      setTimeout(() => {
+        if (handedOff) return;
+        if (idx < tryList.length) {
+          tryList[idx]();
+        } else {
+          // 最終保底：同分頁回 Web（不開 about:blank）
+          try { location.href = urlWeb; } catch (_) {}
+          cleanup();
+        }
+      }, ms);
+    });
 
-    tryNext();
     return;
   }
 
-  // ✅ 桌機：維持你的體驗，但不開 about:blank
+  // ✅ 桌機：維持原體驗（新分頁；被擋則同分頁），全程不開 about:blank
   try {
     const w = window.open(urlWeb, "_blank", "noopener");
     if (!w) location.href = urlWeb;
