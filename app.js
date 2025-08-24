@@ -4260,7 +4260,7 @@ const isIOSPWA = (() => {
     return parent; // 最底層資料夾 id
   }
 
-function openDriveFolderWeb(id, preWin) {
+function openDriveFolderWeb(id /* , preWin */) {
   const urlWeb = `https://drive.google.com/drive/folders/${id}`;
 
   // 裝置判斷
@@ -4276,70 +4276,52 @@ function openDriveFolderWeb(id, preWin) {
   const iOSPWA = isiOS && standalone;
   const isMobile = isAndroid || isiOS;
 
+  // === 手機（含 iOS Safari/Chrome、Android Chrome）：先直打 App，未接手才回 Web ===
   if (isMobile) {
-    // ✅ iOS：PWA 維持原本 folder/<id>（你已驗證成功）
-    // ✅ iOS 手機網頁：用 "googledrive://https://..." 前綴以更穩定直達 App
-    const deepLinkIOS = iOSPWA
-      ? `googledrive://folder/${id}`
-      : `googledrive://https://drive.google.com/drive/folders/${id}`;
-
-    // ✅ Android：intent 直達 App
-    const deepLinkAndroid =
-      `intent://drive.google.com/drive/folders/${id}` +
-      `#Intent;package=com.google.android.apps.docs;scheme=https;end`;
-
     let handedOff = false;
     const mark = () => { handedOff = true; cleanup(); };
-    const onVis = () => {
-      if (document.visibilityState === "hidden") mark();
-    };
+    const onVis = () => { if (document.visibilityState === "hidden") mark(); };
     const cleanup = () => {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pagehide", mark);
       window.removeEventListener("blur", mark);
     };
 
-    // App 接手時常會觸發 hidden / pagehide / blur
     document.addEventListener("visibilitychange", onVis, { once: true });
     window.addEventListener("pagehide", mark, { once: true });
     window.addEventListener("blur", mark, { once: true });
 
     try {
       if (isiOS) {
-        // 首選：讓手機網頁也像 PWA 一樣直接喚起 App
-        location.href = deepLinkIOS;
+        // 與 PWA 一致：第一次就走 App scheme
+        location.href = `googledrive://folder/${id}`;
       } else {
-        location.href = deepLinkAndroid;
+        // Android 直達 App
+        location.href =
+          `intent://drive.google.com/drive/folders/${id}` +
+          `#Intent;package=com.google.android.apps.docs;scheme=https;end`;
       }
     } catch (_) {}
 
-    // ⏱️ 等待時間：PWA 保持你原先的節奏；iOS 手機網頁加長到 2200ms
-    const waitMs = iOSPWA ? 1200 : (isiOS ? 2200 : 1600);
+    // iOS 稍微等久一點，避免還在顯示「打開 App」時被我們回退
+    const waitMs = isiOS ? 1800 : 1200;
 
     setTimeout(() => {
       if (handedOff) return;
-
-      // 退回你原本的開法：優先把預開的 preWin 導向；不行再開新分頁；最後同分頁
-      if (preWin && !preWin.closed) {
-        try { preWin.location.replace(urlWeb); return; } catch (_) {}
-      }
-      let w = null;
-      try { w = window.open(urlWeb, "_blank", "noopener"); } catch (_) {}
-      if (!w) {
-        try { location.href = urlWeb; } catch (_) {}
-      }
+      // 回退：同分頁開 Web（不開任何 about:blank）
+      try { location.href = urlWeb; } catch (_) {}
     }, waitMs);
 
     return;
   }
 
-  // 桌機：維持原邏輯
-  if (preWin && !preWin.closed) {
-    try { preWin.location.replace(urlWeb); return; } catch (_) {}
+  // === 桌機：保留新分頁優先；若被擋，改同分頁。全程不開 about:blank ===
+  try {
+    const w = window.open(urlWeb, "_blank", "noopener");
+    if (!w) location.href = urlWeb;
+  } catch (_) {
+    location.href = urlWeb;
   }
-  let w = null;
-  try { w = window.open(urlWeb, "_blank", "noopener"); } catch (_) {}
-  if (w) return;
 }
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
   function getCurrentDetailTask() {
@@ -4456,30 +4438,21 @@ function openDriveFolderWeb(id, preWin) {
     updateDriveButtonState(taskObj);
   }
 
-  async function onDriveButtonClick() {
-    const t = getCurrentDetailTask();
-    if (!t) return;
+ async function onDriveButtonClick() {
+  const t = getCurrentDetailTask();
+  if (!t) return;
 
-    // 桌機先開「預留 about:blank」避免被擋；iOS PWA 幾乎沒用，但不影響
-    let preWin = null;
-    try {
-      if (!isIOSPWA) preWin = window.open("about:blank", "_blank", "noopener");
-    } catch (_) {}
-
-    try {
-      await ensureDriveAuth(); // 首次 consent，之後以 expires_in 做 50 分鐘內靜默
-      const folderId = await ensureExistingOrRecreateFolder(t); // 有就用、沒了就重建（並更新 t.driveFolderId）
-      updateDriveButtonState(t); // 金黃發光狀態同步
-      openDriveFolderWeb(folderId, preWin); // 一律新分頁／喚起 App；不切走 MyTask
-    } catch (e) {
-      try {
-        preWin && !preWin.closed && preWin.close();
-      } catch (_) {}
-      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-      alert("Google 雲端硬碟動作失敗：" + msg);
-      console.error("Drive error:", e);
-    }
+  try {
+    await ensureDriveAuth();                         // 拿 token（暖機已做）
+    const folderId = await ensureExistingOrRecreateFolder(t);
+    updateDriveButtonState(t);
+    openDriveFolderWeb(folderId);                    // ← 不再傳 preWin，也不開 about:blank
+  } catch (e) {
+    const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+    alert("Google 雲端硬碟動作失敗：" + msg);
+    console.error("Drive error:", e);
   }
+}
   
   // 開頁即暖機，確保第一次點擊前就把 gapi/gis/tokenClient 準備好
 (function driveWarmup() {
