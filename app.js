@@ -4263,7 +4263,7 @@ const isIOSPWA = (() => {
 function openDriveFolderWeb(id, preWin) {
   const urlWeb = `https://drive.google.com/drive/folders/${id}`;
 
-  // 判斷裝置
+  // 裝置判斷
   const ua = navigator.userAgent || "";
   const isAndroid = /Android/i.test(ua);
   const isiOS =
@@ -4276,15 +4276,22 @@ function openDriveFolderWeb(id, preWin) {
   const iOSPWA = isiOS && standalone;
   const isMobile = isAndroid || isiOS;
 
-  // ===== 手機：先嘗試「直接開 App」，若沒接手，再退回你的原邏輯 =====
   if (isMobile) {
+    // ✅ iOS：PWA 維持原本 folder/<id>（你已驗證成功）
+    // ✅ iOS 手機網頁：用 "googledrive://https://..." 前綴以更穩定直達 App
+    const deepLinkIOS = iOSPWA
+      ? `googledrive://folder/${id}`
+      : `googledrive://https://drive.google.com/drive/folders/${id}`;
+
+    // ✅ Android：intent 直達 App
+    const deepLinkAndroid =
+      `intent://drive.google.com/drive/folders/${id}` +
+      `#Intent;package=com.google.android.apps.docs;scheme=https;end`;
+
     let handedOff = false;
-    const mark = () => { handedOff = true; };
+    const mark = () => { handedOff = true; cleanup(); };
     const onVis = () => {
-      if (document.visibilityState === "hidden") {
-        handedOff = true;
-        cleanup();
-      }
+      if (document.visibilityState === "hidden") mark();
     };
     const cleanup = () => {
       document.removeEventListener("visibilitychange", onVis);
@@ -4292,31 +4299,27 @@ function openDriveFolderWeb(id, preWin) {
       window.removeEventListener("blur", mark);
     };
 
-    // 若成功跳到 App，通常頁面會 hidden / blur / pagehide
+    // App 接手時常會觸發 hidden / pagehide / blur
     document.addEventListener("visibilitychange", onVis, { once: true });
     window.addEventListener("pagehide", mark, { once: true });
     window.addEventListener("blur", mark, { once: true });
 
     try {
       if (isiOS) {
-        // iOS：先嘗試 App Scheme（第一次就直達 App）
-        window.location.href = `googledrive://folder/${id}`;
-      } else if (isAndroid) {
-        // Android：使用 intent deep link 直達 App
-        window.location.href = `intent://drive.google.com/drive/folders/${id}#Intent;package=com.google.android.apps.docs;scheme=https;end`;
+        // 首選：讓手機網頁也像 PWA 一樣直接喚起 App
+        location.href = deepLinkIOS;
+      } else {
+        location.href = deepLinkAndroid;
       }
     } catch (_) {}
 
-    // 1.2 秒後若仍未被 App 接手，就退回原 web 開法（PWA 用同分頁最穩）
+    // ⏱️ 等待時間：PWA 保持你原先的節奏；iOS 手機網頁加長到 2200ms
+    const waitMs = iOSPWA ? 1200 : (isiOS ? 2200 : 1600);
+
     setTimeout(() => {
-      cleanup();
       if (handedOff) return;
 
-      if (iOSPWA) {
-        try { location.href = urlWeb; return; } catch (_) {}
-      }
-
-      // 非 PWA 或 Android 行動瀏覽器：優先新分頁，失敗再同分頁
+      // 退回你原本的開法：優先把預開的 preWin 導向；不行再開新分頁；最後同分頁
       if (preWin && !preWin.closed) {
         try { preWin.location.replace(urlWeb); return; } catch (_) {}
       }
@@ -4325,22 +4328,17 @@ function openDriveFolderWeb(id, preWin) {
       if (!w) {
         try { location.href = urlWeb; } catch (_) {}
       }
-    }, 1200);
+    }, waitMs);
 
     return;
   }
 
-  // ===== 桌機：維持你的原邏輯（preWin 優先，其次新分頁）=====
+  // 桌機：維持原邏輯
   if (preWin && !preWin.closed) {
-    try {
-      preWin.location.replace(urlWeb);
-      return;
-    } catch (_) {}
+    try { preWin.location.replace(urlWeb); return; } catch (_) {}
   }
   let w = null;
-  try {
-    w = window.open(urlWeb, "_blank", "noopener");
-  } catch (_) {}
+  try { w = window.open(urlWeb, "_blank", "noopener"); } catch (_) {}
   if (w) return;
 }
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
