@@ -4133,46 +4133,38 @@
     }
   })();
 
-  // 讓桌機預備分頁有「等待頁」+ 能接受 postMessage 來自行跳轉
-  function primePreWin(win) {
+  // 新增：在預備分頁放入自動跳轉腳本（避免非使用者手勢導致的導向被擋）
+  function seedPreWin(preWin) {
     try {
-      if (!win || win.closed) return false;
-      const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Google Drive</title>
-  <style>
-    html,body{height:100%;margin:0}
-    body{display:flex;align-items:center;justify-content:center;font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans TC",sans-serif;color:#555}
-    .spinner{width:36px;height:36px;border:3px solid #ddd;border-top-color:#888;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px}
-    @keyframes spin{to{transform:rotate(360deg)}}
-  </style>
-</head>
-<body>
-  <div>
-    <div class="spinner"></div>
-    <div>正在開啟 Google Drive…</div>
-  </div>
-  <script>
-    // 等主頁面把目標網址傳進來，就自己導向
-    window.addEventListener('message', function(e){
-      try{
-        if(e && e.data && e.data.__drive_target){
-          location.replace(e.data.__drive_target);
-        }
-      }catch(_){}
-    });
-  <\/script>
-</body>
-</html>`;
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
-      return true;
-    } catch (_) {
-      return false;
-    }
+      if (!preWin || preWin.closed) return;
+      preWin.document.open();
+      preWin.document.write(`<!doctype html><meta charset="utf-8">
+<title>正在開啟 Google Drive…</title>
+<style>
+  body{font:14px/1.6 -apple-system,Segoe UI,system-ui,sans-serif;padding:24px;color:#333}
+  a{color:#1565c0;text-decoration:none;border-bottom:1px solid #90caf9}
+</style>
+<p>正在開啟 Google Drive 資料夾⋯</p>
+<p><a id="fallback" href="#" target="_self">若未自動開啟，請點這裡</a></p>
+<script>
+(function(){
+  function go(u){ if(!u) return; try{ document.getElementById('fallback').href=u; }catch(e){}; location.replace(u); }
+  // 1) 接收 postMessage 觸發
+  window.addEventListener('message',function(e){
+    try{ if(e.data && e.data.__drive_target){ go(e.data.__drive_target); } }catch(_){}
+  }, false);
+  // 2) 也輪詢 localStorage（避免某些環境 postMessage 被擋）
+  var K='__drive_target_url';
+  var t=setInterval(function(){
+    try{
+      var u=localStorage.getItem(K);
+      if(u){ clearInterval(t); localStorage.removeItem(K); go(u); }
+    }catch(_){}
+  },300);
+})();
+<\/script>`);
+      preWin.document.close();
+    } catch (_) {}
   }
 
   function loadGapiOnce() {
@@ -4344,7 +4336,7 @@
   }
 
   function openDriveFolderWeb(id, preWin) {
-    const webUrl = `https://drive.google.com/drive/folders/${id}`; // 桌機仍用得到
+    const webUrl = `https://drive.google.com/drive/folders/${id}`;
     const ua = (navigator.userAgent || "").toLowerCase();
     const isAndroid = /android/.test(ua);
     const isIOS =
@@ -4358,11 +4350,12 @@
       `intent://drive.google.com/drive/folders/${id}` +
       `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
 
-    // 用使用者手勢開的預備分頁導向，成功率高（行動端維持原本）
+    // 用使用者手勢開的預備分頁導向（行動裝置用，會自動關掉）
     const usePreWin = (url) => {
       try {
         if (preWin && !preWin.closed) {
           preWin.location.href = url;
+          // 行動裝置：1~2 秒後關閉預備分頁
           setTimeout(() => {
             try {
               preWin.close();
@@ -4389,21 +4382,22 @@
           window.location.href = iosSchemeUrl;
         } catch (_) {}
       }
-      return; // ✅ 不再回退 web
+      return;
     }
 
-    // ✅ 桌機：優先把目標用 postMessage 丟給預備分頁的「等待頁」去自己跳轉
+    // ===== 桌機：重點修正在這裡 =====
+    // 若有預備分頁（第一次授權時開的空白頁），直接把它導向「網頁版」目標，避免留下空白分頁
     if (preWin && !preWin.closed) {
       try {
-        preWin.postMessage({ __drive_target: webUrl }, "*");
+        preWin.location.href = webUrl;
         preWin.focus?.();
         return;
       } catch (_) {
-        // 若 postMessage 失敗，走後備方案
+        /* 忽略，改走下面的 fallback */
       }
     }
 
-    // 後備：直接新開
+    // 沒有預備分頁就正常開新分頁；若被瀏覽器擋掉，最後用同窗導向
     try {
       const w = window.open(webUrl, "_blank");
       w?.focus?.();
@@ -4533,26 +4527,6 @@
     const t = getCurrentDetailTask();
     if (!t) return;
 
-    // ★ 僅桌機：先開預備分頁並灌入等待頁，之後用 postMessage 叫它自己跳轉
-    (() => {
-      const ua = (navigator.userAgent || "").toLowerCase();
-      const isMobile =
-        /android|iphone|ipad|ipod/.test(ua) ||
-        ((navigator.userAgent || "").includes("Macintosh") &&
-          navigator.maxTouchPoints > 1);
-      if (!isMobile && !__gd_prewin) {
-        try {
-          __gd_prewin = window.open("", "_blank");
-          // 灌入等待頁（無論授權有沒有耗時，分頁不再是空白）
-          if (!primePreWin(__gd_prewin)) {
-            __gd_prewin = null; // 灌不進去就放棄使用 preWin
-          }
-        } catch (_) {
-          __gd_prewin = null;
-        }
-      }
-    })();
-
     try {
       // ✅ 第一次授權前：立旗標 + 以使用者手勢先開一個空白頁，避免之後被擋
       const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
@@ -4560,17 +4534,32 @@
         localStorage.setItem(GD_POST_OPEN_KEY, "1");
         try {
           __gd_prewin = window.open("", "_blank");
+          seedPreWin(__gd_prewin); // ★ 新增：預備分頁放入自動跳轉腳本
         } catch (_) {
-          __gd_prewin = null; // 若環境不允許也不致錯
+          __gd_prewin = null;
         }
       }
 
       await ensureDriveAuth();
       const folderId = await ensureExistingOrRecreateFolder(t);
       updateDriveButtonState(t);
+      const webUrl = `https://drive.google.com/drive/folders/${folderId}`;
+      if (__gd_prewin && !__gd_prewin.closed) {
+        try {
+          __gd_prewin.postMessage({ __drive_target: webUrl }, "*");
+        } catch (_) {}
+        try {
+          localStorage.setItem("__drive_target_url", webUrl);
+        } catch (_) {}
+        try {
+          __gd_prewin.location.replace(webUrl);
+        } catch (_) {}
+        __gd_prewin = null;
+        return; // ★ 已交接給預備分頁，不再另外 window.open
+      }
 
-      // ✅ 授權後直接把預備視窗導向目標（若沒有預備視窗就走原邏輯）
-      openDriveFolderWeb(folderId, __gd_prewin);
+      // 若沒有預備分頁才用既有邏輯
+      openDriveFolderWeb(folderId);
 
       // 收尾
       localStorage.removeItem(GD_POST_OPEN_KEY);
