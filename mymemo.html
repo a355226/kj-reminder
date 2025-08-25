@@ -1662,15 +1662,47 @@
             memoView === "active" && isEditing ? "block" : "none";
       }
 
-      function updateSectionOptions() {
-        const opts = (categories || [])
-          .map((c) => `<option value="${c}">${c}</option>`)
-          .join("");
-        const s1 = document.getElementById("memoSection"),
-          s2 = document.getElementById("detailSection");
-        if (s1) s1.innerHTML = opts;
-        if (s2) s2.innerHTML = opts;
-      }
+     function updateSectionOptions() {
+  const optsHTML = (categories || [])
+    .map(c => `<option value="${c}">${c}</option>`)
+    .join("");
+
+  // 新增備忘用的下拉
+  const s1 = document.getElementById("memoSection");
+  if (s1) {
+    const prev = s1.value;
+    if (s1.__optsHTML !== optsHTML) {
+      s1.innerHTML = optsHTML;
+      s1.__optsHTML = optsHTML;
+    }
+    // 還原原本選取（存在才還原）
+    if (prev && Array.from(s1.options).some(o => o.value === prev)) {
+      s1.value = prev;
+    }
+  }
+
+  // 詳情視窗的下拉（重點：要維持目前 memo 的分類）
+  const s2 = document.getElementById("detailSection");
+  if (s2) {
+    const prev = s2.value;
+    if (s2.__optsHTML !== optsHTML) {
+      s2.innerHTML = optsHTML;
+      s2.__optsHTML = optsHTML;
+    }
+
+    // 以目前選中的 memo 為準
+    let want = prev;
+    try {
+      const m = (Array.isArray(memos) ? memos : []).find(x => x.id === selectedMemoId);
+      if (m && m.section) want = m.section;
+    } catch (_) {}
+
+    if (want && Array.from(s2.options).some(o => o.value === want)) {
+      s2.value = want;
+    }
+    // 否則讓瀏覽器維持現況，不強制跳第一個
+  }
+}
       function initSectionSortable() {
         const el = document.getElementById("section-container");
         if (!el) return;
