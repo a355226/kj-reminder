@@ -2901,7 +2901,6 @@ function addScriptOnce(src, id) {
 async function loadGapiOnce() {
   if (__gapiReady && __gisReady && __tokenClient) return;
 
-  // 動態載入 GIS 與 gapi
   if (!window.google?.accounts?.oauth2) {
     await addScriptOnce("https://accounts.google.com/gsi/client", "gsi_client_js");
   }
@@ -2909,16 +2908,18 @@ async function loadGapiOnce() {
     await addScriptOnce("https://apis.google.com/js/api.js", "gapi_js");
   }
 
-  // 等待物件就緒
   await new Promise((r) => gapi.load("client", r));
   await gapi.client.init({});
+  // ✅ 改用 discovery doc，Safari 穩定很多
   await gapi.client.load("https://www.googleapis.com/discovery/v1/apis/drive/v3/rest");
   __gapiReady = true;
 
   __tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CLIENT_ID,
     scope: GD_SCOPES,
-    callback: () => {}, // 之後會覆寫
+    callback: () => {},
+    // ✅ 先關掉，避免 Safari / iOS 無聲失敗
+    // use_fedcm_for_prompt: true,
   });
   __gisReady = true;
 }
@@ -3242,34 +3243,41 @@ async function onDriveButtonClickMemo() {
   }, { once: true });
 })();
 
-/* ---- 接到你 MyMemo 的 openDetail：在詳情打開時插入按鈕並更新狀態 ---- */
-// ---- 取代原本的 hookOpenDetailForMemo ----
+// ---- 取代原本的 hookOpenDetailForMemo（延一幀插入）----
 (function hookOpenDetailForMemo() {
   const original = window.openDetail;
   window.openDetail = function(id) {
-    // 先開詳情
     original?.call(this, id);
-    // 等詳情 DOM 真的進到畫面，再插入按鈕
+    // 等詳情 DOM 真正 render 完再插入按鈕
     requestAnimationFrame(() => {
       try { ensureDriveButtonsInlineUI(getCurrentDetailMemo()); } catch(_) {}
     });
   };
-
-  // 全域事件委派：不管按鈕何時被插入，都接得到點擊
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest("#gdriveBtn");
-    if (!btn) return;
-    // 防止事件被外層攔截
-    e.preventDefault();
-    e.stopPropagation();
-    Promise.resolve(onDriveButtonClickMemo())
-      .catch(err => {
-        const msg = err?.result?.error?.message || err?.message || String(err);
-        alert("Google 雲端硬碟動作失敗：" + msg);
-        console.error("Drive error:", err);
-      });
-  }, { capture: false });
 })();
+
+// ---- 全域事件委派：不靠 btn.onclick，避免被重繪吃掉 ----
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("#gdriveBtn");
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  // 明確呼叫，任何時機都吃得到
+  (async () => {
+    try { await onDriveButtonClickMemo(); }
+    catch (err) {
+      const msg = err?.result?.error?.message || err?.message || String(err);
+      alert("Google 雲端硬碟動作失敗：" + msg);
+      console.error("Drive error:", err);
+    }
+  })();
+}, false);
+
+Object.assign(window, {
+  onDriveButtonClickMemo,
+  openCurrentMemoDriveFolder,
+  openOrCreateDriveFolderForCurrentMemo,
+  ensureDriveButtonsInlineUI,
+});
 
 </script>
 
