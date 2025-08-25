@@ -4133,6 +4133,48 @@
     }
   })();
 
+  // 讓桌機預備分頁有「等待頁」+ 能接受 postMessage 來自行跳轉
+  function primePreWin(win) {
+    try {
+      if (!win || win.closed) return false;
+      const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Google Drive</title>
+  <style>
+    html,body{height:100%;margin:0}
+    body{display:flex;align-items:center;justify-content:center;font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans TC",sans-serif;color:#555}
+    .spinner{width:36px;height:36px;border:3px solid #ddd;border-top-color:#888;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div>
+    <div class="spinner"></div>
+    <div>正在開啟 Google Drive…</div>
+  </div>
+  <script>
+    // 等主頁面把目標網址傳進來，就自己導向
+    window.addEventListener('message', function(e){
+      try{
+        if(e && e.data && e.data.__drive_target){
+          location.replace(e.data.__drive_target);
+        }
+      }catch(_){}
+    });
+  <\/script>
+</body>
+</html>`;
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function loadGapiOnce() {
     return new Promise((res, rej) => {
       if (__gapiReady && __gisReady && __tokenClient) return res();
@@ -4316,12 +4358,11 @@
       `intent://drive.google.com/drive/folders/${id}` +
       `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
 
-    // 用使用者手勢開的預備分頁導向，成功率高
+    // 用使用者手勢開的預備分頁導向，成功率高（行動端維持原本）
     const usePreWin = (url) => {
       try {
         if (preWin && !preWin.closed) {
           preWin.location.href = url;
-          // 開 App 成功時，預備分頁通常會留著；1~2 秒後嘗試關閉
           setTimeout(() => {
             try {
               preWin.close();
@@ -4335,7 +4376,6 @@
 
     if (isAndroid) {
       if (!usePreWin(androidIntentUrl)) {
-        // 不要任何 web 回退，直接在同窗送出深連結
         try {
           window.location.href = androidIntentUrl;
         } catch (_) {}
@@ -4349,11 +4389,21 @@
           window.location.href = iosSchemeUrl;
         } catch (_) {}
       }
-      // ✅ 不再 setTimeout 回退 web
-      return;
+      return; // ✅ 不再回退 web
     }
 
-    // 桌機：仍開網頁版（新分頁）
+    // ✅ 桌機：優先把目標用 postMessage 丟給預備分頁的「等待頁」去自己跳轉
+    if (preWin && !preWin.closed) {
+      try {
+        preWin.postMessage({ __drive_target: webUrl }, "*");
+        preWin.focus?.();
+        return;
+      } catch (_) {
+        // 若 postMessage 失敗，走後備方案
+      }
+    }
+
+    // 後備：直接新開
     try {
       const w = window.open(webUrl, "_blank");
       w?.focus?.();
@@ -4482,6 +4532,26 @@
   async function onDriveButtonClick() {
     const t = getCurrentDetailTask();
     if (!t) return;
+
+    // ★ 僅桌機：先開預備分頁並灌入等待頁，之後用 postMessage 叫它自己跳轉
+    (() => {
+      const ua = (navigator.userAgent || "").toLowerCase();
+      const isMobile =
+        /android|iphone|ipad|ipod/.test(ua) ||
+        ((navigator.userAgent || "").includes("Macintosh") &&
+          navigator.maxTouchPoints > 1);
+      if (!isMobile && !__gd_prewin) {
+        try {
+          __gd_prewin = window.open("", "_blank");
+          // 灌入等待頁（無論授權有沒有耗時，分頁不再是空白）
+          if (!primePreWin(__gd_prewin)) {
+            __gd_prewin = null; // 灌不進去就放棄使用 preWin
+          }
+        } catch (_) {
+          __gd_prewin = null;
+        }
+      }
+    })();
 
     try {
       // ✅ 第一次授權前：立旗標 + 以使用者手勢先開一個空白頁，避免之後被擋
