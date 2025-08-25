@@ -3194,7 +3194,6 @@ btn.style.cssText =
   "display:inline-flex;align-items:center;justify-content:center;" +
   "appearance:none;-webkit-appearance:none;line-height:0;box-sizing:border-box;cursor:pointer;";    
 btn.className = "btn-gdrive";
-    btn.onclick = onDriveButtonClickMemo;
     row.appendChild(btn);
   }
   updateDriveButtonState(memoObj);
@@ -3223,6 +3222,8 @@ async function onDriveButtonClickMemo() {
     }
 
     await ensureDriveAuth();
+    if (firstTime) return;
+
     const folderId = await ensureExistingOrRecreateFolder(m);
     updateDriveButtonState(m);
 
