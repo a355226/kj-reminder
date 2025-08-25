@@ -4187,23 +4187,19 @@ const isIOSPWA = (() => {
 
   // ✅ 若是第一次授權且頁面沒有被跳走，直接補跑一次開啟
   if (localStorage.getItem(GD_POST_OPEN_KEY) === "1") {
-  setTimeout(async () => {
-    try {
-      const t = getCurrentDetailTask();
-      if (t) {
-        const id = await ensureExistingOrRecreateFolder(t);
-        updateDriveButtonState(t);
-        // ★ 關鍵：把預備分頁帶進去，避免留下空白頁
-        openDriveFolderWeb(id, __gd_prewin);
+    setTimeout(async () => {
+      try {
+        const t = getCurrentDetailTask();
+        if (t) {
+          const id = await ensureExistingOrRecreateFolder(t);
+          updateDriveButtonState(t);
+          openDriveFolderWeb(id);
+        }
+      } finally {
+        localStorage.removeItem(GD_POST_OPEN_KEY);
       }
-    } finally {
-      localStorage.removeItem(GD_POST_OPEN_KEY);
-      // ★ 清理：用過就清
-      try { __gd_prewin?.focus?.(); } catch(_) {}
-      __gd_prewin = null;
-    }
-  }, 0);
-}
+    }, 0);
+  }
 
   resolve();
 };
@@ -4313,23 +4309,21 @@ function openDriveFolderWeb(id, preWin) {
   // 用使用者手勢開的預備分頁導向，成功率高
   const usePreWin = (url) => {
     try {
-      // 桌機：若有預備分頁就導向它；否則正常開新分頁
-if (preWin && !preWin.closed) {
-  try {
-    preWin.location.replace(webUrl);
-    preWin.focus?.();
-    return;
-  } catch (_) {}
-}
+      if (preWin && !preWin.closed) {
+        preWin.location.href = url;
+        // 開 App 成功時，預備分頁通常會留著；1~2 秒後嘗試關閉
+        setTimeout(() => { try { preWin.close(); } catch(_){} }, 1500);
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  };
 
-// 原本的桌機開新分頁邏輯保留作為後備
-try {
-  const w = window.open(webUrl, "_blank");
-  w?.focus?.();
-} catch (_) {
-  try { window.location.href = webUrl; } catch(_) {}
-}
-
+  if (isAndroid) {
+    if (!usePreWin(androidIntentUrl)) {
+      // 不要任何 web 回退，直接在同窗送出深連結
+      try { window.location.href = androidIntentUrl; } catch(_) {}
+    }
     return;
   }
 
