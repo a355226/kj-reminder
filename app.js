@@ -4301,68 +4301,57 @@
     return parent; // 最底層資料夾 id
   }
 
-  function openDriveFolderWeb(id, preWin) {
-    const webUrl = `https://drive.google.com/drive/folders/${id}`; // 桌機仍用得到
-    const ua = (navigator.userAgent || "").toLowerCase();
-    const isAndroid = /android/.test(ua);
-    const isIOS =
-      /iphone|ipad|ipod/.test(ua) ||
-      ((navigator.userAgent || "").includes("Macintosh") &&
-        navigator.maxTouchPoints > 1);
+function openDriveFolderWeb(id, preWin) {
+  const webUrl = `https://drive.google.com/drive/folders/${id}`;
+  const ua = (navigator.userAgent || "").toLowerCase();
+  const isAndroid = /android/.test(ua);
+  const isIOS = /iphone|ipad|ipod/.test(ua)
+    || ((navigator.userAgent || "").includes("Macintosh") && navigator.maxTouchPoints > 1);
 
-    // 深連結
-    const iosSchemeUrl = `googledrive://${webUrl}`;
-    const androidIntentUrl =
-      `intent://drive.google.com/drive/folders/${id}` +
-      `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+  const iosSchemeUrl = `googledrive://${webUrl}`;
+  const androidIntentUrl =
+    `intent://drive.google.com/drive/folders/${id}` +
+    `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
 
-    // 用使用者手勢開的預備分頁導向，成功率高
-    const usePreWin = (url) => {
-      try {
-        if (preWin && !preWin.closed) {
-          preWin.location.href = url;
-          // 開 App 成功時，預備分頁通常會留著；1~2 秒後嘗試關閉
-          setTimeout(() => {
-            try {
-              preWin.close();
-            } catch (_) {}
-          }, 1500);
-          return true;
-        }
-      } catch (_) {}
-      return false;
-    };
-
-    if (isAndroid) {
-      if (!usePreWin(androidIntentUrl)) {
-        // 不要任何 web 回退，直接在同窗送出深連結
-        try {
-          window.location.href = androidIntentUrl;
-        } catch (_) {}
-      }
-      return;
-    }
-
-    if (isIOS) {
-      if (!usePreWin(iosSchemeUrl)) {
-        try {
-          window.location.href = iosSchemeUrl;
-        } catch (_) {}
-      }
-      // ✅ 不再 setTimeout 回退 web
-      return;
-    }
-
-    // 桌機：仍開網頁版（新分頁）
+  const usePreWin = (url) => {
     try {
-      const w = window.open(webUrl, "_blank");
-      w?.focus?.();
-    } catch (_) {
-      try {
-        window.location.href = webUrl;
-      } catch (_) {}
+      if (preWin && !preWin.closed) {
+        preWin.location.href = url;
+        setTimeout(() => { try { preWin.close(); } catch(_){} }, 1500);
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  };
+
+  if (isAndroid) {
+    if (!usePreWin(androidIntentUrl)) {
+      try { window.location.href = androidIntentUrl; } catch(_) {}
     }
+    return;
   }
+
+  if (isIOS) {
+    if (isIOSPWA) {
+      // iOS PWA：直接用頂層視窗喚醒 App，避免預備分頁在 iPad 留下空白頁
+      try { window.location.href = iosSchemeUrl; } catch (_) {}
+      return;
+    }
+    // iOS Safari（非 PWA）：維持原本邏輯
+    if (!usePreWin(iosSchemeUrl)) {
+      try { window.location.href = iosSchemeUrl; } catch(_) {}
+    }
+    return;
+  }
+
+  // 桌機：仍開網頁版（新分頁）
+  try {
+    const w = window.open(webUrl, "_blank");
+    w?.focus?.();
+  } catch (_) {
+    try { window.location.href = webUrl; } catch(_) {}
+  }
+}
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
   function getCurrentDetailTask() {
@@ -4479,46 +4468,42 @@
     updateDriveButtonState(taskObj);
   }
 
-  async function onDriveButtonClick() {
-    const t = getCurrentDetailTask();
-    if (!t) return;
+async function onDriveButtonClick() {
+  const t = getCurrentDetailTask();
+  if (!t) return;
 
-    try {
-      // ✅ 第一次授權前：立旗標 + 以使用者手勢先開一個空白頁，避免之後被擋
-      // 首次授權前：只有 iOS PWA 需要預備分頁，其它平台不要開空白分頁
-      const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
-      if (firstTime && isIOSPWA) {
-        localStorage.setItem(GD_POST_OPEN_KEY, "1");
-        try {
-          __gd_prewin = window.open("", "_blank");
-        } catch (_) {
-          __gd_prewin = null;
-        }
-      } else {
-        __gd_prewin = null; // 桌機/一般瀏覽器不使用預備分頁
-        localStorage.removeItem(GD_POST_OPEN_KEY);
+  try {
+    const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
+    if (firstTime && !isIOSPWA) {
+      localStorage.setItem(GD_POST_OPEN_KEY, "1");
+      try {
+        __gd_prewin = window.open("", "_blank");
+      } catch (_) {
+        __gd_prewin = null;
       }
-
-      await ensureDriveAuth();
-      const folderId = await ensureExistingOrRecreateFolder(t);
-      updateDriveButtonState(t);
-
-      // ✅ 授權後直接把預備視窗導向目標（若沒有預備視窗就走原邏輯）
-      openDriveFolderWeb(folderId, __gd_prewin);
-
-      // 收尾
+    } else {
+      // iOS PWA：不要用預備分頁，避免留下空白 about:blank
       localStorage.removeItem(GD_POST_OPEN_KEY);
       __gd_prewin = null;
-    } catch (e) {
-      // 收尾保險
-      localStorage.removeItem(GD_POST_OPEN_KEY);
-      __gd_prewin = null;
-
-      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-      alert("Google 雲端硬碟動作失敗：" + msg);
-      console.error("Drive error:", e);
     }
+
+    await ensureDriveAuth();
+    const folderId = await ensureExistingOrRecreateFolder(t);
+    updateDriveButtonState(t);
+
+    openDriveFolderWeb(folderId, __gd_prewin);
+
+    localStorage.removeItem(GD_POST_OPEN_KEY);
+    __gd_prewin = null;
+  } catch (e) {
+    localStorage.removeItem(GD_POST_OPEN_KEY);
+    __gd_prewin = null;
+
+    const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+    alert("Google 雲端硬碟動作失敗：" + msg);
+    console.error("Drive error:", e);
   }
+}
 
   // 開頁即暖機，確保第一次點擊前就把 gapi/gis/tokenClient 準備好
   (function driveWarmup() {
