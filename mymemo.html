@@ -3016,6 +3016,24 @@ async function ensureDriveAuth() {
   }
 }
 
+async function ensureDriveAuthSilent() {
+  try {
+    await loadGapiOnce();
+    const already = localStorage.getItem("gdrive_consent_done") === "1";
+    if (!already) return; // 第一次不要偷跳同意
+    const skew = 10 * 60 * 1000;
+    const exp = +localStorage.getItem("gdrive_token_exp") || 0;
+    const tok = gapi.client.getToken();
+    if (tok?.access_token && Date.now() + skew < exp) return;
+
+    await new Promise((resolve) => {
+      __tokenClient.callback = (r) => resolve();
+      try { __tokenClient.requestAccessToken({ prompt: "" }); }
+      catch (_) { resolve(); }
+    });
+  } catch (_) {}
+}
+
 /* ---- 外觀：按鈕高亮（有資料夾時） ---- */
 function ensureDriveGlowCss() {
   if (document.getElementById("driveGlowCss")) return;
@@ -3205,37 +3223,56 @@ async function onDriveButtonClickMemo() {
   const m = getCurrentDetailMemo();
   if (!m) return;
 
-  // 在「已移除」檢視：只允許開啟既有，不新建
+  // 已移除視圖：只開現有
   if (window.memoView === "removed") {
-    if (m.driveFolderId) {
-      openDriveFolderWeb(m.driveFolderId);
-    } else {
-      alert("此備忘在「已移除」檢視，僅能開啟既有資料夾。");
-    }
+    if (m.driveFolderId) openDriveFolderWeb(m.driveFolderId);
+    else alert("此備忘在「已移除」檢視，僅能開啟既有資料夾。");
     return;
   }
 
-  try {
-    const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
-    if (firstTime) {
-      localStorage.setItem(GD_POST_OPEN_KEY, "1");
-      try { __gd_prewin = window.open("", "_blank"); } catch(_) { __gd_prewin = null; }
-    }
+  const btn = document.getElementById("gdriveBtn");
+  btn?.setAttribute("aria-busy", "true");
 
+  // 第一次授權：立旗標＋預備分頁
+  const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
+  if (firstTime) {
+    localStorage.setItem(GD_POST_OPEN_KEY, "1");
+    try { __gd_prewin = window.open("", "_blank"); } catch(_) { __gd_prewin = null; }
+  }
+
+  // ✅ 快速路徑：若已有 ID，先立刻打開（不等驗證）
+  if (m.driveFolderId) {
+    openDriveFolderWeb(m.driveFolderId, __gd_prewin);
+    // 背景驗證 / 重建（失敗才重建）
+    (async () => {
+      try {
+        await ensureDriveAuth();
+        await ensureExistingOrRecreateFolder(m); // 會在需要時更新 m.driveFolderId
+        updateDriveButtonState(m);
+      } catch (_) {}
+      finally {
+        btn?.removeAttribute("aria-busy");
+        localStorage.removeItem(GD_POST_OPEN_KEY);
+        __gd_prewin = null;
+      }
+    })();
+    return;
+  }
+
+  // 沒有 ID：走原流程（授權 → 建/找 → 開啟）
+  try {
     await ensureDriveAuth();
     const folderId = await ensureExistingOrRecreateFolder(m);
     updateDriveButtonState(m);
-
     openDriveFolderWeb(folderId, __gd_prewin);
-
-    localStorage.removeItem(GD_POST_OPEN_KEY);
-    __gd_prewin = null;
   } catch (e) {
-    localStorage.removeItem(GD_POST_OPEN_KEY);
-    __gd_prewin = null;
     const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
     alert("Google 雲端硬碟動作失敗：" + msg);
     console.error("Drive error:", e);
+  } finally {
+    btn?.removeAttribute("aria-busy");
+    localStorage.removeItem(GD_POST_OPEN_KEY);
+    __gd_prewin = null;
   }
 }
 
@@ -3281,6 +3318,7 @@ async function onDriveButtonClickMemo() {
     // 等詳情 DOM 真正 render 完再插入按鈕
     requestAnimationFrame(() => {
       try { ensureDriveButtonsInlineUI(getCurrentDetailMemo()); } catch(_) {}
+      try { ensureDriveAuthSilent(); } catch(_) {}
     });
   };
 })();
