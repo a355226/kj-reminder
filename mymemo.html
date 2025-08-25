@@ -3094,52 +3094,57 @@
       }
 
       /* ---- 開啟資料夾（行動裝置優先呼叫 App） ---- */
-      function openDriveFolderWeb(id, preWin) {
-        const webUrl = `https://drive.google.com/drive/folders/${id}`;
-        const ua = (navigator.userAgent || "").toLowerCase();
-        const isAndroid = /android/.test(ua);
-        const isIOS =
-          /iphone|ipad|ipod/.test(ua) ||
-          ((navigator.userAgent || "").includes("Macintosh") &&
-            navigator.maxTouchPoints > 1);
+function openDriveFolderWeb(id, preWin) {
+  const webUrl = `https://drive.google.com/drive/folders/${id}`;
+  const ua = (navigator.userAgent || "").toLowerCase();
+  const isAndroid = /android/.test(ua);
+  const isIOS =
+    /iphone|ipad|ipod/.test(ua) ||
+    ((navigator.userAgent || "").includes("Macintosh") &&
+      navigator.maxTouchPoints > 1);
 
-        const iosSchemeUrl = `googledrive://${webUrl}`;
-        const androidIntentUrl =
-          `intent://drive.google.com/drive/folders/${id}` +
-          `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+  const iosSchemeUrl = `googledrive://${webUrl}`;
+  const androidIntentUrl =
+    `intent://drive.google.com/drive/folders/${id}` +
+    `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
 
-        const usePreWin = (url) => {
+  const usePreWin = (url) => {
+    try {
+      if (preWin && !preWin.closed) {
+        preWin.location.href = url;
+        setTimeout(() => {
           try {
-            if (preWin && !preWin.closed) {
-              preWin.location.href = url;
-              setTimeout(() => {
-                try {
-                  preWin.close();
-                } catch (_) {}
-              }, 1500);
-              return true;
-            }
+            preWin.close();
           } catch (_) {}
-          return false;
-        };
-
-        if (isAndroid) {
-          if (!usePreWin(androidIntentUrl))
-            window.location.href = androidIntentUrl;
-          return;
-        }
-        if (isIOS) {
-          if (!usePreWin(iosSchemeUrl)) window.location.href = iosSchemeUrl;
-          return;
-        }
-        // 桌機 → 開網頁
-        try {
-          window.open(webUrl, "_blank")?.focus?.();
-        } catch (_) {
-          window.location.href = webUrl;
-        }
+        }, 1500);
+        return true;
       }
+    } catch (_) {}
+    return false;
+  };
 
+  if (isAndroid) {
+    if (!usePreWin(androidIntentUrl))
+      window.location.href = androidIntentUrl;
+    return;
+  }
+  if (isIOS) {
+    if (isIOSPWA) {
+      // iOS PWA：直接用頂層導向呼叫 App，避免留下空白分頁
+      try { window.location.href = iosSchemeUrl; } catch (_) {}
+      return;
+    }
+    // iOS Safari（非 PWA）：維持預備分頁邏輯
+    if (!usePreWin(iosSchemeUrl)) window.location.href = iosSchemeUrl;
+    return;
+  }
+  // 桌機 → 開網頁
+  try {
+    window.open(webUrl, "_blank")?.focus?.();
+  } catch (_) {
+    window.location.href = webUrl;
+  }
+}
       /* ---- 取得目前「備忘詳情」對應的 Memo 物件 ---- */
       function getCurrentDetailMemo() {
         if (typeof selectedMemoId !== "undefined" && selectedMemoId) {
@@ -3241,54 +3246,61 @@
       }
 
       /* ---- 點擊行為（含第一次授權的預備視窗） ---- */
-      async function onDriveButtonClickMemo() {
-        const m = getCurrentDetailMemo();
-        if (!m) return;
+    async function onDriveButtonClickMemo() {
+  const m = getCurrentDetailMemo();
+  if (!m) return;
 
-        // 在「已移除」檢視：只允許開啟既有，不新建
-        if (window.memoView === "removed") {
-          if (m.driveFolderId) {
-            openDriveFolderWeb(m.driveFolderId);
-          } else {
-            alert("此備忘在「已移除」檢視，僅能開啟既有資料夾。");
-          }
-          return;
-        }
+  // 在「已移除」檢視：只允許開啟既有，不新建
+  if (window.memoView === "removed") {
+    if (m.driveFolderId) {
+      openDriveFolderWeb(m.driveFolderId);
+    } else {
+      alert("此備忘在「已移除」檢視，僅能開啟既有資料夾。");
+    }
+    return;
+  }
 
+  try {
+    const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
+    if (firstTime) {
+      // 首次授權一律立旗標，讓 ensureDriveAuth 完成後自動補跑開啟
+      localStorage.setItem(GD_POST_OPEN_KEY, "1");
+      if (!isIOSPWA) {
+        // 非 iOS PWA 才開預備分頁（提升喚起成功率）
         try {
-          // 首次授權前：只有 iOS PWA 需要預備分頁，其它平台不要開空白分頁
-          const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
-          if (firstTime && isIOSPWA) {
-            localStorage.setItem(GD_POST_OPEN_KEY, "1");
-            try {
-              __gd_prewin = window.open("", "_blank");
-            } catch (_) {
-              __gd_prewin = null;
-            }
-          } else {
-            __gd_prewin = null; // 桌機/一般瀏覽器不使用預備分頁
-            localStorage.removeItem(GD_POST_OPEN_KEY);
-          }
-
-          await ensureDriveAuth();
-          if (firstTime) return;
-
-          const folderId = await ensureExistingOrRecreateFolder(m);
-          updateDriveButtonState(m);
-
-          openDriveFolderWeb(folderId, __gd_prewin);
-
-          localStorage.removeItem(GD_POST_OPEN_KEY);
+          __gd_prewin = window.open("", "_blank");
+        } catch (_) {
           __gd_prewin = null;
-        } catch (e) {
-          localStorage.removeItem(GD_POST_OPEN_KEY);
-          __gd_prewin = null;
-          const msg =
-            e?.result?.error?.message || e?.message || JSON.stringify(e);
-          alert("Google 雲端硬碟動作失敗：" + msg);
-          console.error("Drive error:", e);
         }
+      } else {
+        // iOS PWA 不開預備分頁，避免殘留空白頁
+        __gd_prewin = null;
       }
+    } else {
+      // 非首次：不需要旗標與預備分頁
+      localStorage.removeItem(GD_POST_OPEN_KEY);
+      __gd_prewin = null;
+    }
+
+    await ensureDriveAuth();
+    if (firstTime) return; // 交給 ensureDriveAuth 的補跑邏輯處理
+
+    const folderId = await ensureExistingOrRecreateFolder(m);
+    updateDriveButtonState(m);
+
+    openDriveFolderWeb(folderId, __gd_prewin);
+
+    localStorage.removeItem(GD_POST_OPEN_KEY);
+    __gd_prewin = null;
+  } catch (e) {
+    localStorage.removeItem(GD_POST_OPEN_KEY);
+    __gd_prewin = null;
+    const msg =
+      e?.result?.error?.message || e?.message || JSON.stringify(e);
+    alert("Google 雲端硬碟動作失敗：" + msg);
+    console.error("Drive error:", e);
+  }
+}
 
       /* ---- 暖機：載入 SDK，pageshow 回補，首次授權後自動開啟 ---- */
       (function driveWarmup() {
