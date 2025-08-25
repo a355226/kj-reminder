@@ -4187,19 +4187,23 @@ const isIOSPWA = (() => {
 
   // ✅ 若是第一次授權且頁面沒有被跳走，直接補跑一次開啟
   if (localStorage.getItem(GD_POST_OPEN_KEY) === "1") {
-    setTimeout(async () => {
-      try {
-        const t = getCurrentDetailTask();
-        if (t) {
-          const id = await ensureExistingOrRecreateFolder(t);
-          updateDriveButtonState(t);
-          openDriveFolderWeb(id);
-        }
-      } finally {
-        localStorage.removeItem(GD_POST_OPEN_KEY);
+  setTimeout(async () => {
+    try {
+      const t = getCurrentDetailTask();
+      if (t) {
+        const id = await ensureExistingOrRecreateFolder(t);
+        updateDriveButtonState(t);
+        // ★ 關鍵：把預備分頁帶進去，避免留下空白頁
+        openDriveFolderWeb(id, __gd_prewin);
       }
-    }, 0);
-  }
+    } finally {
+      localStorage.removeItem(GD_POST_OPEN_KEY);
+      // ★ 清理：用過就清
+      try { __gd_prewin?.focus?.(); } catch(_) {}
+      __gd_prewin = null;
+    }
+  }, 0);
+}
 
   resolve();
 };
