@@ -1733,27 +1733,37 @@
         memoSortables = [];
       }
       
-      // ★ 依目前 DOM 的實際位置回填每張備忘的分類並存檔
+      // ★ 依目前 DOM 的實際位置，回填每張備忘的分類與排序序號(order)
 function commitMemoPositionsFromDOM() {
-  const pos = {};
+  let changed = false;
   document.querySelectorAll('#section-container .section').forEach(sec => {
     const secId = sec.id;
-    sec.querySelectorAll('.task').forEach(t => {
+    const tasks = sec.querySelectorAll('.task');
+    tasks.forEach((t, idx) => {
       const id = t.dataset.id;
-      if (id) pos[id] = secId;
+      if (!id) return;
+      const m = (memos || []).find(x => x.id === id);
+      if (!m) return;
+
+      let updated = false;
+      // 分類變更
+      if (m.section !== secId) {
+        m.section = secId;
+        updated = true;
+      }
+      // 排序序號（每 10 遞增，方便未來插入）
+      const ord = (idx + 1) * 10;
+      if (m.order !== ord) {
+        m.order = ord;
+        updated = true;
+      }
+      if (updated) {
+        m.updatedAt = Date.now();
+        changed = true;
+      }
     });
   });
-
-  let changed = false;
-  (memos || []).forEach(m => {
-    const nowSec = pos[m.id];
-    if (nowSec && m.section !== nowSec) {
-      m.section = nowSec;
-      m.updatedAt = Date.now();
-      changed = true;
-    }
-  });
-  if (changed) saveMemos(); // 寫回雲端，避免被舊資料覆蓋
+  if (changed) saveMemos(); // 寫回雲端
 }
 
       function initMemoSortables() {
@@ -1779,10 +1789,13 @@ function commitMemoPositionsFromDOM() {
                 if (m && m.section !== targetSection) {
                   m.section = targetSection;
                   m.updatedAt = Date.now();
-                  saveMemos(); // 寫回雲端
                 }
+                commitMemoPositionsFromDOM();
+
               },
               onUpdate: () => {
+                commitMemoPositionsFromDOM();
+
                 // 目前未儲存排序順序，保持現狀即可
               },
             });
@@ -1970,59 +1983,85 @@ function commitMemoPositionsFromDOM() {
   `;
       }
 
-      function renderAll() {
-        // 清空每個分類的 memo 卡
-        document.querySelectorAll(".section").forEach((sec) => {
-          Array.from(sec.querySelectorAll(".task")).forEach((t) => t.remove());
-        });
+  function renderAll() {
+  // 清空每個分類的 memo 卡
+  document.querySelectorAll("#section-container .section").forEach((sec) => {
+    sec.querySelectorAll(".task").forEach((t) => t.remove());
+  });
 
-        const isRemoved = memoView === "removed";
-        const filterVal = isRemoved
-          ? memoMonthFilterRemoved
-          : memoMonthFilterActive;
-        const source = (memos || []).filter((m) =>
-          isRemoved ? !!m.removedAt : !m.removedAt
-        );
+  const isRemoved = memoView === "removed";
+  const filterVal = isRemoved ? memoMonthFilterRemoved : memoMonthFilterActive;
 
-        const filtered = source.filter((m) => {
-          if (filterVal === "all") return true;
-          if (filterVal === "important") return !!m.important;
-          const ts = getMemoRefTime(m);
-          if (!ts) return false;
-          if (filterVal === "recent5") {
-            return Math.floor((Date.now() - ts) / 86400000) <= 5;
-          }
-          if (filterVal === "recent30") {
-            return Math.floor((Date.now() - ts) / 86400000) <= 30;
-          }
-          return toRocYMFromTs(ts) === filterVal; // 指定月份
-        });
+  // 只取當前視圖需要的資料
+  const source = (Array.isArray(memos) ? memos : []).filter((m) =>
+    isRemoved ? !!m.removedAt : !m.removedAt
+  );
 
-        filtered.forEach((m) => {
-          const el = document.createElement("div");
-          el.className = "task" + (isRemoved ? " removed" : "");
-          el.dataset.id = m.id;
-          el.innerHTML = memoCardHTML(m);
-          const sec = document.getElementById(m.section);
-          (sec || document.getElementById(categories[0]))?.appendChild(el);
-        });
+  // 篩選（月份 / 重要）
+  const filtered = source.filter((m) => {
+    if (filterVal === "all") return true;
+    if (filterVal === "important") return !!m.important;
+    const ts = getMemoRefTime(m);
+    if (!ts) return false;
+    if (filterVal === "recent5") {
+      return (Date.now() - ts) / 86400000 <= 5;
+    }
+    if (filterVal === "recent30") {
+      return (Date.now() - ts) / 86400000 <= 30;
+    }
+    return toRocYMFromTs(ts) === filterVal; // 指定月份
+  });
 
-        if (!isEditing) bindSwipeToTasks?.(); // 編輯時不要綁 swipe/click
+  // ★ 依「分類 + order」排序；order 不在時用 createdAt/updatedAt 作後備，讓順序可重現
+  filtered.sort((a, b) => {
+    const secA = isRemoved ? stripRemovedSuffix(a.section || "") : (a.section || "");
+    const secB = isRemoved ? stripRemovedSuffix(b.section || "") : (b.section || "");
+    const sc = secA.localeCompare(secB);
+    if (sc !== 0) return sc;
 
-        updateSectionOptions?.();
+    const ao = (typeof a.order === "number") ? a.order : (a.createdAt || a.updatedAt || 0);
+    const bo = (typeof b.order === "number") ? b.order : (b.createdAt || b.updatedAt || 0);
+    if (ao !== bo) return ao - bo;
 
-        if (filterVal === "all") {
-          document
-            .querySelectorAll("#section-container .section")
-            .forEach((sec) => (sec.style.display = ""));
-        } else {
-          hideEmptySectionsAfterFilter();
-        }
-        if (isEditing && memoView === "active") initMemoSortables();
+    // 最後用 updatedAt 當 tie-breaker，避免不穩定
+    return (a.updatedAt || 0) - (b.updatedAt || 0);
+  });
 
-        // 依目前檢視重建月份選單
-        buildMemoMonthMenu();
-      }
+  // 建立 DOM（在「已移除」視圖，section 的 id 是原始分類名）
+  filtered.forEach((m) => {
+    const el = document.createElement("div");
+    el.className = "task" + (isRemoved ? " removed" : "");
+    el.dataset.id = m.id;
+    el.innerHTML = memoCardHTML(m);
+
+    const secId = isRemoved ? stripRemovedSuffix(m.section) : m.section;
+    let sec = document.getElementById(secId);
+
+    // 找不到就丟到第一個 section，避免 throw（極少見的防呆）
+    if (!sec) sec = document.querySelector("#section-container .section");
+    sec?.appendChild(el);
+  });
+
+  // 非編輯時才綁 swipe（避免與拖拉衝突）
+  if (!isEditing) bindSwipeToTasks?.();
+
+  updateSectionOptions?.();
+
+  // 依篩選顯示/隱藏空分類
+  if (filterVal === "all") {
+    document.querySelectorAll("#section-container .section").forEach((sec) => {
+      sec.style.display = "";
+    });
+  } else {
+    hideEmptySectionsAfterFilter();
+  }
+
+  // 只在「當前」＋ 編輯中啟用拖拉
+  if (isEditing && memoView === "active") initMemoSortables();
+
+  // 依目前檢視重建月份選單
+  buildMemoMonthMenu();
+}
 
       function getMemoRefTime(m) {
         return m?.updatedAt || m?.createdAt || null;
@@ -2073,6 +2112,7 @@ function commitMemoPositionsFromDOM() {
           important,
           createdAt: now,
           updatedAt: now,
+          order: Date.now()
         };
 
         memos.push(memo);
