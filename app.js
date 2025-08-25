@@ -4313,21 +4313,23 @@ function openDriveFolderWeb(id, preWin) {
   // 用使用者手勢開的預備分頁導向，成功率高
   const usePreWin = (url) => {
     try {
-      if (preWin && !preWin.closed) {
-        preWin.location.href = url;
-        // 開 App 成功時，預備分頁通常會留著；1~2 秒後嘗試關閉
-        setTimeout(() => { try { preWin.close(); } catch(_){} }, 1500);
-        return true;
-      }
-    } catch (_) {}
-    return false;
-  };
+      // 桌機：若有預備分頁就導向它；否則正常開新分頁
+if (preWin && !preWin.closed) {
+  try {
+    preWin.location.replace(webUrl);
+    preWin.focus?.();
+    return;
+  } catch (_) {}
+}
 
-  if (isAndroid) {
-    if (!usePreWin(androidIntentUrl)) {
-      // 不要任何 web 回退，直接在同窗送出深連結
-      try { window.location.href = androidIntentUrl; } catch(_) {}
-    }
+// 原本的桌機開新分頁邏輯保留作為後備
+try {
+  const w = window.open(webUrl, "_blank");
+  w?.focus?.();
+} catch (_) {
+  try { window.location.href = webUrl; } catch(_) {}
+}
+
     return;
   }
 
