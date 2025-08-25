@@ -1732,6 +1732,29 @@
         });
         memoSortables = [];
       }
+      
+      // ★ 依目前 DOM 的實際位置回填每張備忘的分類並存檔
+function commitMemoPositionsFromDOM() {
+  const pos = {};
+  document.querySelectorAll('#section-container .section').forEach(sec => {
+    const secId = sec.id;
+    sec.querySelectorAll('.task').forEach(t => {
+      const id = t.dataset.id;
+      if (id) pos[id] = secId;
+    });
+  });
+
+  let changed = false;
+  (memos || []).forEach(m => {
+    const nowSec = pos[m.id];
+    if (nowSec && m.section !== nowSec) {
+      m.section = nowSec;
+      m.updatedAt = Date.now();
+      changed = true;
+    }
+  });
+  if (changed) saveMemos(); // 寫回雲端，避免被舊資料覆蓋
+}
 
       function initMemoSortables() {
         destroyMemoSortables();
@@ -1833,6 +1856,7 @@
       }
 
       function exitEditMode() {
+        commitMemoPositionsFromDOM();
         isEditing = false;
         document.getElementById("app")?.classList.remove("editing");
 
