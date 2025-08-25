@@ -4201,16 +4201,10 @@
               if (t) {
                 const id = await ensureExistingOrRecreateFolder(t);
                 updateDriveButtonState(t);
-                // ★ 關鍵：把預備分頁帶進去，避免留下空白頁
-                openDriveFolderWeb(id, __gd_prewin);
+                openDriveFolderWeb(id);
               }
             } finally {
               localStorage.removeItem(GD_POST_OPEN_KEY);
-              // ★ 清理：用過就清
-              try {
-                __gd_prewin?.focus?.();
-              } catch (_) {}
-              __gd_prewin = null;
             }
           }, 0);
         }
@@ -4359,14 +4353,7 @@
       return;
     }
 
-    // ✅ 桌機：若有預備分頁就導向它；否則正常開新分頁
-    if (preWin && !preWin.closed) {
-      try {
-        preWin.location.replace(webUrl);
-        preWin.focus?.();
-        return;
-      } catch (_) {}
-    }
+    // 桌機：仍開網頁版（新分頁）
     try {
       const w = window.open(webUrl, "_blank");
       w?.focus?.();
