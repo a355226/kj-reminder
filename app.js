@@ -4344,17 +4344,13 @@
     }
 
     if (isIOS) {
-    if (isIOSPWA) {
-     // ★ iOS PWA：直接頂層視窗導向 App，自然不會有空白分頁
-     try { window.location.href = iosSchemeUrl; } catch (_) {}
-     return;
-   } else {
-     // iOS Safari（非 PWA）：沿用你的原邏輯（可使用 preWin）
-     if (!usePreWin(iosSchemeUrl)) {
-       try { window.location.href = iosSchemeUrl; } catch (_) {}
-     }
-     return; // 依你原本設計：不做 web 回退
-   }
+      if (!usePreWin(iosSchemeUrl)) {
+        try {
+          window.location.href = iosSchemeUrl;
+        } catch (_) {}
+      }
+      // ✅ 不再 setTimeout 回退 web
+      return;
     }
 
     // 桌機：仍開網頁版（新分頁）
@@ -4490,14 +4486,12 @@
     try {
       // ✅ 第一次授權前：立旗標 + 以使用者手勢先開一個空白頁，避免之後被擋
       // 首次授權前：只有 iOS PWA 需要預備分頁，其它平台不要開空白分頁
-    const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
- if (firstTime && !isIOSPWA) {                // ★ iOS PWA 不開預備分頁
-   localStorage.setItem(GD_POST_OPEN_KEY, "1");
-   try { __gd_prewin = window.open("", "_blank"); } catch (_) { __gd_prewin = null; }
- } else {
-   localStorage.removeItem(GD_POST_OPEN_KEY); // 避免之後 pageshow 誤觸自動補跑
-   __gd_prewin = null;
- } catch (_) {
+      const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
+      if (firstTime && isIOSPWA) {
+        localStorage.setItem(GD_POST_OPEN_KEY, "1");
+        try {
+          __gd_prewin = window.open("", "_blank");
+        } catch (_) {
           __gd_prewin = null;
         }
       } else {
