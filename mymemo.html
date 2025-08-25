@@ -3079,10 +3079,8 @@ function openDriveFolderWeb(id, preWin) {
 
 /* ---- 取得目前「備忘詳情」對應的 Memo 物件 ---- */
 function getCurrentDetailMemo() {
-  if (window.selectedMemoId) {
-    return (Array.isArray(window.memos) ? window.memos : []).find(
-      (m) => m.id === window.selectedMemoId
-    ) || null;
+  if (typeof selectedMemoId !== "undefined" && selectedMemoId) {
+    return (Array.isArray(memos) ? memos : []).find(m => m.id === selectedMemoId) || null;
   }
   return null;
 }
