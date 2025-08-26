@@ -1142,6 +1142,20 @@ button.palette-btn:active {
 .rec-date{aspect-ratio:1/1;border:1px solid #eee;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .rec-date.selected{outline:3px solid #176dff55;border-color:#176dff}
 
+/* === 日期徽章 → 可點按鈕 + 日曆有任務紅字 === */
+#today-badge{
+  pointer-events: auto;   /* 原本是 none，改成可點 */
+  cursor: pointer;
+}
+#today-badge:active{ transform: translateY(1px); }
+
+/* 月曆中，當天若有任務（有預定完成日）→ 紅字 */
+.rec-date.has-task{
+  color: #d33;
+  font-weight: 700;
+}
+
+
   </style>
 </head>
 <body>
@@ -1471,7 +1485,7 @@ button.palette-btn:active {
   <label><input type="radio" name="daysFilter" value="1"> 1</label>
   <label><input type="radio" name="daysFilter" value="3"> 3</label>
   <label><input type="radio" name="daysFilter" value="5"> 5</label>
-  <label><input type="radio" name="daysFilter" value="all"> 不限</label>
+  <label><input type="radio" name="daysFilter" value="all"> 無</label>
   <label><input type="radio" name="daysFilter" value="default" checked> 預設</label>
 </div>
 <h3>任務狀態</h3>
@@ -1547,6 +1561,30 @@ button.palette-btn:active {
   </div>
 </div>
 
+<!-- 日期篩選：月曆 Modal -->
+<div class="modal" id="dateFilterModal">
+  <div class="modal-content">
+    <button class="close-btn" onclick="closeModal('dateFilterModal')">✕</button>
+    <h3 style="text-align:center;">選擇日期</h3>
+
+    <div class="rec-cal-head">
+      <div class="rec-nav">
+        <button id="dfPrev">&lt;</button>
+        <button id="dfToday">今</button>
+        <button id="dfNext">&gt;</button>
+      </div>
+      <div id="dfYM"></div>
+    </div>
+
+    <div class="rec-cal-grid" id="dfCalNames"></div>
+    <div class="rec-cal-grid" id="dfCalGrid"></div>
+
+    <div class="confirm-buttons" style="margin-top:1rem;">
+      <button class="confirm-btn" id="dfClearBtn">顯示全部</button>
+      <button class="cancel-btn" onclick="closeModal('dateFilterModal')">關閉</button>
+    </div>
+  </div>
+</div>
 
 
 </body>
