@@ -4855,86 +4855,76 @@
   (function __wireModalSearch() {
     const input = document.getElementById("taskSearchInput");
     const clear = document.getElementById("taskSearchClear");
+    const wrap = document.getElementById("globalSearch");
     if (!input || !clear) return;
 
-    // 點擊時把 placeholder 收掉，離開且空字再顯示（你要的是「點擊後消失」）
-    input.addEventListener("focus", () => (input.__ph = input.placeholder), {
-      once: true,
-    });
-    input.addEventListener("focus", () => (input.placeholder = ""));
-    input.addEventListener("blur", () => {
-      if (!input.value) input.placeholder = "在MyTask中搜尋";
-    });
+    // 記住初始 placeholder（MyTask / MyMemo 皆可）
+    if (!input.dataset.origPh) {
+      input.dataset.origPh =
+        input.getAttribute("placeholder") || "在MyTask中搜尋";
+    }
 
+    // 依輸入同步 UI：空白→顯示 placeholder & 隱藏✕；有字→清掉 placeholder & 顯示✕
+    function syncSearchUI() {
+      const empty = !input.value.trim();
+      input.placeholder = empty ? input.dataset.origPh : "";
+      clear.style.display = empty ? "none" : "inline-flex";
+      wrap && wrap.classList.toggle("has-text", !empty);
+    }
+
+    // 即時輸入：更新查詢 & 同步 UI（你原本的搜尋邏輯放這裡）
     input.addEventListener("input", () => {
-      searchQuery = input.value;
-      applySearchFilter(); // 即時
+      // 若你的程式用 searchQuery / applySearchFilter / applyDayFilter，照舊呼叫即可
+      try {
+        window.searchQuery = input.value || "";
+      } catch (_) {}
+      try {
+        window.applySearchFilter?.();
+      } catch (_) {}
+      try {
+        if (
+          typeof window.statusFilter !== "undefined" &&
+          window.statusFilter === "done"
+        ) {
+          window.renderCompletedTasks?.();
+        } else {
+          window.applyDayFilter?.();
+          window.renderAll?.(); // 給 MyMemo 用
+        }
+      } catch (_) {}
+      syncSearchUI();
     });
 
+    // focus/blur 都只做「同步 UI」，不再強制清空 placeholder
+    input.addEventListener("focus", syncSearchUI);
+    input.addEventListener("blur", syncSearchUI);
+
+    // 清除鍵：清掉內容→同步 UI（會立即把 placeholder 顯示回來）
     clear.addEventListener("click", () => {
       input.value = "";
-      searchQuery = "";
-      applySearchFilter(); // 取消搜尋
-      input.blur();
+      try {
+        window.searchQuery = "";
+      } catch (_) {}
+      try {
+        window.applySearchFilter?.();
+        if (
+          typeof window.statusFilter !== "undefined" &&
+          window.statusFilter === "done"
+        ) {
+          window.renderCompletedTasks?.();
+        } else {
+          window.applyDayFilter?.();
+          window.renderAll?.();
+        }
+      } catch (_) {}
+      syncSearchUI();
+      // 保持焦點也可立即看到 placeholder（大多數瀏覽器會顯示）
+      input.focus();
     });
+
+    // 初始化：一開始隱藏✕，顯示初始 placeholder
+    syncSearchUI();
   })();
-
-  // 以包裝方式，在重畫列表後自動再套用搜尋（不用改你原本函式）
-  (function __patchRenders() {
-    const wrap = (name) => {
-      const fn = window[name];
-      if (typeof fn !== "function") return;
-      window[name] = function (...args) {
-        const ret = fn.apply(this, args);
-        try {
-          applySearchFilter();
-        } catch (_) {}
-        return ret;
-      };
-    };
-    wrap("showOngoing");
-    wrap("renderCompletedTasks");
-  })();
-
-  // 🔎 即時輸入：每打一字就套用
-  document.addEventListener("input", function (e) {
-    if (e.target && e.target.id === "taskSearchInput") {
-      searchQuery = e.target.value || "";
-      if (statusFilter === "done") {
-        renderCompletedTasks(); // 完成視圖：重畫一次（已內建搜尋過濾）
-      } else {
-        applyDayFilter(); // 進行中：即時收斂
-      }
-    }
-  });
-
-  // 🔎 清除搜尋
-  document.addEventListener("click", function (e) {
-    if (e.target && e.target.id === "taskSearchClear") {
-      const input = document.getElementById("taskSearchInput");
-      if (input) input.value = "";
-      searchQuery = "";
-      if (statusFilter === "done") {
-        renderCompletedTasks();
-      } else {
-        applyDayFilter();
-      }
-    }
-  });
-
-  // UX：點入時隱藏 placeholder，離開若空白再顯示
-  document.addEventListener("focusin", function (e) {
-    if (e.target && e.target.id === "taskSearchInput") {
-      e.target.dataset.ph = e.target.placeholder;
-      e.target.placeholder = "";
-    }
-  });
-  document.addEventListener("focusout", function (e) {
-    if (e.target && e.target.id === "taskSearchInput") {
-      if (!e.target.value)
-        e.target.placeholder = e.target.dataset.ph || "在MyTask中搜尋";
-    }
-  });
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
