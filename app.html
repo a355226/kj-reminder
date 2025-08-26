@@ -200,30 +200,76 @@
     </div>
 
     <script>
-           <script>
       (function () {
         const tabTask = document.getElementById("tab-task");
         const tabMemo = document.getElementById("tab-memo");
         const ifTask = document.getElementById("app-task");
         const ifMemo = document.getElementById("app-memo");
-        const mask   = document.getElementById("switchMask");
+        const mask = document.getElementById("switchMask");
 
         const loaded = { task: false, memo: false };
         let shownAt = 0;
 
-        // ★ 單一組 load 監聽（避免重複掛兩次）
-        ifTask.addEventListener("load", () => { loaded.task = true; hideMaskSoon(); }, { once:true });
-        ifMemo.addEventListener("load", () => { loaded.memo = true; hideMaskSoon(); }, { once:true });
+        // 一次性 load 監聽（載好後之後切換都不遮）
+        ifTask.addEventListener(
+          "load",
+          () => {
+            loaded.task = true;
+            hideMaskSoon();
+          },
+          { once: true }
+        );
+        ifMemo.addEventListener(
+          "load",
+          () => {
+            loaded.memo = true;
+            hideMaskSoon();
+          },
+          { once: true }
+        );
 
+        // ======= 極速關鍵：預熱 + 快速旗標 =======
+        function setFastSwitchFlag() {
+          try {
+            sessionStorage.setItem("fast_switch", "1");
+          } catch (_) {}
+        }
+        function warmFrame(ifr) {
+          // 同源才做；失敗就靜默
+          try {
+            const d = ifr.contentDocument;
+            if (!d) return;
+            // 隱藏內頁可能短暫出現的遮罩/登入卡（不改內頁功能）
+            const a = d.getElementById("autologin-overlay");
+            if (a) a.style.display = "none";
+            const l = d.getElementById("loadingScreen");
+            if (l) l.style.display = "none";
+            const login = d.getElementById("loginPage");
+            if (login) login.style.display = "none";
+            // 讀一次 layout 逼瀏覽器把畫面準備好（避免首幀抖一下）
+            d.body && d.body.getBoundingClientRect();
+          } catch (_) {}
+        }
+        function isReady(ifr) {
+          try {
+            return (
+              !!ifr.contentDocument &&
+              ifr.contentDocument.readyState === "complete"
+            );
+          } catch (_) {
+            return false;
+          }
+        }
+
+        // 外層遮罩：只在「目標頁尚未 ready」時用作備援
         function showMask() {
           shownAt = performance.now();
           mask.classList.add("show");
           mask.setAttribute("aria-hidden", "false");
         }
         function hideMaskSoon() {
-          // ★ 更短的最小顯示時間 + rAF，避免在同一幀加入/移除造成撲朔
           const elapsed = performance.now() - shownAt;
-          const delay = Math.max(0, 90 - elapsed); // 原 120ms → 90ms
+          const delay = Math.max(0, 80 - elapsed); // 80ms 極短保底，體感幾乎無
           setTimeout(() => {
             requestAnimationFrame(() => {
               mask.classList.remove("show");
@@ -233,38 +279,45 @@
         }
 
         function switchTo(which) {
-          const wantTask = which === "task";
-          const needMask = wantTask ? !loaded.task : !loaded.memo;
+          const target = which === "task" ? ifTask : ifMemo;
+          const other = which === "task" ? ifMemo : ifTask;
+          const tabOn = which === "task" ? tabTask : tabMemo;
+          const tabOff = which === "task" ? tabMemo : tabTask;
 
-          if (needMask) showMask(); else hideMaskSoon();
+          // 1) 設快速旗標 + 預熱目標 iframe（像同頁切換一樣即時）
+          setFastSwitchFlag();
+          warmFrame(target);
 
-          // ★ 用 rAF 才切 class，避免同步 layout 抖動
+          // 2) 只有「完全還沒 ready」才短暫顯示遮罩
+          if (!isReady(target)) showMask();
+          else hideMaskSoon();
+
+          // 3) 下一幀再切換 class，避免同幀重排
           requestAnimationFrame(() => {
-            if (wantTask) {
-              tabTask.classList.add("active");
-              tabMemo.classList.remove("active");
-              ifTask.classList.add("active");
-              ifMemo.classList.remove("active");
-              if (loaded.task) hideMaskSoon();
-            } else {
-              tabMemo.classList.add("active");
-              tabTask.classList.remove("active");
-              ifMemo.classList.add("active");
-              ifTask.classList.remove("active");
-              if (loaded.memo) hideMaskSoon();
-            }
+            tabOn.classList.add("active");
+            tabOff.classList.remove("active");
+            target.classList.add("active");
+            other.classList.remove("active");
+            if (isReady(target)) hideMaskSoon();
           });
         }
 
-        // ★ 提前一幀：pointerdown 先切（點下去立刻切，體感更快）
+        // pointerdown 先切（比 click 快一幀）
         tabTask.addEventListener("pointerdown", () => switchTo("task"));
         tabMemo.addEventListener("pointerdown", () => switchTo("memo"));
-
-        // 仍保留 click（鍵盤/輔助技術或瀏覽器不派 pointerdown 的情況）
+        // 兼容鍵盤/輔助技術
         tabTask.addEventListener("click", () => switchTo("task"));
         tabMemo.addEventListener("click", () => switchTo("memo"));
+
+        // 背景先暖機備用頁面（不阻塞互動）
+        const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 0));
+        idle(() => {
+          warmFrame(ifMemo);
+          warmFrame(ifTask);
+        });
       })();
     </script>
+
     <!-- 在這裡貼 ↓↓↓（放在 </body> 之前） -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
