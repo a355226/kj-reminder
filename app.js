@@ -78,13 +78,8 @@
   document.addEventListener("change", function (e) {
     if (e.target && e.target.id === "importantOnly") {
       importantOnly = !!e.target.checked;
-      // 關掉時：完全回到原本視圖（保持你原邏輯）
-      // 打開時：先跑完原本視圖 → 再套❗最後一層
-      if (!importantOnly) {
-        refreshCurrentView();
-      } else {
-        applyImportantFilter(); // 對「現有可見結果」做最後一層篩選
-      }
+      // ✅ 不管開/關，都重畫目前頁籤 → 會依序套用：日期/天數 → 重要
+      refreshCurrentView();
     }
   });
 
@@ -3995,23 +3990,29 @@
     }
   });
   function applyImportantFilter() {
-    // 只在開啟時作用；關閉時一律由 refreshCurrentView 還原
-    if (!importantOnly) return;
+    document.querySelectorAll(".task").forEach((taskEl) => {
+      const t = tasks.find((x) => x.id === taskEl.dataset.id);
+      if (!t) return;
 
-    // 逐張任務卡，看對應資料是不是 important
-    document.querySelectorAll("#section-container .task").forEach((el) => {
-      const id = el.dataset.id;
-      // 先在進行中找，找不到再到完成清單找
-      let t = tasks.find((x) => x.id === id);
-      if (!t) t = completedTasks.find((x) => x.id === id);
+      // 先拿“上一層”結果（日期/天數等跑完後的可見性）
+      let show = taskEl.style.display !== "none";
 
-      const isImportant = !!(t && t.important);
-      // 只保留重要；非重要就隱藏（不動原本排序/顏色/天數）
-      el.style.display = isImportant ? "" : "none";
+      // 開啟「只看重要」時，再加一層條件
+      if (importantOnly) show = show && !!t.important;
+
+      taskEl.style.display = show ? "" : "none";
     });
 
-    // 套完最後一層後，把空分類藏起來（沿用你既有的規則）
-    hideEmptySectionsAfterFilter();
+    // 收斂後再處理「空分類隱藏」
+    const shouldHideEmpty =
+      statusFilter === "done" ||
+      filterDay !== "default" ||
+      !!dateFilter ||
+      !!importantOnly;
+
+    if (shouldHideEmpty && typeof hideEmptySectionsAfterFilter === "function") {
+      hideEmptySectionsAfterFilter();
+    }
   }
 
   // 判斷在目前的濾鏡/頁籤下，這張卡是否會被顯示
