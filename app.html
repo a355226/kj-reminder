@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
   <head>
+    <!-- 預取 MyMemo 殼文件（不會執行，只下載，切換更快） -->
+    <link rel="prefetch" href="mymemo.html" as="document" />
+
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -51,17 +54,25 @@
         inset: var(--bar-h) 0 0 0;
         background: var(--bg);
       }
+      /* 讓兩個 iframe 常駐，切換時只做淡入淡出（更順） */
       iframe.app {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
         border: 0;
-        display: none;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 0.14s ease; /* 輕微淡入，體感更順 */
+        will-change: opacity;
+        contain: layout style paint; /* 隔離布局/繪製，避免互相影響 */
         background: transparent;
       }
       iframe.app.active {
-        display: block;
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
       }
 
       /* 切換中的遮罩（避免看到各自頁的登入卡片） */
@@ -140,7 +151,7 @@
         class="app"
         src="mymemo.html"
         title="MyMemo"
-        loading="lazy"
+        loading="eager"
       ></iframe>
     </div>
 
@@ -180,23 +191,50 @@
         );
 
         function show(which) {
-          showMask();
+          const wantTask = which === "task";
+          const needMask = wantTask ? !loaded.task : !loaded.memo;
 
-          if (which === "task") {
-            tabTask.classList.add("active");
-            tabMemo.classList.remove("active");
-            ifTask.classList.add("active");
-            ifMemo.classList.remove("active");
-            loaded.task ? hideMaskSoon() : null;
-          } else {
-            tabMemo.classList.add("active");
-            tabTask.classList.remove("active");
-            ifMemo.classList.add("active");
-            ifTask.classList.remove("active");
-            loaded.memo ? hideMaskSoon() : null;
-          }
+          // 只有目標頁還沒載好時，才需要遮罩
+          if (needMask) showMask();
+          else hideMaskSoon();
+
+          // 用 rAF 切 class，避免同步重排造成一點點卡頓
+          requestAnimationFrame(() => {
+            if (wantTask) {
+              tabTask.classList.add("active");
+              tabMemo.classList.remove("active");
+              ifTask.classList.add("active");
+              ifMemo.classList.remove("active");
+              if (loaded.task) hideMaskSoon();
+            } else {
+              tabMemo.classList.add("active");
+              tabTask.classList.remove("active");
+              ifMemo.classList.add("active");
+              ifTask.classList.remove("active");
+              if (loaded.memo) hideMaskSoon();
+            }
+          });
         }
 
+        // load 一次後就標記「已就緒」，之後切換不再出遮罩
+        ifTask.addEventListener(
+          "load",
+          () => {
+            loaded.task = true;
+            hideMaskSoon();
+          },
+          { once: true }
+        );
+        ifMemo.addEventListener(
+          "load",
+          () => {
+            loaded.memo = true;
+            hideMaskSoon();
+          },
+          { once: true }
+        );
+
+        // 遮罩顯示時間稍微縮短，手感更俐落（仍保留至少顯示一下避免閃爍）
         let shownAt = 0;
         function showMask() {
           shownAt = performance.now();
@@ -204,9 +242,8 @@
           mask.setAttribute("aria-hidden", "false");
         }
         function hideMaskSoon() {
-          // 至少顯示 350ms，視覺比較順，也能遮掉內頁的登入閃屏
           const elapsed = performance.now() - shownAt;
-          const delay = Math.max(0, 350 - elapsed);
+          const delay = Math.max(0, 120 - elapsed); // 350ms -> 120ms，切換更快
           setTimeout(() => {
             mask.classList.remove("show");
             mask.setAttribute("aria-hidden", "true");
