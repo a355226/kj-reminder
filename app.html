@@ -1,6 +1,41 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
   <head>
+    <!-- 連線預熱：Firebase / Google 平台（握手更快） -->
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://apis.google.com" crossorigin />
+    <link
+      rel="preconnect"
+      href="https://firebasestorage.googleapis.com"
+      crossorigin
+    />
+    <link
+      rel="preconnect"
+      href="https://kjreminder-24d74-default-rtdb.asia-southeast1.firebasedatabase.app"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      as="script"
+      href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      as="script"
+      href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      as="script"
+      href="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"
+      crossorigin
+    />
+
+    <!-- 你原本就有的：先把 MyMemo 殼抓下來 -->
+    <link rel="prefetch" href="mymemo.html" as="document" />
+
     <!-- 預取 MyMemo 殼文件（不會執行，只下載，切換更快） -->
     <link rel="prefetch" href="mymemo.html" as="document" />
 
@@ -67,6 +102,7 @@
         transition: opacity 0.14s ease; /* 輕微淡入，體感更順 */
         will-change: opacity;
         contain: layout style paint; /* 隔離布局/繪製，避免互相影響 */
+        transform: translateZ(0); /* ★ 硬保一個合成層，避免偶發的重繪延遲 */
         background: transparent;
       }
       iframe.app.active {
@@ -164,41 +200,45 @@
     </div>
 
     <script>
+           <script>
       (function () {
         const tabTask = document.getElementById("tab-task");
         const tabMemo = document.getElementById("tab-memo");
         const ifTask = document.getElementById("app-task");
         const ifMemo = document.getElementById("app-memo");
-        const mask = document.getElementById("switchMask");
+        const mask   = document.getElementById("switchMask");
 
         const loaded = { task: false, memo: false };
+        let shownAt = 0;
 
-        ifTask.addEventListener(
-          "load",
-          () => {
-            loaded.task = true;
-            hideMaskSoon();
-          },
-          { once: true }
-        );
-        ifMemo.addEventListener(
-          "load",
-          () => {
-            loaded.memo = true;
-            hideMaskSoon();
-          },
-          { once: true }
-        );
+        // ★ 單一組 load 監聽（避免重複掛兩次）
+        ifTask.addEventListener("load", () => { loaded.task = true; hideMaskSoon(); }, { once:true });
+        ifMemo.addEventListener("load", () => { loaded.memo = true; hideMaskSoon(); }, { once:true });
 
-        function show(which) {
+        function showMask() {
+          shownAt = performance.now();
+          mask.classList.add("show");
+          mask.setAttribute("aria-hidden", "false");
+        }
+        function hideMaskSoon() {
+          // ★ 更短的最小顯示時間 + rAF，避免在同一幀加入/移除造成撲朔
+          const elapsed = performance.now() - shownAt;
+          const delay = Math.max(0, 90 - elapsed); // 原 120ms → 90ms
+          setTimeout(() => {
+            requestAnimationFrame(() => {
+              mask.classList.remove("show");
+              mask.setAttribute("aria-hidden", "true");
+            });
+          }, delay);
+        }
+
+        function switchTo(which) {
           const wantTask = which === "task";
           const needMask = wantTask ? !loaded.task : !loaded.memo;
 
-          // 只有目標頁還沒載好時，才需要遮罩
-          if (needMask) showMask();
-          else hideMaskSoon();
+          if (needMask) showMask(); else hideMaskSoon();
 
-          // 用 rAF 切 class，避免同步重排造成一點點卡頓
+          // ★ 用 rAF 才切 class，避免同步 layout 抖動
           requestAnimationFrame(() => {
             if (wantTask) {
               tabTask.classList.add("active");
@@ -216,45 +256,13 @@
           });
         }
 
-        // load 一次後就標記「已就緒」，之後切換不再出遮罩
-        ifTask.addEventListener(
-          "load",
-          () => {
-            loaded.task = true;
-            hideMaskSoon();
-          },
-          { once: true }
-        );
-        ifMemo.addEventListener(
-          "load",
-          () => {
-            loaded.memo = true;
-            hideMaskSoon();
-          },
-          { once: true }
-        );
+        // ★ 提前一幀：pointerdown 先切（點下去立刻切，體感更快）
+        tabTask.addEventListener("pointerdown", () => switchTo("task"));
+        tabMemo.addEventListener("pointerdown", () => switchTo("memo"));
 
-        // 遮罩顯示時間稍微縮短，手感更俐落（仍保留至少顯示一下避免閃爍）
-        let shownAt = 0;
-        function showMask() {
-          shownAt = performance.now();
-          mask.classList.add("show");
-          mask.setAttribute("aria-hidden", "false");
-        }
-        function hideMaskSoon() {
-          const elapsed = performance.now() - shownAt;
-          const delay = Math.max(0, 120 - elapsed); // 350ms -> 120ms，切換更快
-          setTimeout(() => {
-            mask.classList.remove("show");
-            mask.setAttribute("aria-hidden", "true");
-          }, delay);
-        }
-
-        tabTask.addEventListener("click", () => show("task"));
-        tabMemo.addEventListener("click", () => show("memo"));
-
-        // 若兩頁在同一網域同一 Firebase 專案，匿名/使用者登入狀態會自動共享
-        // 第一次進來就先讓 Task 先載，之後切到 Memo 時會很快
+        // 仍保留 click（鍵盤/輔助技術或瀏覽器不派 pointerdown 的情況）
+        tabTask.addEventListener("click", () => switchTo("task"));
+        tabMemo.addEventListener("click", () => switchTo("memo"));
       })();
     </script>
     <!-- 在這裡貼 ↓↓↓（放在 </body> 之前） -->
