@@ -863,6 +863,68 @@
         pointer-events: auto;
         cursor: grab;
       }
+
+      /* ===== 搜尋欄（放在 moreModal 裡） ===== */
+      #moreModal .modal-content {
+        position: relative;
+      }
+      .search-wrap {
+        max-width: 200px;
+        margin: 0 auto 0.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0 0 0.25rem 0;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(180, 210, 255, 0.35);
+        box-shadow: 0 8px 20px rgba(0, 60, 130, 0.08);
+        margin-bottom: 1rem;
+      }
+      .search-ico {
+        font-size: 1rem;
+        opacity: 0.7;
+        transform: translateY(1px);
+        pointer-events: none;
+      }
+      #taskSearchInput {
+        flex: 1;
+        height: 24px;
+        border: 0;
+        outline: none;
+        background: transparent;
+        font-size: 12px;
+      }
+      #taskSearchInput::placeholder {
+        color: #9aa7bd;
+      }
+      .search-clear {
+        border: 0;
+        background: #eef3ff;
+        color: #4a6aa8;
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+        border-radius: 50%;
+        cursor: pointer;
+        font-weight: 700;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+      }
+      .search-clear:active {
+        transform: translateY(1px);
+      }
+
+      /* 搜尋隱藏（不影響其它篩選，能疊加） */
+      .task.search-hide {
+        display: none !important;
+      }
     </style>
   </head>
   <body>
@@ -1199,6 +1261,29 @@
     <div class="modal" id="moreModal">
       <div class="modal-content">
         <button class="close-btn" onclick="closeModal('moreModal')">✕</button>
+        <!-- 🔎 搜尋欄（只保留右側 X） -->
+        <div
+          id="globalSearch"
+          class="search-wrap modal-search"
+          role="search"
+          aria-label="搜尋任務"
+        >
+          <span class="search-ico" aria-hidden="true">🔍</span>
+          <input
+            id="taskSearchInput"
+            type="text"
+            autocomplete="off"
+            placeholder="在MyMemo中搜尋"
+            aria-label="搜尋標題、任務內容、處理情形"
+          />
+          <button
+            id="taskSearchClear"
+            class="search-clear"
+            aria-label="清除搜尋"
+          >
+            ✕
+          </button>
+        </div>
         <h3>備忘錄檢視</h3>
         <div class="more-row more-row-inline">
           <label style="display: flex; align-items: center; gap: 0.4rem">
@@ -1732,39 +1817,41 @@
         });
         memoSortables = [];
       }
-      
-      // ★ 依目前 DOM 的實際位置，回填每張備忘的分類與排序序號(order)
-function commitMemoPositionsFromDOM() {
-  let changed = false;
-  document.querySelectorAll('#section-container .section').forEach(sec => {
-    const secId = sec.id;
-    const tasks = sec.querySelectorAll('.task');
-    tasks.forEach((t, idx) => {
-      const id = t.dataset.id;
-      if (!id) return;
-      const m = (memos || []).find(x => x.id === id);
-      if (!m) return;
 
-      let updated = false;
-      // 分類變更
-      if (m.section !== secId) {
-        m.section = secId;
-        updated = true;
+      // ★ 依目前 DOM 的實際位置，回填每張備忘的分類與排序序號(order)
+      function commitMemoPositionsFromDOM() {
+        let changed = false;
+        document
+          .querySelectorAll("#section-container .section")
+          .forEach((sec) => {
+            const secId = sec.id;
+            const tasks = sec.querySelectorAll(".task");
+            tasks.forEach((t, idx) => {
+              const id = t.dataset.id;
+              if (!id) return;
+              const m = (memos || []).find((x) => x.id === id);
+              if (!m) return;
+
+              let updated = false;
+              // 分類變更
+              if (m.section !== secId) {
+                m.section = secId;
+                updated = true;
+              }
+              // 排序序號（每 10 遞增，方便未來插入）
+              const ord = (idx + 1) * 10;
+              if (m.order !== ord) {
+                m.order = ord;
+                updated = true;
+              }
+              if (updated) {
+                m.updatedAt = Date.now();
+                changed = true;
+              }
+            });
+          });
+        if (changed) saveMemos(); // 寫回雲端
       }
-      // 排序序號（每 10 遞增，方便未來插入）
-      const ord = (idx + 1) * 10;
-      if (m.order !== ord) {
-        m.order = ord;
-        updated = true;
-      }
-      if (updated) {
-        m.updatedAt = Date.now();
-        changed = true;
-      }
-    });
-  });
-  if (changed) saveMemos(); // 寫回雲端
-}
 
       function initMemoSortables() {
         destroyMemoSortables();
@@ -1791,7 +1878,6 @@ function commitMemoPositionsFromDOM() {
                   m.updatedAt = Date.now();
                 }
                 commitMemoPositionsFromDOM();
-
               },
               onUpdate: () => {
                 commitMemoPositionsFromDOM();
@@ -1983,85 +2069,122 @@ function commitMemoPositionsFromDOM() {
   `;
       }
 
-  function renderAll() {
-  // 清空每個分類的 memo 卡
-  document.querySelectorAll("#section-container .section").forEach((sec) => {
-    sec.querySelectorAll(".task").forEach((t) => t.remove());
-  });
+      function renderAll() {
+        // 清空每個分類的 memo 卡
+        document
+          .querySelectorAll("#section-container .section")
+          .forEach((sec) => {
+            sec.querySelectorAll(".task").forEach((t) => t.remove());
+          });
 
-  const isRemoved = memoView === "removed";
-  const filterVal = isRemoved ? memoMonthFilterRemoved : memoMonthFilterActive;
+        const isRemoved = memoView === "removed";
+        const filterVal = isRemoved
+          ? memoMonthFilterRemoved
+          : memoMonthFilterActive;
 
-  // 只取當前視圖需要的資料
-  const source = (Array.isArray(memos) ? memos : []).filter((m) =>
-    isRemoved ? !!m.removedAt : !m.removedAt
-  );
+        // 只取當前視圖需要的資料
+        const source = (Array.isArray(memos) ? memos : []).filter((m) =>
+          isRemoved ? !!m.removedAt : !m.removedAt
+        );
 
-  // 篩選（月份 / 重要）
-  const filtered = source.filter((m) => {
-    if (filterVal === "all") return true;
-    if (filterVal === "important") return !!m.important;
-    const ts = getMemoRefTime(m);
-    if (!ts) return false;
-    if (filterVal === "recent5") {
-      return (Date.now() - ts) / 86400000 <= 5;
-    }
-    if (filterVal === "recent30") {
-      return (Date.now() - ts) / 86400000 <= 30;
-    }
-    return toRocYMFromTs(ts) === filterVal; // 指定月份
-  });
+        // 篩選（月份 / 重要 + 搜尋：只比對標題/內容）
+        const filtered = source.filter((m) => {
+          const passMonth = (() => {
+            if (filterVal === "all") return true;
+            if (filterVal === "important") return !!m.important;
+            const ts = getMemoRefTime(m);
+            if (!ts) return false;
+            if (filterVal === "recent5")
+              return (Date.now() - ts) / 86400000 <= 5;
+            if (filterVal === "recent30")
+              return (Date.now() - ts) / 86400000 <= 30;
+            return toRocYMFromTs(ts) === filterVal;
+          })();
+          if (!passMonth) return false;
 
-  // ★ 依「分類 + order」排序；order 不在時用 createdAt/updatedAt 作後備，讓順序可重現
-  filtered.sort((a, b) => {
-    const secA = isRemoved ? stripRemovedSuffix(a.section || "") : (a.section || "");
-    const secB = isRemoved ? stripRemovedSuffix(b.section || "") : (b.section || "");
-    const sc = secA.localeCompare(secB);
-    if (sc !== 0) return sc;
+          // ★ 只檢索標題＋內容
+          return memoMatchesSearch(m);
+        });
 
-    const ao = (typeof a.order === "number") ? a.order : (a.createdAt || a.updatedAt || 0);
-    const bo = (typeof b.order === "number") ? b.order : (b.createdAt || b.updatedAt || 0);
-    if (ao !== bo) return ao - bo;
+        // ★ 依「分類 + order」排序；order 不在時用 createdAt/updatedAt 作後備，讓順序可重現
+        filtered.sort((a, b) => {
+          const secA = isRemoved
+            ? stripRemovedSuffix(a.section || "")
+            : a.section || "";
+          const secB = isRemoved
+            ? stripRemovedSuffix(b.section || "")
+            : b.section || "";
+          const sc = secA.localeCompare(secB);
+          if (sc !== 0) return sc;
 
-    // 最後用 updatedAt 當 tie-breaker，避免不穩定
-    return (a.updatedAt || 0) - (b.updatedAt || 0);
-  });
+          const ao =
+            typeof a.order === "number"
+              ? a.order
+              : a.createdAt || a.updatedAt || 0;
+          const bo =
+            typeof b.order === "number"
+              ? b.order
+              : b.createdAt || b.updatedAt || 0;
+          if (ao !== bo) return ao - bo;
 
-  // 建立 DOM（在「已移除」視圖，section 的 id 是原始分類名）
-  filtered.forEach((m) => {
-    const el = document.createElement("div");
-    el.className = "task" + (isRemoved ? " removed" : "");
-    el.dataset.id = m.id;
-    el.innerHTML = memoCardHTML(m);
+          // 最後用 updatedAt 當 tie-breaker，避免不穩定
+          return (a.updatedAt || 0) - (b.updatedAt || 0);
+        });
 
-    const secId = isRemoved ? stripRemovedSuffix(m.section) : m.section;
-    let sec = document.getElementById(secId);
+        // 建立 DOM（在「已移除」視圖，section 的 id 是原始分類名）
+        filtered.forEach((m) => {
+          const el = document.createElement("div");
+          el.className = "task" + (isRemoved ? " removed" : "");
+          el.dataset.id = m.id;
+          el.innerHTML = memoCardHTML(m);
 
-    // 找不到就丟到第一個 section，避免 throw（極少見的防呆）
-    if (!sec) sec = document.querySelector("#section-container .section");
-    sec?.appendChild(el);
-  });
+          const secId = isRemoved ? stripRemovedSuffix(m.section) : m.section;
+          let sec = document.getElementById(secId);
 
-  // 非編輯時才綁 swipe（避免與拖拉衝突）
-  if (!isEditing) bindSwipeToTasks?.();
+          // 找不到就丟到第一個 section，避免 throw（極少見的防呆）
+          if (!sec) sec = document.querySelector("#section-container .section");
+          sec?.appendChild(el);
+        });
 
-  updateSectionOptions?.();
+        // 非編輯時才綁 swipe（避免與拖拉衝突）
+        if (!isEditing) bindSwipeToTasks?.();
 
-  // 依篩選顯示/隱藏空分類
-  if (filterVal === "all") {
-    document.querySelectorAll("#section-container .section").forEach((sec) => {
-      sec.style.display = "";
-    });
-  } else {
-    hideEmptySectionsAfterFilter();
-  }
+        updateSectionOptions?.();
 
-  // 只在「當前」＋ 編輯中啟用拖拉
-  if (isEditing && memoView === "active") initMemoSortables();
+        // === 依篩選顯示/隱藏空分類（搜尋中也視為一種篩選）===
+        const searchActive = (() => {
+          try {
+            // 若有預先 tokenize 的陣列就用它；否則讀輸入框
+            if (
+              Array.isArray(window.searchTokens) &&
+              window.searchTokens.length
+            )
+              return true;
+            const q = (
+              document.getElementById("taskSearchInput")?.value || ""
+            ).trim();
+            return q.length > 0;
+          } catch (_) {
+            return false;
+          }
+        })();
 
-  // 依目前檢視重建月份選單
-  buildMemoMonthMenu();
-}
+        if (filterVal === "all" && !searchActive) {
+          document
+            .querySelectorAll("#section-container .section")
+            .forEach((sec) => {
+              sec.style.display = "";
+            });
+        } else {
+          hideEmptySectionsAfterFilter();
+        }
+
+        // 只在「當前」＋ 編輯中啟用拖拉
+        if (isEditing && memoView === "active") initMemoSortables();
+
+        // 依目前檢視重建月份選單
+        buildMemoMonthMenu();
+      }
 
       function getMemoRefTime(m) {
         return m?.updatedAt || m?.createdAt || null;
@@ -2112,7 +2235,7 @@ function commitMemoPositionsFromDOM() {
           important,
           createdAt: now,
           updatedAt: now,
-          order: Date.now()
+          order: Date.now(),
         };
 
         memos.push(memo);
@@ -3158,57 +3281,59 @@ function commitMemoPositionsFromDOM() {
       }
 
       /* ---- 開啟資料夾（行動裝置優先呼叫 App） ---- */
-function openDriveFolderWeb(id, preWin) {
-  const webUrl = `https://drive.google.com/drive/folders/${id}`;
-  const ua = (navigator.userAgent || "").toLowerCase();
-  const isAndroid = /android/.test(ua);
-  const isIOS =
-    /iphone|ipad|ipod/.test(ua) ||
-    ((navigator.userAgent || "").includes("Macintosh") &&
-      navigator.maxTouchPoints > 1);
+      function openDriveFolderWeb(id, preWin) {
+        const webUrl = `https://drive.google.com/drive/folders/${id}`;
+        const ua = (navigator.userAgent || "").toLowerCase();
+        const isAndroid = /android/.test(ua);
+        const isIOS =
+          /iphone|ipad|ipod/.test(ua) ||
+          ((navigator.userAgent || "").includes("Macintosh") &&
+            navigator.maxTouchPoints > 1);
 
-  const iosSchemeUrl = `googledrive://${webUrl}`;
-  const androidIntentUrl =
-    `intent://drive.google.com/drive/folders/${id}` +
-    `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+        const iosSchemeUrl = `googledrive://${webUrl}`;
+        const androidIntentUrl =
+          `intent://drive.google.com/drive/folders/${id}` +
+          `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
 
-  const usePreWin = (url) => {
-    try {
-      if (preWin && !preWin.closed) {
-        preWin.location.href = url;
-        setTimeout(() => {
+        const usePreWin = (url) => {
           try {
-            preWin.close();
+            if (preWin && !preWin.closed) {
+              preWin.location.href = url;
+              setTimeout(() => {
+                try {
+                  preWin.close();
+                } catch (_) {}
+              }, 1500);
+              return true;
+            }
           } catch (_) {}
-        }, 1500);
-        return true;
-      }
-    } catch (_) {}
-    return false;
-  };
+          return false;
+        };
 
-  if (isAndroid) {
-    if (!usePreWin(androidIntentUrl))
-      window.location.href = androidIntentUrl;
-    return;
-  }
-  if (isIOS) {
-    if (isIOSPWA) {
-      // iOS PWA：直接用頂層導向呼叫 App，避免留下空白分頁
-      try { window.location.href = iosSchemeUrl; } catch (_) {}
-      return;
-    }
-    // iOS Safari（非 PWA）：維持預備分頁邏輯
-    if (!usePreWin(iosSchemeUrl)) window.location.href = iosSchemeUrl;
-    return;
-  }
-  // 桌機 → 開網頁
-  try {
-    window.open(webUrl, "_blank")?.focus?.();
-  } catch (_) {
-    window.location.href = webUrl;
-  }
-}
+        if (isAndroid) {
+          if (!usePreWin(androidIntentUrl))
+            window.location.href = androidIntentUrl;
+          return;
+        }
+        if (isIOS) {
+          if (isIOSPWA) {
+            // iOS PWA：直接用頂層導向呼叫 App，避免留下空白分頁
+            try {
+              window.location.href = iosSchemeUrl;
+            } catch (_) {}
+            return;
+          }
+          // iOS Safari（非 PWA）：維持預備分頁邏輯
+          if (!usePreWin(iosSchemeUrl)) window.location.href = iosSchemeUrl;
+          return;
+        }
+        // 桌機 → 開網頁
+        try {
+          window.open(webUrl, "_blank")?.focus?.();
+        } catch (_) {
+          window.location.href = webUrl;
+        }
+      }
       /* ---- 取得目前「備忘詳情」對應的 Memo 物件 ---- */
       function getCurrentDetailMemo() {
         if (typeof selectedMemoId !== "undefined" && selectedMemoId) {
@@ -3310,61 +3435,61 @@ function openDriveFolderWeb(id, preWin) {
       }
 
       /* ---- 點擊行為（含第一次授權的預備視窗） ---- */
-    async function onDriveButtonClickMemo() {
-  const m = getCurrentDetailMemo();
-  if (!m) return;
+      async function onDriveButtonClickMemo() {
+        const m = getCurrentDetailMemo();
+        if (!m) return;
 
-  // 在「已移除」檢視：只允許開啟既有，不新建
-  if (window.memoView === "removed") {
-    if (m.driveFolderId) {
-      openDriveFolderWeb(m.driveFolderId);
-    } else {
-      alert("此備忘在「已移除」檢視，僅能開啟既有資料夾。");
-    }
-    return;
-  }
-
-  try {
-    const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
-    if (firstTime) {
-      // 首次授權一律立旗標，讓 ensureDriveAuth 完成後自動補跑開啟
-      localStorage.setItem(GD_POST_OPEN_KEY, "1");
-      if (!isIOSPWA) {
-        // 非 iOS PWA 才開預備分頁（提升喚起成功率）
-        try {
-          __gd_prewin = window.open("", "_blank");
-        } catch (_) {
-          __gd_prewin = null;
+        // 在「已移除」檢視：只允許開啟既有，不新建
+        if (window.memoView === "removed") {
+          if (m.driveFolderId) {
+            openDriveFolderWeb(m.driveFolderId);
+          } else {
+            alert("此備忘在「已移除」檢視，僅能開啟既有資料夾。");
+          }
+          return;
         }
-      } else {
-        // iOS PWA 不開預備分頁，避免殘留空白頁
-        __gd_prewin = null;
+
+        try {
+          const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
+          if (firstTime) {
+            // 首次授權一律立旗標，讓 ensureDriveAuth 完成後自動補跑開啟
+            localStorage.setItem(GD_POST_OPEN_KEY, "1");
+            if (!isIOSPWA) {
+              // 非 iOS PWA 才開預備分頁（提升喚起成功率）
+              try {
+                __gd_prewin = window.open("", "_blank");
+              } catch (_) {
+                __gd_prewin = null;
+              }
+            } else {
+              // iOS PWA 不開預備分頁，避免殘留空白頁
+              __gd_prewin = null;
+            }
+          } else {
+            // 非首次：不需要旗標與預備分頁
+            localStorage.removeItem(GD_POST_OPEN_KEY);
+            __gd_prewin = null;
+          }
+
+          await ensureDriveAuth();
+          if (firstTime) return; // 交給 ensureDriveAuth 的補跑邏輯處理
+
+          const folderId = await ensureExistingOrRecreateFolder(m);
+          updateDriveButtonState(m);
+
+          openDriveFolderWeb(folderId, __gd_prewin);
+
+          localStorage.removeItem(GD_POST_OPEN_KEY);
+          __gd_prewin = null;
+        } catch (e) {
+          localStorage.removeItem(GD_POST_OPEN_KEY);
+          __gd_prewin = null;
+          const msg =
+            e?.result?.error?.message || e?.message || JSON.stringify(e);
+          alert("Google 雲端硬碟動作失敗：" + msg);
+          console.error("Drive error:", e);
+        }
       }
-    } else {
-      // 非首次：不需要旗標與預備分頁
-      localStorage.removeItem(GD_POST_OPEN_KEY);
-      __gd_prewin = null;
-    }
-
-    await ensureDriveAuth();
-    if (firstTime) return; // 交給 ensureDriveAuth 的補跑邏輯處理
-
-    const folderId = await ensureExistingOrRecreateFolder(m);
-    updateDriveButtonState(m);
-
-    openDriveFolderWeb(folderId, __gd_prewin);
-
-    localStorage.removeItem(GD_POST_OPEN_KEY);
-    __gd_prewin = null;
-  } catch (e) {
-    localStorage.removeItem(GD_POST_OPEN_KEY);
-    __gd_prewin = null;
-    const msg =
-      e?.result?.error?.message || e?.message || JSON.stringify(e);
-    alert("Google 雲端硬碟動作失敗：" + msg);
-    console.error("Drive error:", e);
-  }
-}
 
       /* ---- 暖機：載入 SDK，pageshow 回補，首次授權後自動開啟 ---- */
       (function driveWarmup() {
@@ -3448,6 +3573,140 @@ function openDriveFolderWeb(id, preWin) {
         openCurrentMemoDriveFolder,
         openOrCreateDriveFolderForCurrentMemo,
         ensureDriveButtonsInlineUI,
+      });
+
+      /* ===== Search 狀態與工具 ===== */
+      let searchQuery = "";
+      let searchTokens = [];
+
+      function setSearchQuery(q = "") {
+        searchQuery = (q || "").trim();
+        searchTokens = searchQuery
+          ? searchQuery.toLowerCase().split(/\s+/).filter(Boolean)
+          : [];
+        renderAll();
+      }
+
+      // 只比對「標題 + 內容」
+      function memoMatchesSearch(m) {
+        if (!searchTokens.length) return true;
+        const hay = ((m.title || "") + " " + (m.content || "")).toLowerCase();
+        return searchTokens.every((tok) => hay.includes(tok));
+      }
+
+      // 安全轉義 + 高亮
+      function escHTML(s = "") {
+        return String(s).replace(
+          /[&<>"']/g,
+          (ch) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            }[ch])
+        );
+      }
+      function hiHTML(s = "", tokens) {
+        if (!tokens?.length) return escHTML(s);
+        let out = escHTML(s);
+        tokens.forEach((t) => {
+          if (!t) return;
+          const re = new RegExp(
+            `(${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+            "gi"
+          );
+          out = out.replace(re, '<span class="hl">$1</span>');
+        });
+        return out;
+      }
+      function makeSnippet(text = "", tokens, max = 80) {
+        const raw = text || "";
+        if (!tokens?.length)
+          return raw.length > max ? raw.slice(0, max - 1) + "…" : raw;
+        const lower = raw.toLowerCase();
+        let pos = -1;
+        for (const t of tokens) {
+          const i = lower.indexOf(t);
+          if (i >= 0) {
+            pos = i;
+            break;
+          }
+        }
+        if (pos < 0)
+          return raw.length > max ? raw.slice(0, max - 1) + "…" : raw;
+        const start = Math.max(0, pos - Math.floor(max / 2));
+        const end = Math.min(raw.length, start + max);
+        const slice =
+          (start > 0 ? "…" : "") +
+          raw.slice(start, end) +
+          (end < raw.length ? "…" : "");
+        return slice;
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        // 綁定 moreModal 搜尋欄
+        let __searchDebounce = null;
+        function bindModalSearch() {
+          const box = document.getElementById("taskSearchInput");
+          const clear = document.getElementById("taskSearchClear");
+          if (!box || box.__bound) return;
+          box.__bound = true;
+
+          const syncClear = () => {
+            if (clear)
+              clear.style.visibility = box.value ? "visible" : "hidden";
+          };
+
+          // 初始
+          box.value = searchQuery;
+          syncClear();
+
+          box.addEventListener("input", (e) => {
+            clearTimeout(__searchDebounce);
+            __searchDebounce = setTimeout(() => {
+              setSearchQuery(e.target.value);
+              syncClear();
+            }, 180);
+          });
+
+          // Esc 清除
+          box.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              box.value = "";
+              setSearchQuery("");
+              syncClear();
+            }
+          });
+
+          // 右側 X
+          clear?.addEventListener("click", () => {
+            box.value = "";
+            setSearchQuery("");
+            syncClear();
+            box.focus();
+          });
+        }
+
+        // 打開 moreModal 時，同步搜尋欄位與按鈕狀態
+        const _openModal = window.openModal;
+        window.openModal = function (id) {
+          _openModal.call(this, id);
+          if (id === "moreModal") {
+            // 你的檢視切換保持不變，這裡只處理搜尋欄
+            const box = document.getElementById("taskSearchInput");
+            const clear = document.getElementById("taskSearchClear");
+            if (box) {
+              bindModalSearch();
+              box.value = searchQuery;
+              if (clear)
+                clear.style.visibility = box.value ? "visible" : "hidden";
+              setTimeout(() => box.focus(), 0);
+            }
+          }
+        };
       });
     </script>
 
