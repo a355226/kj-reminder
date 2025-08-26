@@ -4855,76 +4855,105 @@
   (function __wireModalSearch() {
     const input = document.getElementById("taskSearchInput");
     const clear = document.getElementById("taskSearchClear");
-    const wrap = document.getElementById("globalSearch");
     if (!input || !clear) return;
 
-    // 記住初始 placeholder（MyTask / MyMemo 皆可）
-    if (!input.dataset.origPh) {
-      input.dataset.origPh =
-        input.getAttribute("placeholder") || "在MyTask中搜尋";
-    }
+    const PH = "在MyTask中搜尋";
 
-    // 依輸入同步 UI：空白→顯示 placeholder & 隱藏✕；有字→清掉 placeholder & 顯示✕
-    function syncSearchUI() {
-      const empty = !input.value.trim();
-      input.placeholder = empty ? input.dataset.origPh : "";
-      clear.style.display = empty ? "none" : "inline-flex";
-      wrap && wrap.classList.toggle("has-text", !empty);
-    }
+    // ★ 同步 UI：有字→顯示 X、隱藏 placeholder；空白→隱藏 X、顯示 placeholder
+    const syncUI = () => {
+      clear.style.visibility = input.value ? "visible" : "hidden"; // 1) 打字後才出現 X
+      input.placeholder = input.value ? "" : PH; // 2) 空白即刻顯示 placeholder
+    };
 
-    // 即時輸入：更新查詢 & 同步 UI（你原本的搜尋邏輯放這裡）
+    // 初始
+    syncUI();
+
+    // 即時輸入
     input.addEventListener("input", () => {
-      // 若你的程式用 searchQuery / applySearchFilter / applyDayFilter，照舊呼叫即可
-      try {
-        window.searchQuery = input.value || "";
-      } catch (_) {}
-      try {
-        window.applySearchFilter?.();
-      } catch (_) {}
-      try {
-        if (
-          typeof window.statusFilter !== "undefined" &&
-          window.statusFilter === "done"
-        ) {
-          window.renderCompletedTasks?.();
-        } else {
-          window.applyDayFilter?.();
-          window.renderAll?.(); // 給 MyMemo 用
-        }
-      } catch (_) {}
-      syncSearchUI();
+      searchQuery = input.value;
+      applySearchFilter(); // 即時
+      syncUI(); // ★ 更新 X 與 placeholder
     });
 
-    // focus/blur 都只做「同步 UI」，不再強制清空 placeholder
-    input.addEventListener("focus", syncSearchUI);
-    input.addEventListener("blur", syncSearchUI);
+    // 焦點狀態下也維持規則（不再強制清空 placeholder）
+    input.addEventListener("focus", syncUI);
+    input.addEventListener("blur", syncUI);
 
-    // 清除鍵：清掉內容→同步 UI（會立即把 placeholder 顯示回來）
+    // 右側 X
     clear.addEventListener("click", () => {
       input.value = "";
-      try {
-        window.searchQuery = "";
-      } catch (_) {}
-      try {
-        window.applySearchFilter?.();
-        if (
-          typeof window.statusFilter !== "undefined" &&
-          window.statusFilter === "done"
-        ) {
-          window.renderCompletedTasks?.();
-        } else {
-          window.applyDayFilter?.();
-          window.renderAll?.();
-        }
-      } catch (_) {}
-      syncSearchUI();
-      // 保持焦點也可立即看到 placeholder（大多數瀏覽器會顯示）
+      searchQuery = "";
+      applySearchFilter(); // 取消搜尋
+      syncUI(); // ★ 立刻顯示 placeholder、隱藏 X
       input.focus();
     });
-
-    // 初始化：一開始隱藏✕，顯示初始 placeholder
-    syncSearchUI();
   })();
+
+  // 以包裝方式，在重畫列表後自動再套用搜尋（不用改你原本函式）
+  (function __patchRenders() {
+    const wrap = (name) => {
+      const fn = window[name];
+      if (typeof fn !== "function") return;
+      window[name] = function (...args) {
+        const ret = fn.apply(this, args);
+        try {
+          applySearchFilter();
+        } catch (_) {}
+        return ret;
+      };
+    };
+    wrap("showOngoing");
+    wrap("renderCompletedTasks");
+  })();
+
+  // 🔎 即時輸入：每打一字就套用（保留原邏輯，外加 UI 同步）
+  document.addEventListener("input", function (e) {
+    if (e.target && e.target.id === "taskSearchInput") {
+      searchQuery = e.target.value || "";
+      if (statusFilter === "done") {
+        renderCompletedTasks(); // 完成視圖：重畫一次（已內建搜尋過濾）
+      } else {
+        applyDayFilter(); // 進行中：即時收斂
+      }
+      // ★ 同步 UI
+      const clear = document.getElementById("taskSearchClear");
+      if (clear) clear.style.visibility = e.target.value ? "visible" : "hidden";
+      e.target.placeholder = e.target.value ? "" : "在MyTask中搜尋";
+    }
+  });
+
+  // 🔎 清除搜尋（保留原邏輯，外加 UI 同步）
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.id === "taskSearchClear") {
+      const input = document.getElementById("taskSearchInput");
+      if (input) input.value = "";
+      searchQuery = "";
+      if (statusFilter === "done") {
+        renderCompletedTasks();
+      } else {
+        applyDayFilter();
+      }
+      // ★ 同步 UI
+      const clear = document.getElementById("taskSearchClear");
+      if (clear) clear.style.visibility = "hidden";
+      if (input) {
+        input.placeholder = "在MyTask中搜尋";
+        input.focus();
+      }
+    }
+  });
+
+  // UX：焦點進出時也維持規則（空白就顯示 placeholder）
+  document.addEventListener("focusin", function (e) {
+    if (e.target && e.target.id === "taskSearchInput") {
+      e.target.placeholder = e.target.value ? "" : "在MyTask中搜尋";
+    }
+  });
+  document.addEventListener("focusout", function (e) {
+    if (e.target && e.target.id === "taskSearchInput") {
+      e.target.placeholder = e.target.value ? "" : "在MyTask中搜尋";
+    }
+  });
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
