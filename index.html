@@ -1154,6 +1154,35 @@ button.palette-btn:active {
   color: #d33;
   font-weight: 700;
 }
+/* ===== 搜尋欄（放在 moreModal 裡） ===== */
+#moreModal .modal-content { position: relative; }
+.search-wrap{
+  max-width: 200px;
+  margin: 0 auto .25rem;
+  display:flex; align-items:center; gap:.5rem;
+  margin:0 0 .25rem 0; padding:10px 12px;
+  border-radius:12px;
+  background: rgba(255,255,255,.86);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border:1px solid rgba(180,210,255,.35);
+  box-shadow: 0 8px 20px rgba(0,60,130,.08);
+}
+.search-ico{ font-size:1rem; opacity:.7; transform:translateY(1px); pointer-events:none; }
+#taskSearchInput{
+  flex:1; height:24px; border:0; outline:none; background:transparent; font-size:12px;
+}
+#taskSearchInput::placeholder{ color:#9aa7bd; }
+.search-clear{
+  border:0; background:#eef3ff; color:#4a6aa8;
+  width:20px; height:20px; font-size:12px;border-radius:50%;
+  cursor:pointer; font-weight:700; line-height:1;
+  display:inline-flex; align-items:center; justify-content:center;
+  box-shadow:0 1px 2px rgba(0,0,0,.06);
+}
+.search-clear:active{ transform:translateY(1px); }
+
+/* 搜尋隱藏（不影響其它篩選，能疊加） */
+.task.search-hide{ display:none !important; }
 
 
   </style>
@@ -1480,6 +1509,14 @@ button.palette-btn:active {
 <div class="modal" id="moreModal">
   <div class="modal-content">
     <button class="close-btn" onclick="closeModal('moreModal')">✕</button>
+    <!-- 🔎 搜尋欄（只保留右側 X） -->
+<div id="globalSearch" class="search-wrap modal-search" role="search" aria-label="搜尋任務">
+  <span class="search-ico" aria-hidden="true">🔍</span>
+  <input id="taskSearchInput" type="text" autocomplete="off"
+         placeholder="在MyTask中搜尋" aria-label="搜尋標題、任務內容、處理情形">
+  <button id="taskSearchClear" class="search-clear" aria-label="清除搜尋">✕</button>
+</div>
+
     <h3>篩選剩餘天數</h3>
 <div class="filter-days">
   <label><input type="radio" name="daysFilter" value="1"> 1</label>
