@@ -2030,41 +2030,41 @@
     const isDefault = filterDay === "default";
 
     document.querySelectorAll(".task").forEach((taskEl) => {
-      const task = tasks.find((t) => t.id === taskEl.dataset.id);
+      // 只處理「進行中」卡片（完成視圖用另一段）
+      if (statusFilter === "done") return;
+
+      const task = (Array.isArray(tasks) ? tasks : []).find(
+        (t) => t.id === taskEl.dataset.id
+      );
       if (!task) return;
       let show = true;
 
+      // 原本：天數條件
       if (!isDefault) {
         const days = getRemainingDays(task.date);
         if (filterDay === "all") {
-          // 「無」：只顯示預定完成日為空（days === null）的任務
-          show = days === null;
+          show = days === null; // 只顯示無期限
         } else {
           const v = parseInt(filterDay, 10);
-          show = days !== null && days <= v;
+          show = days !== null && days <= v; // 指定天數內
         }
       }
 
-      // ★ 加入日期篩選
-      if (dateFilter) {
-        show = show && task.date === dateFilter;
-      }
+      // 原本：日期篩選
+      if (dateFilter) show = show && task.date === dateFilter;
+
+      // 原本：最後一層 ❗ 重要
+      if (importantOnly) show = show && !!task.important;
+
+      // ✅ 新增：搜尋條件（標題 / 內容 / 處理情形）
+      if (searchQuery) show = show && __matchQuery(task, searchQuery);
 
       taskEl.style.display = show ? "" : "none";
     });
 
-    // ★ 只要有任一種「會縮表」的篩選就隱藏空分類
-    const shouldHideEmpty =
-      statusFilter === "done" || !isDefault || !!dateFilter || !!importantOnly;
-
-    if (shouldHideEmpty) {
+    // 同一貫例：篩選後隱藏空白分類
+    if (typeof hideEmptySectionsAfterFilter === "function")
       hideEmptySectionsAfterFilter();
-    } else {
-      // 回到預設時顯示所有分類
-      document
-        .querySelectorAll("#section-container .section")
-        .forEach((sec) => (sec.style.display = ""));
-    }
   }
 
   function openModalById(id) {
@@ -2248,6 +2248,7 @@
     applyDayFilter();
     bindSwipeToTasks();
     applyImportantFilter(); // ✅ 最後一層
+    hideEmptySectionsAfterFilter(); // ★ 新增：確保重要篩選後的空分類也被隱藏
   }
 
   // 轉民國年月（回傳如 "11407"）
@@ -2353,27 +2354,29 @@
   // 渲染已完成（預設顯示 15 日內；點月份則顯示該月份）
   function renderCompletedTasks() {
     // === 先決定要顯示哪些「已完成」的任務 ===
-    const list = (Array.isArray(completedTasks) ? completedTasks : []).filter(
+    let list = (Array.isArray(completedTasks) ? completedTasks : []).filter(
       (t) => {
         if (completedMonthFilter === "importantOnly") {
-          // ★ 新增：只看「❗重要」，不套任何月份/最近天數條件
           return !!t.important;
         }
         if (completedMonthFilter === "recent15") {
-          // 仍沿用你的「近5日」邏輯（以 completedAt 計）
           const completedDate = new Date(t.completedAt);
           const diff = Math.floor(
             (Date.now() - completedDate.getTime()) / 86400000
           );
           return diff <= 15;
         } else {
-          // 指定月份：用「預定完成日」歸類
           const d = new Date(t.date);
           const rocYM = toRocYM(d);
           return rocYM === completedMonthFilter;
         }
       }
     );
+
+    // ✅ 新增：完成視圖也併入搜尋條件
+    if (searchQuery) {
+      list = list.filter((t) => __matchQuery(t, searchQuery));
+    }
 
     // === 這裡「只為了已完成視圖」建立暫時的區塊清單 ===
     // ★ 重要：不改動全域 categories、不寫回雲端，避免 (分類已移除) 自動出現在進行中
@@ -2428,6 +2431,7 @@
     try {
       applyImportantFilter();
     } catch (_) {}
+    hideEmptySectionsAfterFilter(); // ★ 再呼叫一次，處理「只看重要」後變空的分類
   }
 
   //已完成視窗細節
@@ -3212,8 +3216,9 @@
     });
   });
 
+  // 依目前的篩選狀態，把沒有「顯示中任務卡」的分類隱藏
   function hideEmptySectionsAfterFilter() {
-    // 編輯分類模式：全部顯示，避免拖拉/重命名時被藏起來
+    // 編輯分類時一律顯示所有分類
     if (typeof isEditing !== "undefined" && isEditing) {
       document
         .querySelectorAll("#section-container .section")
@@ -3221,30 +3226,33 @@
       return;
     }
 
-    // 判斷目前是否有任一種「會縮表」的篩選啟用
-    const inDoneView =
-      typeof statusFilter !== "undefined" && statusFilter === "done";
-    const dayFilterOn =
+    // 什麼情況算「有套用篩選」
+    const hasSearch = !!(
+      typeof searchQuery !== "undefined" && (searchQuery || "").trim()
+    );
+    const hasDayFilter =
       typeof filterDay !== "undefined" && filterDay !== "default";
-    const dateFilterOn = typeof dateFilter !== "undefined" && !!dateFilter; // 你的日期月曆篩選（字串 ISO 日期）
-    const importantOnlyOn =
-      typeof importantOnly !== "undefined" && !!importantOnly;
+    const hasImportant = !!(
+      typeof importantOnly !== "undefined" && importantOnly
+    );
+    const hasDate = !!(typeof dateFilter !== "undefined" && dateFilter);
+    const isDoneView =
+      typeof statusFilter !== "undefined" && statusFilter === "done";
+    const filtersOn =
+      hasSearch || hasDayFilter || hasImportant || hasDate || isDoneView;
 
-    const shouldHideEmpty =
-      inDoneView || dayFilterOn || dateFilterOn || importantOnlyOn;
-
-    const sections = document.querySelectorAll("#section-container .section");
-    sections.forEach((sec) => {
-      if (!shouldHideEmpty) {
-        // 沒有任何會縮表的篩選：顯示所有分類
-        sec.style.display = "";
-        return;
-      }
-      // 有篩選時：只保留含有「目前可見任務」的分類
+    document.querySelectorAll("#section-container .section").forEach((sec) => {
+      // 這個分類裡是否有「顯示中的」任務（用 computed style 判斷）
       const hasVisibleTask = Array.from(sec.querySelectorAll(".task")).some(
-        (el) => getComputedStyle(el).display !== "none"
+        (t) => getComputedStyle(t).display !== "none"
       );
-      sec.style.display = hasVisibleTask ? "" : "none";
+
+      // 進行中 + 沒任何濾鏡 → 依你的原設定保留所有分類；其餘情況隱藏空分類
+      if (!filtersOn && !isDoneView) {
+        sec.style.display = "";
+      } else {
+        sec.style.display = hasVisibleTask ? "" : "none";
+      }
     });
   }
 
@@ -4795,6 +4803,138 @@
   // 若右上角月曆在另一支檔案，掛到 window 讓它也能用
   window.getMarkedDatesForMonth =
     window.getMarkedDatesForMonth || getMarkedDatesForMonth;
+
+  /* ===== 全域搜尋（置於 moreModal） ===== */
+  // 🔎 全域搜尋字串（即時更新）
+  let searchQuery = "";
+
+  // 比對：在「標題 / 任務內容 / 處理情形」找子字串（忽略大小寫）
+  function __matchQuery(task, q) {
+    if (!q) return true;
+    const norm = (s) => String(s || "").toLowerCase();
+    const hay = norm(`${task.title}\n${task.content}\n${task.note}`);
+    return hay.includes(norm(q));
+  }
+
+  // 把搜尋條件套到目前畫面（不覆蓋其它篩選）
+  function applySearchFilter() {
+    const q = (searchQuery || "").trim();
+
+    // 先把舊的搜尋隱藏清掉
+    document
+      .querySelectorAll("#section-container .task.search-hide")
+      .forEach((el) => el.classList.remove("search-hide"));
+
+    if (!q) {
+      // 取消搜尋 → 只恢復由「搜尋」造成的隱藏，其它篩選不動
+      if (typeof hideEmptySectionsAfterFilter === "function")
+        hideEmptySectionsAfterFilter();
+      return;
+    }
+
+    // 依目前頁籤拿資料
+    const data =
+      window.statusFilter === "done"
+        ? window.completedTasks || []
+        : window.tasks || [];
+    const mapById = new Map(data.map((t) => [t.id, t]));
+
+    // 對應到 DOM 卡片逐一判斷，未命中就隱藏
+    document.querySelectorAll("#section-container .task").forEach((card) => {
+      const t = mapById.get(card.dataset.id);
+      if (!t) return;
+      if (!__matchQuery(t, q)) card.classList.add("search-hide");
+    });
+
+    // 搜尋後，把空分類收起來
+    if (typeof hideEmptySectionsAfterFilter === "function")
+      hideEmptySectionsAfterFilter();
+  }
+
+  // 綁定搜尋欄（即時）
+  (function __wireModalSearch() {
+    const input = document.getElementById("taskSearchInput");
+    const clear = document.getElementById("taskSearchClear");
+    if (!input || !clear) return;
+
+    // 點擊時把 placeholder 收掉，離開且空字再顯示（你要的是「點擊後消失」）
+    input.addEventListener("focus", () => (input.__ph = input.placeholder), {
+      once: true,
+    });
+    input.addEventListener("focus", () => (input.placeholder = ""));
+    input.addEventListener("blur", () => {
+      if (!input.value) input.placeholder = "在MyTask中搜尋";
+    });
+
+    input.addEventListener("input", () => {
+      searchQuery = input.value;
+      applySearchFilter(); // 即時
+    });
+
+    clear.addEventListener("click", () => {
+      input.value = "";
+      searchQuery = "";
+      applySearchFilter(); // 取消搜尋
+      input.blur();
+    });
+  })();
+
+  // 以包裝方式，在重畫列表後自動再套用搜尋（不用改你原本函式）
+  (function __patchRenders() {
+    const wrap = (name) => {
+      const fn = window[name];
+      if (typeof fn !== "function") return;
+      window[name] = function (...args) {
+        const ret = fn.apply(this, args);
+        try {
+          applySearchFilter();
+        } catch (_) {}
+        return ret;
+      };
+    };
+    wrap("showOngoing");
+    wrap("renderCompletedTasks");
+  })();
+
+  // 🔎 即時輸入：每打一字就套用
+  document.addEventListener("input", function (e) {
+    if (e.target && e.target.id === "taskSearchInput") {
+      searchQuery = e.target.value || "";
+      if (statusFilter === "done") {
+        renderCompletedTasks(); // 完成視圖：重畫一次（已內建搜尋過濾）
+      } else {
+        applyDayFilter(); // 進行中：即時收斂
+      }
+    }
+  });
+
+  // 🔎 清除搜尋
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.id === "taskSearchClear") {
+      const input = document.getElementById("taskSearchInput");
+      if (input) input.value = "";
+      searchQuery = "";
+      if (statusFilter === "done") {
+        renderCompletedTasks();
+      } else {
+        applyDayFilter();
+      }
+    }
+  });
+
+  // UX：點入時隱藏 placeholder，離開若空白再顯示
+  document.addEventListener("focusin", function (e) {
+    if (e.target && e.target.id === "taskSearchInput") {
+      e.target.dataset.ph = e.target.placeholder;
+      e.target.placeholder = "";
+    }
+  });
+  document.addEventListener("focusout", function (e) {
+    if (e.target && e.target.id === "taskSearchInput") {
+      if (!e.target.value)
+        e.target.placeholder = e.target.dataset.ph || "在MyTask中搜尋";
+    }
+  });
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
