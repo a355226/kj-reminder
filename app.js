@@ -2034,24 +2034,38 @@
   function applyDayFilter() {
     const isDefault = filterDay === "default";
 
-    // 先決定每張任務卡是否顯示（原本那段保留）
     document.querySelectorAll(".task").forEach((taskEl) => {
       const task = tasks.find((t) => t.id === taskEl.dataset.id);
       if (!task) return;
       let show = true;
-      if (!isDefault && filterDay !== "all") {
+
+      if (!isDefault) {
         const days = getRemainingDays(task.date);
-        const v = parseInt(filterDay, 10);
-        show = days !== null && days <= v;
+        if (filterDay === "all") {
+          // 「無」：只顯示預定完成日為空（days === null）的任務
+          show = days === null;
+        } else {
+          const v = parseInt(filterDay, 10);
+          show = days !== null && days <= v;
+        }
       }
+
+      // ★ 加入日期篩選
+      if (dateFilter) {
+        show = show && task.date === dateFilter;
+      }
+
       taskEl.style.display = show ? "" : "none";
     });
 
-    // 分類顯示策略
-    if (statusFilter === "done" || !isDefault) {
-      hideEmptySectionsAfterFilter(); // 1/3/5/不限/已完成 → 隱藏空分類
+    // ★ 只要有任一種「會縮表」的篩選就隱藏空分類
+    const shouldHideEmpty =
+      statusFilter === "done" || !isDefault || !!dateFilter || !!importantOnly;
+
+    if (shouldHideEmpty) {
+      hideEmptySectionsAfterFilter();
     } else {
-      // 預設 → 顯示全部分類
+      // 回到預設時顯示所有分類
       document
         .querySelectorAll("#section-container .section")
         .forEach((sec) => (sec.style.display = ""));
@@ -2404,6 +2418,11 @@
       const sec = document.getElementById(t.section);
       if (sec) sec.appendChild(el);
     });
+
+    // ★ 新增：若有日期篩選，繼續收斂
+    if (dateFilter) {
+      list = list.filter((t) => t.date === dateFilter);
+    }
 
     // 已完成頁面的刪分類 ✕、隱空白分類、以及（若你仍保留）最後一層的「重要開關」
     decorateDoneSectionsForDelete();
@@ -3199,22 +3218,49 @@
   });
 
   function hideEmptySectionsAfterFilter() {
-    if (isEditing) {
-      // 編輯時全部顯示，避免排序歪掉
+    // 編輯分類模式：全部顯示，避免拖拉/重命名時被藏起來
+    if (typeof isEditing !== "undefined" && isEditing) {
       document
         .querySelectorAll("#section-container .section")
         .forEach((sec) => (sec.style.display = ""));
       return;
     }
-    // ↓ 原本的隱藏邏輯保留
+
+    // 判斷目前是否有任一種「會縮表」的篩選啟用
+    const inDoneView =
+      typeof statusFilter !== "undefined" && statusFilter === "done";
+    const dayFilterOn =
+      typeof filterDay !== "undefined" && filterDay !== "default";
+    const dateFilterOn = typeof dateFilter !== "undefined" && !!dateFilter; // 你的日期月曆篩選（字串 ISO 日期）
+    const importantOnlyOn =
+      typeof importantOnly !== "undefined" && !!importantOnly;
+
+    const shouldHideEmpty =
+      inDoneView || dayFilterOn || dateFilterOn || importantOnlyOn;
+
     const sections = document.querySelectorAll("#section-container .section");
     sections.forEach((sec) => {
+      if (!shouldHideEmpty) {
+        // 沒有任何會縮表的篩選：顯示所有分類
+        sec.style.display = "";
+        return;
+      }
+      // 有篩選時：只保留含有「目前可見任務」的分類
       const hasVisibleTask = Array.from(sec.querySelectorAll(".task")).some(
         (el) => getComputedStyle(el).display !== "none"
       );
       sec.style.display = hasVisibleTask ? "" : "none";
     });
   }
+
+  // 讓「只看❗重要」後也會隱藏空分類（保留原本行為再補一刀）
+  (function hookImportantFilter() {
+    const orig = window.applyImportantFilter;
+    window.applyImportantFilter = function () {
+      if (typeof orig === "function") orig.apply(this, arguments);
+      hideEmptySectionsAfterFilter();
+    };
+  })();
 
   let __autoLoginShownAt = 0;
 
@@ -4301,57 +4347,71 @@
     return parent; // 最底層資料夾 id
   }
 
-function openDriveFolderWeb(id, preWin) {
-  const webUrl = `https://drive.google.com/drive/folders/${id}`;
-  const ua = (navigator.userAgent || "").toLowerCase();
-  const isAndroid = /android/.test(ua);
-  const isIOS = /iphone|ipad|ipod/.test(ua)
-    || ((navigator.userAgent || "").includes("Macintosh") && navigator.maxTouchPoints > 1);
+  function openDriveFolderWeb(id, preWin) {
+    const webUrl = `https://drive.google.com/drive/folders/${id}`;
+    const ua = (navigator.userAgent || "").toLowerCase();
+    const isAndroid = /android/.test(ua);
+    const isIOS =
+      /iphone|ipad|ipod/.test(ua) ||
+      ((navigator.userAgent || "").includes("Macintosh") &&
+        navigator.maxTouchPoints > 1);
 
-  const iosSchemeUrl = `googledrive://${webUrl}`;
-  const androidIntentUrl =
-    `intent://drive.google.com/drive/folders/${id}` +
-    `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+    const iosSchemeUrl = `googledrive://${webUrl}`;
+    const androidIntentUrl =
+      `intent://drive.google.com/drive/folders/${id}` +
+      `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
 
-  const usePreWin = (url) => {
-    try {
-      if (preWin && !preWin.closed) {
-        preWin.location.href = url;
-        setTimeout(() => { try { preWin.close(); } catch(_){} }, 1500);
-        return true;
+    const usePreWin = (url) => {
+      try {
+        if (preWin && !preWin.closed) {
+          preWin.location.href = url;
+          setTimeout(() => {
+            try {
+              preWin.close();
+            } catch (_) {}
+          }, 1500);
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    };
+
+    if (isAndroid) {
+      if (!usePreWin(androidIntentUrl)) {
+        try {
+          window.location.href = androidIntentUrl;
+        } catch (_) {}
       }
-    } catch (_) {}
-    return false;
-  };
-
-  if (isAndroid) {
-    if (!usePreWin(androidIntentUrl)) {
-      try { window.location.href = androidIntentUrl; } catch(_) {}
-    }
-    return;
-  }
-
-  if (isIOS) {
-    if (isIOSPWA) {
-      // iOS PWA：直接用頂層視窗喚醒 App，避免預備分頁在 iPad 留下空白頁
-      try { window.location.href = iosSchemeUrl; } catch (_) {}
       return;
     }
-    // iOS Safari（非 PWA）：維持原本邏輯
-    if (!usePreWin(iosSchemeUrl)) {
-      try { window.location.href = iosSchemeUrl; } catch(_) {}
-    }
-    return;
-  }
 
-  // 桌機：仍開網頁版（新分頁）
-  try {
-    const w = window.open(webUrl, "_blank");
-    w?.focus?.();
-  } catch (_) {
-    try { window.location.href = webUrl; } catch(_) {}
+    if (isIOS) {
+      if (isIOSPWA) {
+        // iOS PWA：直接用頂層視窗喚醒 App，避免預備分頁在 iPad 留下空白頁
+        try {
+          window.location.href = iosSchemeUrl;
+        } catch (_) {}
+        return;
+      }
+      // iOS Safari（非 PWA）：維持原本邏輯
+      if (!usePreWin(iosSchemeUrl)) {
+        try {
+          window.location.href = iosSchemeUrl;
+        } catch (_) {}
+      }
+      return;
+    }
+
+    // 桌機：仍開網頁版（新分頁）
+    try {
+      const w = window.open(webUrl, "_blank");
+      w?.focus?.();
+    } catch (_) {
+      try {
+        window.location.href = webUrl;
+      } catch (_) {}
+    }
   }
-}
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
   function getCurrentDetailTask() {
@@ -4468,42 +4528,42 @@ function openDriveFolderWeb(id, preWin) {
     updateDriveButtonState(taskObj);
   }
 
-async function onDriveButtonClick() {
-  const t = getCurrentDetailTask();
-  if (!t) return;
+  async function onDriveButtonClick() {
+    const t = getCurrentDetailTask();
+    if (!t) return;
 
-  try {
-    const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
-    if (firstTime && !isIOSPWA) {
-      localStorage.setItem(GD_POST_OPEN_KEY, "1");
-      try {
-        __gd_prewin = window.open("", "_blank");
-      } catch (_) {
+    try {
+      const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
+      if (firstTime && !isIOSPWA) {
+        localStorage.setItem(GD_POST_OPEN_KEY, "1");
+        try {
+          __gd_prewin = window.open("", "_blank");
+        } catch (_) {
+          __gd_prewin = null;
+        }
+      } else {
+        // iOS PWA：不要用預備分頁，避免留下空白 about:blank
+        localStorage.removeItem(GD_POST_OPEN_KEY);
         __gd_prewin = null;
       }
-    } else {
-      // iOS PWA：不要用預備分頁，避免留下空白 about:blank
+
+      await ensureDriveAuth();
+      const folderId = await ensureExistingOrRecreateFolder(t);
+      updateDriveButtonState(t);
+
+      openDriveFolderWeb(folderId, __gd_prewin);
+
       localStorage.removeItem(GD_POST_OPEN_KEY);
       __gd_prewin = null;
+    } catch (e) {
+      localStorage.removeItem(GD_POST_OPEN_KEY);
+      __gd_prewin = null;
+
+      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+      alert("Google 雲端硬碟動作失敗：" + msg);
+      console.error("Drive error:", e);
     }
-
-    await ensureDriveAuth();
-    const folderId = await ensureExistingOrRecreateFolder(t);
-    updateDriveButtonState(t);
-
-    openDriveFolderWeb(folderId, __gd_prewin);
-
-    localStorage.removeItem(GD_POST_OPEN_KEY);
-    __gd_prewin = null;
-  } catch (e) {
-    localStorage.removeItem(GD_POST_OPEN_KEY);
-    __gd_prewin = null;
-
-    const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-    alert("Google 雲端硬碟動作失敗：" + msg);
-    console.error("Drive error:", e);
   }
-}
 
   // 開頁即暖機，確保第一次點擊前就把 gapi/gis/tokenClient 準備好
   (function driveWarmup() {
@@ -4546,6 +4606,194 @@ async function onDriveButtonClick() {
       { once: true }
     );
   })();
+
+  //日曆功能
+
+  // === 日期篩選（可與現有篩選堆疊）===
+  let dateFilter = null; // 'YYYY-MM-DD' 或 null
+
+  function setDateFilter(iso) {
+    dateFilter = iso || null;
+    refreshCurrentView(); // 依目前頁籤重畫
+  }
+
+  function clearDateFilter() {
+    dateFilter = null;
+    refreshCurrentView();
+  }
+
+  // 右上角日期徽章 → 打開月曆
+  document
+    .getElementById("today-badge")
+    ?.addEventListener("click", openDateFilterModal);
+
+  // --- 月曆（日期篩選）---
+  let dfYear = 0,
+    dfMonth = 0;
+
+  function isISODate(s) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s).getTime());
+  }
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+  function jsDowTo1234567(dow) {
+    return dow === 0 ? 7 : dow;
+  }
+  function daysInMonth(y, m) {
+    return new Date(y, m + 1, 0).getDate();
+  }
+
+  function openDateFilterModal() {
+    const m = document.getElementById("dateFilterModal");
+    if (!m) return;
+
+    // 只建立一次星期標頭
+    const names = m.querySelector("#dfCalNames");
+    if (names && !names.__filled) {
+      names.innerHTML = ["一", "二", "三", "四", "五", "六", "日"]
+        .map((n) => `<div class="rec-dayname">${n}</div>`)
+        .join("");
+      names.__filled = true;
+    }
+
+    const base =
+      dateFilter && isISODate(dateFilter) ? new Date(dateFilter) : new Date();
+    dfYear = base.getFullYear();
+    dfMonth = base.getMonth();
+
+    drawDateFilterCalendar();
+    const clearBtn = m.querySelector("#dfClearBtn");
+    if (clearBtn)
+      clearBtn.onclick = () => {
+        clearDateFilter();
+        closeModal("dateFilterModal");
+      };
+
+    m.style.display = "flex";
+  }
+
+  function drawDateFilterCalendar() {
+    const m = document.getElementById("dateFilterModal");
+    if (!m) return;
+
+    m.querySelector("#dfYM").textContent = `${dfYear} 年 ${dfMonth + 1} 月`;
+    const grid = m.querySelector("#dfCalGrid");
+    grid.innerHTML = "";
+
+    // 當月一號前的空白
+    let lead = jsDowTo1234567(new Date(dfYear, dfMonth, 1).getDay()) - 1;
+    if (lead < 0) lead += 7;
+    for (let i = 0; i < lead; i++)
+      grid.appendChild(document.createElement("div"));
+
+    // 當月哪些日子有「預定完成日」任務
+    const has = new Set();
+    const collect = (arr) =>
+      (Array.isArray(arr) ? arr : []).forEach((t) => {
+        const s = t && t.date;
+        if (isISODate(s)) {
+          const d = new Date(s);
+          if (d.getFullYear() === dfYear && d.getMonth() === dfMonth)
+            has.add(s);
+        }
+      });
+    collect(tasks);
+
+    const selected = dateFilter;
+    const days = daysInMonth(dfYear, dfMonth);
+
+    for (let d = 1; d <= days; d++) {
+      const iso = `${dfYear}-${pad2(dfMonth + 1)}-${pad2(d)}`;
+      const cell = document.createElement("button");
+      cell.className = "rec-date";
+      if (has.has(iso)) cell.classList.add("has-task");
+      if (selected === iso) cell.classList.add("selected");
+      cell.textContent = d;
+      cell.onclick = () => {
+        setDateFilter(iso);
+        closeModal("dateFilterModal");
+      };
+      grid.appendChild(cell);
+    }
+
+    // 導航
+    const prev = m.querySelector("#dfPrev");
+    const next = m.querySelector("#dfNext");
+    const today = m.querySelector("#dfToday");
+
+    if (prev)
+      prev.onclick = () => {
+        if (dfMonth === 0) {
+          dfMonth = 11;
+          dfYear--;
+        } else dfMonth--;
+        drawDateFilterCalendar();
+      };
+    if (next)
+      next.onclick = () => {
+        if (dfMonth === 11) {
+          dfMonth = 0;
+          dfYear++;
+        } else dfMonth++;
+        drawDateFilterCalendar();
+      };
+    if (today)
+      today.onclick = () => {
+        const n = new Date();
+        dfYear = n.getFullYear();
+        dfMonth = n.getMonth();
+        drawDateFilterCalendar();
+      };
+  }
+
+  // 若主程式想要判斷「新任務在當前濾鏡下是否可見」，提供帶入 dateFilter 的版本
+  if (typeof window.isTaskVisibleUnderCurrentFilters !== "function") {
+    window.isTaskVisibleUnderCurrentFilters = function (t) {
+      let show = true;
+
+      // 剩餘天數門檻（1/3/5）
+      if (filterDay !== "default" && filterDay !== "all") {
+        const days = getRemainingDays(t.date);
+        const v = parseInt(filterDay, 10);
+        show = show && days !== null && days <= v;
+      }
+
+      // 重要限定
+      if (importantOnly) show = show && !!t.important;
+
+      // 日期篩選（本次新增）
+      if (dateFilter) show = show && t.date === dateFilter;
+
+      // 僅在「進行中」視圖才考慮
+      return show && statusFilter === "ongoing";
+    };
+  }
+
+  // ★ 只用「進行中」任務做月曆紅字標記
+  function getMarkedDatesForMonth(year, month /* 0~11 */) {
+    try {
+      window.__recurrenceCore?.healEmptyDates?.();
+    } catch (_) {}
+
+    const list = Array.isArray(window.tasks) ? window.tasks : [];
+    const set = new Set();
+
+    for (const t of list) {
+      const iso = t && t.date;
+      if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
+      const d = new Date(iso);
+      if (isNaN(d)) continue;
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        set.add(d.getDate()); // 1~31
+      }
+    }
+    return set;
+  }
+
+  // 若右上角月曆在另一支檔案，掛到 window 讓它也能用
+  window.getMarkedDatesForMonth =
+    window.getMarkedDatesForMonth || getMarkedDatesForMonth;
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
