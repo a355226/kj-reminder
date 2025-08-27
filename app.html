@@ -171,18 +171,13 @@
   width: 100%;
   height: 100%;
   border: 0;
-  opacity: 0;                 /* 初始由 JS 控轉場 */
-  visibility: hidden;         /* 初始隱藏 */
-  pointer-events: none;
-  transition: none;           /* 先關掉，避免第一幀閃屏 */
+  display: none;     /* 直接用 display 切換，最乾脆也最快 */
   contain: layout style paint;
-  transform: translateZ(0) translateX(0) scale(1);
+  transform: translateZ(0);
   background: transparent;
 }
-iframe.app.active {
-  /* active 只當語義標記，不再改可見度；互動權限之後在 JS 打開 */
-  pointer-events: auto;
-}
+/* .active 只拿來標記 tab 狀態，不再控制顯示 */
+iframe.app.active { pointer-events: auto; }
       
     </style>
   </head>
@@ -297,84 +292,34 @@ iframe.app.active {
           }, delay);
         }
 
-function switchTo(which) {
+function instantSwitch(which) {
   const target = which === "task" ? ifTask : ifMemo;
   const other  = which === "task" ? ifMemo : ifTask;
   const tabOn  = which === "task" ? tabTask : tabMemo;
   const tabOff = which === "task" ? tabMemo : tabTask;
 
-  setFastSwitchFlag();
-  warmFrame(target);
+  // 極速：直接切 display；不做任何動畫/過場
+  if (other.style.display !== 'none') other.style.display = 'none';
+  if (target.style.display !== 'block') target.style.display = 'block';
 
-  // 疊放順序：新頁在上、舊頁在下
-  target.style.zIndex = '2';
-  other.style.zIndex  = '1';
-
-  const ready = isReady(target);
-  if (!ready) showMask(); else hideMaskSoon();
-
-  // === 第 0 步：把「舊頁」先鎖成可見（避免你一移除 active 就被 CSS 隱掉）
-  other.style.visibility    = 'visible';
-  other.style.pointerEvents = 'none';
-  other.style.transition    = 'none';
-  other.style.opacity       = '1';
-  other.style.transform     = 'translateX(0) scale(1)';
-
-  // 把「新頁」設為起始狀態（可見但透明＆位移），暫時關 transition
-  target.style.visibility    = 'visible';
-  target.style.pointerEvents = 'none';
-  target.style.transition    = 'none';
-  target.style.opacity       = '0';
-  target.style.transform     = 'translateX(12px) scale(0.995)';
-
-  // 更新 tab 標記與語義 active（不直接控制顯示）
+  // 更新 tab 標記（僅視覺）
   tabOn.classList.add("active");
   tabOff.classList.remove("active");
-  target.classList.add('active');
-  other.classList.remove('active'); // 不影響可見度，因為 CSS 已拿掉 visibility/opacity
-
-  // === 雙幀啟動：確保初始樣式先上版一幀，再開 transition 開始動畫 ===
-  requestAnimationFrame(() => {
-    // 第二幀再開 transition（Safari 對 rAF 更穩）
-    requestAnimationFrame(() => {
-      target.style.transition = 'opacity .28s ease, transform .32s ease';
-      other.style.transition  = 'opacity .24s ease, transform .28s ease';
-
-      // 新頁進場 → 1、0 位移
-      target.style.opacity   = '1';
-      target.style.transform = 'translateX(0) scale(1)';
-
-      // 舊頁退場 → 淡出＋微縮
-      other.style.opacity   = '0';
-      other.style.transform = 'translateX(-12px) scale(0.995)';
-
-      const onEnterDone = () => {
-        target.style.pointerEvents = 'auto';
-        target.removeEventListener('transitionend', onEnterDone);
-        if (!ready) hideMaskSoon();
-      };
-      target.addEventListener('transitionend', onEnterDone, { once: true });
-
-      const onLeaveDone = () => {
-        other.style.visibility    = 'hidden';     // 真正隱藏舊頁
-        other.style.pointerEvents = 'none';
-        other.style.transition    = 'none';
-        other.style.opacity       = '0';
-        other.style.transform     = 'translateX(0) scale(1)'; // 收乾淨
-        other.removeEventListener('transitionend', onLeaveDone);
-      };
-      other.addEventListener('transitionend', onLeaveDone, { once: true });
-    });
-  });
+  target.classList.add("active");
+  other.classList.remove("active");
 }
 
-        // pointerdown 先切（比 click 快一幀）
-        tabTask.addEventListener("pointerdown", () => switchTo("task"));
-        tabMemo.addEventListener("pointerdown", () => switchTo("memo"));
-        // 兼容鍵盤/輔助技術
-        tabTask.addEventListener("click", () => switchTo("task"));
-        tabMemo.addEventListener("click", () => switchTo("memo"));
+// 事件綁定改呼叫 instantSwitch（pointerdown 仍保留以更快觸發）
+tabTask.addEventListener("pointerdown", () => instantSwitch("task"));
+tabMemo.addEventListener("pointerdown", () => instantSwitch("memo"));
+tabTask.addEventListener("click", () => instantSwitch("task"));
+tabMemo.addEventListener("click", () => instantSwitch("memo"));
 
+// 初始狀態：顯示 task、隱藏 memo（保險起見再設一次）
+ifTask.style.display = 'block';
+ifMemo.style.display = 'none';
+
+        
         // 背景先暖機備用頁面（不阻塞互動）
         const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 0));
         idle(() => {
