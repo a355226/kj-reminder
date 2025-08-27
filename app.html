@@ -165,6 +165,61 @@
           transform: translateY(0) scale(1);
         }
       }
+      
+      /* === 進階轉場：滑入/滑出 + 蓋布 === */
+iframe.app {
+  transition: opacity .18s ease, transform .24s ease;
+  transform: translateX(0) scale(1);
+}
+iframe.app.entering {
+  /* 新頁初始位移（往右滑入） */
+  transform: translateX(12px) scale(0.995);
+  opacity: 0;
+}
+iframe.app.active.entering {
+  /* 動畫目標：到位且完全可見 */
+  transform: translateX(0) scale(1);
+  opacity: 1;
+}
+iframe.app.leaving {
+  /* 舊頁淡出且微縮、往左退場 */
+  transform: translateX(-12px) scale(0.995);
+  opacity: 0;
+}
+
+/* 可選：在切換瞬間做「蓋布」效果，避免看到子頁的瞬時閃爍 */
+#switchMask.wipe {
+  display: block;
+  background: none;
+  backdrop-filter: none;
+}
+#switchMask.wipe::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
+  transform: translateY(100%);
+  animation: wipeIn .22s ease forwards;
+  border-top: 1px solid rgba(180,210,255,.35);
+}
+#switchMask.wipe.done::before {
+  animation: wipeOut .22s ease forwards;
+}
+@keyframes wipeIn {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0%); }
+}
+@keyframes wipeOut {
+  from { transform: translateY(0%); }
+  to   { transform: translateY(-100%); }
+}
+
+/* 尊重使用者：若偏好減少動效，退回單純淡入 */
+@media (prefers-reduced-motion: reduce) {
+  iframe.app { transition: opacity .14s linear !important; transform: none !important; }
+  iframe.app.entering, iframe.app.leaving { transform: none !important; }
+  #switchMask.wipe, #switchMask.wipe::before { animation: none !important; }
+}
     </style>
   </head>
   <body>
@@ -278,30 +333,62 @@
           }, delay);
         }
 
-        function switchTo(which) {
-          const target = which === "task" ? ifTask : ifMemo;
-          const other = which === "task" ? ifMemo : ifTask;
-          const tabOn = which === "task" ? tabTask : tabMemo;
-          const tabOff = which === "task" ? tabMemo : tabTask;
+     function switchTo(which) {
+  const target = which === "task" ? ifTask : ifMemo;
+  const other  = which === "task" ? ifMemo : ifTask;
+  const tabOn  = which === "task" ? tabTask : tabMemo;
+  const tabOff = which === "task" ? tabMemo : tabTask;
 
-          // 1) 設快速旗標 + 預熱目標 iframe（像同頁切換一樣即時）
-          setFastSwitchFlag();
-          warmFrame(target);
+  setFastSwitchFlag();
+  warmFrame(target);
 
-          // 2) 只有「完全還沒 ready」才短暫顯示遮罩
-          if (!isReady(target)) showMask();
-          else hideMaskSoon();
+  // 若目標頁還沒 ready，用覆蓋式遮罩；已 ready 就用「蓋布 wipe」
+  const ready = isReady(target);
+  if (!ready) {
+    showMask();
+  } else {
+    // 啟動蓋布動畫（更像原生 App 視覺）
+    mask.classList.add('wipe');
+    mask.classList.remove('done');
+    mask.setAttribute('aria-hidden', 'false');
+  }
 
-          // 3) 下一幀再切換 class，避免同幀重排
-          requestAnimationFrame(() => {
-            tabOn.classList.add("active");
-            tabOff.classList.remove("active");
-            target.classList.add("active");
-            other.classList.remove("active");
-            if (isReady(target)) hideMaskSoon();
-          });
-        }
+  // 先設定進/出場 class
+  other.classList.remove('entering');
+  other.classList.add('leaving');
+  target.classList.add('entering');
 
+  // 下一幀切換 active，觸發 CSS 動畫
+  requestAnimationFrame(() => {
+    tabOn.classList.add("active");
+    tabOff.classList.remove("active");
+
+    target.classList.add("active");
+    target.classList.remove("leaving"); // 確保乾淨
+    other.classList.remove("active");
+
+    // 監聽一次動畫結束，把臨時 class 移除
+    const onDone = () => {
+      target.classList.remove('entering');
+      other.classList.remove('leaving');
+      target.removeEventListener('transitionend', onDone);
+
+      if (!ready) {
+        hideMaskSoon();
+      } else {
+        // 蓋布滑上 → 再滑走
+        mask.classList.add('done');
+        // 等 wipeOut 差不多結束就收掉
+        setTimeout(() => {
+          mask.classList.remove('wipe', 'done');
+          mask.setAttribute('aria-hidden', 'true');
+        }, 220);
+      }
+    };
+    // 用 transform/opacity 的 transitionend 任一個就好
+    target.addEventListener('transitionend', onDone, { once: true });
+  });
+}
         // pointerdown 先切（比 click 快一幀）
         tabTask.addEventListener("pointerdown", () => switchTo("task"));
         tabMemo.addEventListener("pointerdown", () => switchTo("memo"));
