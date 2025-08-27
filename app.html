@@ -165,23 +165,22 @@
           transform: translateY(0) scale(1);
         }
       }
-      iframe.app {
+     iframe.app {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   border: 0;
-  opacity: 0;
-  visibility: hidden;
+  opacity: 0;                 /* 初始由 JS 控轉場 */
+  visibility: hidden;         /* 初始隱藏 */
   pointer-events: none;
-  /* 由 JS 控制 transition，避免切 class 的競態造成閃爍 */
-  transition: none;
+  transition: none;           /* 先關掉，避免第一幀閃屏 */
   contain: layout style paint;
   transform: translateZ(0) translateX(0) scale(1);
   background: transparent;
 }
 iframe.app.active {
-  /* active 只作語義標記；實際動畫仍由 JS 控制 */
+  /* active 只當語義標記，不再改可見度；互動權限之後在 JS 打開 */
   pointer-events: auto;
 }
       
@@ -298,7 +297,7 @@ iframe.app.active {
           }, delay);
         }
 
-      function switchTo(which) {
+function switchTo(which) {
   const target = which === "task" ? ifTask : ifMemo;
   const other  = which === "task" ? ifMemo : ifTask;
   const tabOn  = which === "task" ? tabTask : tabMemo;
@@ -307,71 +306,66 @@ iframe.app.active {
   setFastSwitchFlag();
   warmFrame(target);
 
-  // 疊放順序：目標在上、舊頁在下
+  // 疊放順序：新頁在上、舊頁在下
   target.style.zIndex = '2';
   other.style.zIndex  = '1';
 
   const ready = isReady(target);
-  if (!ready) {
-    showMask(); // 目標頁未 ready → 顯示遮罩
-  } else {
-    hideMaskSoon();
-  }
+  if (!ready) showMask(); else hideMaskSoon();
 
-  // --- 進場前：先把「目標頁」鎖在初始狀態（不可見＋位移），且先讓它可見但透明 ---
+  // === 第 0 步：把「舊頁」先鎖成可見（避免你一移除 active 就被 CSS 隱掉）
+  other.style.visibility    = 'visible';
+  other.style.pointerEvents = 'none';
+  other.style.transition    = 'none';
+  other.style.opacity       = '1';
+  other.style.transform     = 'translateX(0) scale(1)';
+
+  // 把「新頁」設為起始狀態（可見但透明＆位移），暫時關 transition
   target.style.visibility    = 'visible';
   target.style.pointerEvents = 'none';
-  target.style.transition    = 'none';                // 關閉 transition，避免第一幀跳動
+  target.style.transition    = 'none';
   target.style.opacity       = '0';
   target.style.transform     = 'translateX(12px) scale(0.995)';
 
-  // 舊頁維持可見，稍後淡出
-  other.style.visibility     = 'visible';
-  other.style.pointerEvents  = 'none';
-  other.style.transition     = 'none';
-  other.style.opacity        = '1';
-  other.style.transform      = 'translateX(0) scale(1)';
-
-  // Tab 標記（不影響動畫）
+  // 更新 tab 標記與語義 active（不直接控制顯示）
   tabOn.classList.add("active");
   tabOff.classList.remove("active");
-
-  // 更新 active 語義標記（真正可點在動畫結束後才開）
   target.classList.add('active');
-  other.classList.remove('active');
+  other.classList.remove('active'); // 不影響可見度，因為 CSS 已拿掉 visibility/opacity
 
-  // --- 關鍵：強制 reflow，讓上述初始狀態「先上版」一幀，避免閃一下 ---
-  void target.offsetWidth; // 或 target.getBoundingClientRect();
+  // === 雙幀啟動：確保初始樣式先上版一幀，再開 transition 開始動畫 ===
+  requestAnimationFrame(() => {
+    // 第二幀再開 transition（Safari 對 rAF 更穩）
+    requestAnimationFrame(() => {
+      target.style.transition = 'opacity .28s ease, transform .32s ease';
+      other.style.transition  = 'opacity .24s ease, transform .28s ease';
 
-  // --- 開啟 transition，開始「進場/退場」動畫 ---
-  target.style.transition = 'opacity .28s ease, transform .32s ease';
-  other.style.transition  = 'opacity .24s ease, transform .28s ease';
+      // 新頁進場 → 1、0 位移
+      target.style.opacity   = '1';
+      target.style.transform = 'translateX(0) scale(1)';
 
-  // 新頁進場到最終狀態
-  target.style.opacity   = '1';
-  target.style.transform = 'translateX(0) scale(1)';
+      // 舊頁退場 → 淡出＋微縮
+      other.style.opacity   = '0';
+      other.style.transform = 'translateX(-12px) scale(0.995)';
 
-  // 舊頁退場（淡出＋微縮）
-  other.style.opacity   = '0';
-  other.style.transform = 'translateX(-12px) scale(0.995)';
+      const onEnterDone = () => {
+        target.style.pointerEvents = 'auto';
+        target.removeEventListener('transitionend', onEnterDone);
+        if (!ready) hideMaskSoon();
+      };
+      target.addEventListener('transitionend', onEnterDone, { once: true });
 
-  // 動畫完成後：開放目標互動、隱藏舊頁、收遮罩
-  const onEnterDone = () => {
-    target.style.pointerEvents = 'auto';
-    target.removeEventListener('transitionend', onEnterDone);
-    if (!ready) hideMaskSoon();
-  };
-  target.addEventListener('transitionend', onEnterDone, { once: true });
-
-  const onLeaveDone = () => {
-    other.style.visibility    = 'hidden';
-    other.style.pointerEvents = 'none';
-    other.style.transition    = 'none';
-    other.style.opacity       = '0';
-    other.style.transform     = 'translateX(0) scale(1)'; // 收尾回到乾淨狀態
-    other.removeEventListener('transitionend', onLeaveDone);
-  };
-  other.addEventListener('transitionend', onLeaveDone, { once: true });
+      const onLeaveDone = () => {
+        other.style.visibility    = 'hidden';     // 真正隱藏舊頁
+        other.style.pointerEvents = 'none';
+        other.style.transition    = 'none';
+        other.style.opacity       = '0';
+        other.style.transform     = 'translateX(0) scale(1)'; // 收乾淨
+        other.removeEventListener('transitionend', onLeaveDone);
+      };
+      other.addEventListener('transitionend', onLeaveDone, { once: true });
+    });
+  });
 }
 
         // pointerdown 先切（比 click 快一幀）
