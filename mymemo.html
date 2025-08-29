@@ -2663,6 +2663,16 @@
           if (pendingColor) setAppBgColor(pendingColor);
           closeModal("paletteModal");
         });
+        
+          // 新增：讓「取消」關閉調色盤（並順手清空選取狀態）
+  document.getElementById("paletteCancelBtn").addEventListener("click", () => {
+    pendingColor = null;
+    document
+      .querySelectorAll("#paletteModal .palette-choice")
+      .forEach(el => el.classList.remove("selected"));
+    closeModal("paletteModal");
+  });
+
 
       /* ===== 互動補強 ===== */
       // 點背景關閉 modal
