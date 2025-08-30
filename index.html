@@ -1183,6 +1183,36 @@ button.palette-btn:active {
 
 /* 搜尋隱藏（不影響其它篩選，能疊加） */
 .task.search-hide{ display:none !important; }
+/* === Login page legal links === */
+/* 置底的政策連結（不擋畫面） */
+/* 置底，左右分佈的政策連結 */
+/* 置底，置中排列，兩個連結左右分開 */
+.legal-links{
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 40px;        /* 兩個連結之間的距離，你可以調大或調小 */
+  font-size: 14px;
+  font-weight: 700;
+  z-index: 150;
+}
+.legal-links a{
+  color: #176dff;
+  text-decoration: none;
+  background: #eef6ff;
+  border: 1px solid #d6eaff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  min-width: 90px;   /* 保持按鈕一致寬度（可調整或拿掉） */
+  text-align: center;
+}
+.legal-links a:hover{ background:#e6f1ff; }
+.legal-links a:active{ transform: translateY(1px); }
+
+
 
 
   </style>
@@ -1211,7 +1241,19 @@ button.palette-btn:active {
 
     <p class="login-tip">平台免註冊，自訂帳號密碼即可登錄</p>
   </div>
+
+  <!-- ▼ 新增：登入頁面下方的政策連結（清楚、可點） -->
+  <div class="legal-links" role="contentinfo" aria-label="政策連結">
+    <a href="https://kjapps.com/privacy.html"
+       target="_blank" rel="noopener noreferrer"
+       aria-label="開啟隱私權政策（新分頁）">隱私權政策</a>
+    <a href="https://kjapps.com/terms.html"
+       target="_blank" rel="noopener noreferrer"
+       aria-label="開啟服務條款（新分頁）">服務條款</a>
+  </div>
+  <!-- ▲ 新增結束 -->
 </div>
+
 
 
 
