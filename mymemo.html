@@ -925,6 +925,13 @@
       .task.search-hide {
         display: none !important;
       }
+      
+            /* 只讓 #memoContent 有最小高度；保留右下角可調整 */
+#memoContent{
+  min-height: 30vh;
+  resize: vertical;     /* 若之前被關掉，這行可讓右下角手把回來 */
+  box-sizing: border-box;
+}
     </style>
   </head>
   <body>
@@ -986,12 +993,7 @@
           transform: rotate(360deg);
         }
       }
-      /* 只讓 #memoContent 有最小高度；保留右下角可調整 */
-#memoContent{
-  min-height: 30vh;
-  resize: vertical;     /* 若之前被關掉，這行可讓右下角手把回來 */
-  box-sizing: border-box;
-}
+
     </style>
 
     <!-- App -->
