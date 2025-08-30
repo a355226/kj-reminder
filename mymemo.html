@@ -1005,6 +1005,7 @@
   overscroll-behavior: contain;
   word-break: break-word;                  /* 長字/網址不撐寬 */
 }
+.rt-editor { white-space: pre-wrap; word-break: break-word; }
 
 /* 展開閱讀的 textarea 原本叫 .viewer-body，升級成 div 仍保留 class，這裡再保險 */
 .viewer-body {
@@ -3195,16 +3196,17 @@ body.scroll-locked {
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
       }
-      function __linkifyHTML(plain) {
-        const esc = __escapeHTML(plain);
-        // 抓 http(s):// 或 www.
-        const re = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
-        return esc.replace(re, (m) => {
-          const url = m.startsWith("www.") ? "http://" + m : m;
-          return `<a href="${url}" target="_blank" rel="noopener noreferrer">${m}</a>`;
-        });
-      }
-
+ function __linkifyHTML(plain) {
+  const esc = __escapeHTML(plain);
+  // 抓 http(s):// 或 www.
+  const re = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+  const withLinks = esc.replace(re, (m) => {
+    const url = m.startsWith("www.") ? "http://" + m : m;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${m}</a>`;
+  });
+  // ★ 保留換行
+  return withLinks.replace(/\n/g, "<br>");
+}
       /* 2) caret 位置保存/還原（避免連結化時游標跳走） */
       function __getCaretOffset(el) {
         const sel = window.getSelection();
@@ -3257,18 +3259,19 @@ body.scroll-locked {
 
       /* 4) 在 contenteditable 上補一個 .value 存取子，讓舊程式不用改 */
       function __defineValueProxy(el) {
-        if (el.__valueProxyReady) return;
-        Object.defineProperty(el, "value", {
-          get() {
-            return el.textContent || "";
-          },
-          set(v) {
-            el.textContent = v || "";
-            __linkifyCE(el);
-          },
-        });
-        el.__valueProxyReady = true;
-      }
+  if (el.__valueProxyReady) return;
+  Object.defineProperty(el, "value", {
+    get() {
+      // ★ innerText 會把 <br> / 區塊換行轉成 \n
+      return el.innerText || "";
+    },
+    set(v) {
+      el.textContent = v || "";   // 先塞純文字
+      __linkifyCE(el);            // 再連結化 + 還原 <br>
+    },
+  });
+  el.__valueProxyReady = true;
+}
 
       /* 5) 升級：把 textarea#id 換成 <div contenteditable>（保留原 class/id） */
       function upgradeToRichEditor(id) {
