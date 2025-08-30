@@ -3294,6 +3294,24 @@ body.scroll-locked {
         if (ph) div.setAttribute("data-placeholder", ph);
         // 將現有值帶入
         div.textContent = old.value || "";
+        
+        div.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    // 插入 <br> 並把游標移到後面
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    const br = document.createElement("br");
+    r.insertNode(br);
+    r.setStartAfter(br);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    // 讓我們的連結化稍後跑一次（保持一致）
+    setTimeout(() => __linkifyCE(div), 0);
+  }
+});
 
         // 取代節點
         old.parentNode.replaceChild(div, old);
