@@ -971,6 +971,56 @@
       #detailContent {
         min-height: 80px;
       }
+      
+      /* ===== [修正] Modal 與編輯區的高度與滾動 ===== */
+
+/* 避免彈窗內滾動牽動到背景頁面 */
+.modal {
+  overscroll-behavior: contain;            /* 防止滾動傳遞 */
+  padding: 12px;                           /* 邊界緩衝，避免頂到螢幕 */
+}
+
+/* 讓彈窗本體不會超過視窗高度，超出改在內部滾動 */
+.modal-content {
+  max-height: min(86vh, 720px);            /* 你可改 80~90vh 視覺偏好 */
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;       /* iOS 慣性滑動 */
+  overscroll-behavior: contain;
+}
+
+/* 詳情「表單」與「展開閱讀」容器也限制，避免把畫面撐爆 */
+#detailForm,
+#detailViewer {
+  max-height: calc(86vh - 120px);          /* 扣掉標題/按鈕空間 */
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 內容編輯區（含升級後的 contenteditable）本身也要可滾動且有限高 */
+.rt-editor {
+  max-height: 60vh;                        /* 你可調 50~70vh */
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  word-break: break-word;                  /* 長字/網址不撐寬 */
+}
+
+/* 展開閱讀的 textarea 原本叫 .viewer-body，升級成 div 仍保留 class，這裡再保險 */
+.viewer-body {
+  max-height: 60vh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* （可選）當有 Modal 打開時，底層頁面就算被拖動也固定住 */
+html.scroll-locked,
+body.scroll-locked {
+  position: fixed;
+  width: 100%;
+  overflow: hidden;                         /* 桌機瀏覽器保險 */
+}
     </style>
   </head>
   <body>
