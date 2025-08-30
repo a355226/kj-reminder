@@ -515,7 +515,6 @@
         border-radius: 6px;
         margin-top: 0.25rem;
         font-size: 16px;
-        min-height: 30vh;
       }
       .inline-row {
         display: flex;
@@ -987,6 +986,12 @@
           transform: rotate(360deg);
         }
       }
+      /* 只讓 #memoContent 有最小高度；保留右下角可調整 */
+#memoContent{
+  min-height: 30vh;
+  resize: vertical;     /* 若之前被關掉，這行可讓右下角手把回來 */
+  box-sizing: border-box;
+}
     </style>
 
     <!-- App -->
