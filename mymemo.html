@@ -925,103 +925,6 @@
       .task.search-hide {
         display: none !important;
       }
-
-      /* 富文字編輯器外觀（取代 textarea） */
-      .rt-editor {
-        width: 100%;
-        min-height: 50vh; /* viewer 可維持原高度 */
-        padding: 0.75rem;
-        border: 1px solid #ccc;
-        border-radius: 8px;
-        background: #fff;
-        line-height: 1.6;
-        font-size: 0.95rem;
-        overflow: auto;
-        white-space: pre-wrap; /* 保留換行 */
-        word-break: break-word;
-        margin-top: 0.5rem;
-        resize: vertical; /* 盡量保留原本可拉伸體驗（瀏覽器支援才會有） */
-      }
-      .rt-editor a {
-        color: #176dff;
-        text-decoration: underline;
-      }
-      .rt-editor[contenteditable="false"] {
-        background: #f5f5f5;
-      }
-      .rt-editor:empty:before {
-        content: attr(data-placeholder);
-        color: #9aa7bd;
-      }
-      /* ---- 縮小輸入框的最小高度（覆寫前面的 50vh）---- */
-
-      /* 一般輸入（新增備忘 / 詳情編輯）小一點 */
-      #memoModal .rt-editor,
-      #detailModal .rt-editor {
-        min-height: 80px; /* 想更緊湊可改 80~100px */
-      }
-
-      /* 展開閱讀面板維持比較大，方便長文閱讀/編輯 */
-      #viewerBody.rt-editor {
-        min-height: 50vh;
-      }
-
-      /* 還沒被升級成 contenteditable 前（仍是 textarea）的保底高度也一起調小 */
-      #memoContent,
-      #detailContent {
-        min-height: 80px;
-      }
-      
-      /* ===== [修正] Modal 與編輯區的高度與滾動 ===== */
-
-/* 避免彈窗內滾動牽動到背景頁面 */
-.modal {
-  overscroll-behavior: contain;            /* 防止滾動傳遞 */
-  padding: 12px;                           /* 邊界緩衝，避免頂到螢幕 */
-}
-
-/* 讓彈窗本體不會超過視窗高度，超出改在內部滾動 */
-.modal-content {
-  max-height: min(86vh, 720px);            /* 你可改 80~90vh 視覺偏好 */
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;       /* iOS 慣性滑動 */
-  overscroll-behavior: contain;
-}
-
-/* 詳情「表單」與「展開閱讀」容器也限制，避免把畫面撐爆 */
-#detailForm,
-#detailViewer {
-  max-height: calc(86vh - 120px);          /* 扣掉標題/按鈕空間 */
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
-/* 內容編輯區（含升級後的 contenteditable）本身也要可滾動且有限高 */
-.rt-editor {
-  max-height: 30vh;                        /* 你可調 50~70vh */
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  word-break: break-word;                  /* 長字/網址不撐寬 */
-}
-.rt-editor { white-space: pre-wrap; word-break: break-word; }
-
-/* 展開閱讀的 textarea 原本叫 .viewer-body，升級成 div 仍保留 class，這裡再保險 */
-.viewer-body {
-  max-height: 50vh;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
-/* （可選）當有 Modal 打開時，底層頁面就算被拖動也固定住 */
-html.scroll-locked,
-body.scroll-locked {
-  position: fixed;
-  width: 100%;
-  overflow: hidden;                         /* 桌機瀏覽器保險 */
-}
     </style>
   </head>
   <body>
@@ -1627,7 +1530,6 @@ body.scroll-locked {
           const opt = sel?.querySelector(`option[value="${prefSectionId}"]`);
           if (opt) sel.value = prefSectionId;
         }
-        upgradeToRichEditor("memoContent");
         closeFabMenu(); // 關掉＋選單
         openModal("memoModal");
       }
@@ -2352,7 +2254,6 @@ body.scroll-locked {
 
         document.getElementById("detailSection").value = m.section;
         document.getElementById("detailTitle").value = m.title;
-        upgradeToRichEditor("detailContent");
         document.getElementById("detailContent").value = m.content || "";
         document.getElementById("detailImportant").checked = !!m.important;
 
@@ -2372,7 +2273,6 @@ body.scroll-locked {
         // 欄位唯讀/禁用
         document.getElementById("detailSection").disabled = isRemoved;
         document.getElementById("detailTitle").readOnly = isRemoved;
-        setRichReadOnly("detailContent", isRemoved);
         document.getElementById("detailContent").readOnly = isRemoved;
         document.getElementById("detailImportant").disabled = isRemoved;
 
@@ -2595,10 +2495,7 @@ body.scroll-locked {
         const form = document.getElementById("detailForm");
         const viewer = document.getElementById("detailViewer");
         const vTitle = document.getElementById("viewerTitle");
-        // ★ 先把 viewerBody 升級成可點連結的編輯器
-        upgradeToRichEditor("viewerBody");
-        // ★ 升級後再抓（此時是 DIV）
-        let vBody = document.getElementById("viewerBody");
+        const vBody = document.getElementById("viewerBody");
 
         // 先移除舊監聽（原程式碼保留）
         if (__expandedFieldId) {
@@ -2636,14 +2533,6 @@ body.scroll-locked {
         viewer.classList.add("show");
         form.classList.add("hide");
         __expandedFieldId = fieldId;
-        // ★ 如果來源是唯讀（例如已移除檢視），viewer 也鎖住
-        if (src) {
-          const srcReadOnly =
-            src.nodeName === "TEXTAREA"
-              ? src.readOnly
-              : src.getAttribute("contenteditable") === "false";
-          setRichReadOnly("viewerBody", !!srcReadOnly);
-        }
 
         if (src) {
           src.__viewerSync = () => {
@@ -2774,17 +2663,16 @@ body.scroll-locked {
           if (pendingColor) setAppBgColor(pendingColor);
           closeModal("paletteModal");
         });
+        
+          // 新增：讓「取消」關閉調色盤（並順手清空選取狀態）
+  document.getElementById("paletteCancelBtn").addEventListener("click", () => {
+    pendingColor = null;
+    document
+      .querySelectorAll("#paletteModal .palette-choice")
+      .forEach(el => el.classList.remove("selected"));
+    closeModal("paletteModal");
+  });
 
-      // 新增：讓「取消」關閉調色盤（並順手清空選取狀態）
-      document
-        .getElementById("paletteCancelBtn")
-        .addEventListener("click", () => {
-          pendingColor = null;
-          document
-            .querySelectorAll("#paletteModal .palette-choice")
-            .forEach((el) => el.classList.remove("selected"));
-          closeModal("paletteModal");
-        });
 
       /* ===== 互動補強 ===== */
       // 點背景關閉 modal
@@ -3183,172 +3071,6 @@ body.scroll-locked {
         const base = stripRemovedSuffix(name);
         const alive = (categories || []).includes(base);
         return alive ? base : `${base}${REMOVED_SUFFIX}`;
-      }
-
-      /* ===== 將 textarea 升級為 contenteditable（保留 .value 介面）===== */
-
-      /* 1) 安全轉 HTML + 自動把網址變 <a> */
-      function __escapeHTML(s) {
-        return String(s)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-      }
- function __linkifyHTML(plain) {
-  const esc = __escapeHTML(plain);
-  // 抓 http(s):// 或 www.
-  const re = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
-  const withLinks = esc.replace(re, (m) => {
-    const url = m.startsWith("www.") ? "http://" + m : m;
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${m}</a>`;
-  });
-  // ★ 保留換行
-  return withLinks.replace(/\n/g, "<br>");
-}
-      /* 2) caret 位置保存/還原（避免連結化時游標跳走） */
-      function __getCaretOffset(el) {
-        const sel = window.getSelection();
-        if (!sel || sel.rangeCount === 0) return 0;
-        const r = sel.getRangeAt(0).cloneRange();
-        const pre = document.createRange();
-        pre.selectNodeContents(el);
-        pre.setEnd(r.endContainer, r.endOffset);
-        return pre.toString().length;
-      }
-      function __setCaretOffset(el, offset) {
-        const walker = document.createTreeWalker(
-          el,
-          NodeFilter.SHOW_TEXT,
-          null
-        );
-        let cur = 0,
-          node;
-        while ((node = walker.nextNode())) {
-          const next = cur + node.nodeValue.length;
-          if (offset <= next) {
-            const range = document.createRange();
-            range.setStart(node, Math.max(0, offset - cur));
-            range.collapse(true);
-            const sel = window.getSelection();
-            sel.removeAllRanges();
-            sel.addRange(range);
-            return;
-          }
-          cur = next;
-        }
-        // 放到末尾
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
-
-      /* 3) 把純文字轉成含 <a> 的 HTML，並盡量保留 caret */
-      function __linkifyCE(el) {
-        const focused = document.activeElement === el;
-        const caret = focused ? __getCaretOffset(el) : 0;
-        const plain = el.textContent || "";
-        el.innerHTML = __linkifyHTML(plain);
-        if (focused)
-          __setCaretOffset(el, Math.min(caret, (el.textContent || "").length));
-      }
-
-      /* 4) 在 contenteditable 上補一個 .value 存取子，讓舊程式不用改 */
-      function __defineValueProxy(el) {
-  if (el.__valueProxyReady) return;
-  Object.defineProperty(el, "value", {
-    get() {
-      // ★ innerText 會把 <br> / 區塊換行轉成 \n
-      return el.innerText || "";
-    },
-    set(v) {
-      el.textContent = v || "";   // 先塞純文字
-      __linkifyCE(el);            // 再連結化 + 還原 <br>
-    },
-  });
-  el.__valueProxyReady = true;
-}
-
-      /* 5) 升級：把 textarea#id 換成 <div contenteditable>（保留原 class/id） */
-      function upgradeToRichEditor(id) {
-        let old = document.getElementById(id);
-        if (!old) return;
-
-        // 已是 contenteditable：刷新連結後返回
-        if (old.nodeName === "DIV" && old.isContentEditable) {
-          __defineValueProxy(old);
-          __linkifyCE(old);
-          return;
-        }
-        if (old.nodeName !== "TEXTAREA") return;
-
-        const div = document.createElement("div");
-        div.id = old.id;
-        div.className = (old.className || "") + " rt-editor";
-        div.setAttribute("contenteditable", "true");
-        const ph = old.getAttribute("placeholder");
-        if (ph) div.setAttribute("data-placeholder", ph);
-        // 將現有值帶入
-        div.textContent = old.value || "";
-        
-        div.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    // 插入 <br> 並把游標移到後面
-    const sel = window.getSelection();
-    if (!sel || !sel.rangeCount) return;
-    const r = sel.getRangeAt(0);
-    const br = document.createElement("br");
-    r.insertNode(br);
-    r.setStartAfter(br);
-    r.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(r);
-    // 讓我們的連結化稍後跑一次（保持一致）
-    setTimeout(() => __linkifyCE(div), 0);
-  }
-});
-
-        // 取代節點
-        old.parentNode.replaceChild(div, old);
-
-        // 補上 .value 介面，並先做一次 linkify
-        __defineValueProxy(div);
-        __linkifyCE(div);
-
-        // 在輸入/貼上時做連結化（用微小延遲避免重入）
-        let t = null;
-        const refresh = () => {
-          clearTimeout(t);
-          t = setTimeout(() => __linkifyCE(div), 0);
-        };
-        div.addEventListener("input", refresh);
-        div.addEventListener("paste", () => setTimeout(refresh, 0));
-
-        // 點連結就開新分頁（若怕誤觸，可改成需 Ctrl/Cmd）
-        div.addEventListener("click", (e) => {
-          const a = e.target.closest("a");
-          if (!a) return;
-          window.open(a.href, "_blank", "noopener");
-          e.preventDefault();
-        });
-      }
-
-      /* 6) 設定唯讀（textarea 與 contenteditable 都能處理） */
-      function setRichReadOnly(id, readonly) {
-        const el = document.getElementById(id);
-        if (!el) return;
-        if (el.nodeName === "TEXTAREA") {
-          el.readOnly = !!readonly;
-        } else {
-          el.setAttribute("contenteditable", readonly ? "false" : "true");
-          if (readonly) el.classList.add("rt-readonly");
-          else el.classList.remove("rt-readonly");
-        }
       }
     </script>
     <script>
