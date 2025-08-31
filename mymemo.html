@@ -1450,6 +1450,25 @@ body.scroll-locked {
     </div>
 
     <script>
+    // ★ 讓全域 Enter 監聽【不要】攔截編輯器裡的 Enter
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  const t = e.target;
+  const isEditable =
+    t &&
+    (
+      t.tagName === 'TEXTAREA' ||
+      t.isContentEditable ||
+      (t.closest && t.closest('[contenteditable="true"]'))
+    );
+
+  if (isEditable) {
+    // 在編輯區內按 Enter：直接放行，並阻止其它全域 Enter 監聽介入
+    e.stopImmediatePropagation();
+    return;
+  }
+}, true); // ← 用 capture，確保最早攔截到
+
       /* ===== 基本設定 ===== */
       const firebaseConfig = {
         apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
@@ -3248,15 +3267,15 @@ body.scroll-locked {
       }
 
       /* 3) 把純文字轉成含 <a> 的 HTML，並盡量保留 caret */
-      function __linkifyCE(el) {
-        const focused = document.activeElement === el;
-        const caret = focused ? __getCaretOffset(el) : 0;
-        const plain = el.textContent || "";
-        el.innerHTML = __linkifyHTML(plain);
-        if (focused)
-          __setCaretOffset(el, Math.min(caret, (el.textContent || "").length));
-      }
-
+     function __linkifyCE(el) {
+  const focused = document.activeElement === el;
+  const caret = focused ? __getCaretOffset(el) : 0;
+  const plain = el.innerText || "";        // ← 改用 innerText，包含換行
+  el.innerHTML = __linkifyHTML(plain);     // 會把 \n 轉成 <br>
+  if (focused) {
+    __setCaretOffset(el, Math.min(caret, (el.innerText || "").length));
+  }
+}
       /* 4) 在 contenteditable 上補一個 .value 存取子，讓舊程式不用改 */
       function __defineValueProxy(el) {
   if (el.__valueProxyReady) return;
@@ -3274,7 +3293,7 @@ body.scroll-locked {
 }
 
       /* 5) 升級：把 textarea#id 換成 <div contenteditable>（保留原 class/id） */
-function upgradeToRichEditor(id) {
+     function upgradeToRichEditor(id) {
   const old = document.getElementById(id);
   if (!old) return;
 
