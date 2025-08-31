@@ -1450,25 +1450,6 @@ body.scroll-locked {
     </div>
 
     <script>
-    // ★ 讓全域 Enter 監聽【不要】攔截編輯器裡的 Enter
-document.addEventListener('keydown', function (e) {
-  if (e.key !== 'Enter') return;
-  const t = e.target;
-  const isEditable =
-    t &&
-    (
-      t.tagName === 'TEXTAREA' ||
-      t.isContentEditable ||
-      (t.closest && t.closest('[contenteditable="true"]'))
-    );
-
-  if (isEditable) {
-    // 在編輯區內按 Enter：直接放行，並阻止其它全域 Enter 監聽介入
-    e.stopImmediatePropagation();
-    return;
-  }
-}, true); // ← 用 capture，確保最早攔截到
-
       /* ===== 基本設定 ===== */
       const firebaseConfig = {
         apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
@@ -3267,15 +3248,15 @@ document.addEventListener('keydown', function (e) {
       }
 
       /* 3) 把純文字轉成含 <a> 的 HTML，並盡量保留 caret */
-     function __linkifyCE(el) {
-  const focused = document.activeElement === el;
-  const caret = focused ? __getCaretOffset(el) : 0;
-  const plain = el.innerText || "";        // ← 改用 innerText，包含換行
-  el.innerHTML = __linkifyHTML(plain);     // 會把 \n 轉成 <br>
-  if (focused) {
-    __setCaretOffset(el, Math.min(caret, (el.innerText || "").length));
-  }
-}
+      function __linkifyCE(el) {
+        const focused = document.activeElement === el;
+        const caret = focused ? __getCaretOffset(el) : 0;
+        const plain = el.textContent || "";
+        el.innerHTML = __linkifyHTML(plain);
+        if (focused)
+          __setCaretOffset(el, Math.min(caret, (el.textContent || "").length));
+      }
+
       /* 4) 在 contenteditable 上補一個 .value 存取子，讓舊程式不用改 */
       function __defineValueProxy(el) {
   if (el.__valueProxyReady) return;
@@ -3293,66 +3274,81 @@ document.addEventListener('keydown', function (e) {
 }
 
       /* 5) 升級：把 textarea#id 換成 <div contenteditable>（保留原 class/id） */
-      function upgradeToRichEditor(id) {
-        let old = document.getElementById(id);
-        if (!old) return;
+function upgradeToRichEditor(id) {
+  const old = document.getElementById(id);
+  if (!old) return;
 
-        // 已是 contenteditable：刷新連結後返回
-        if (old.nodeName === "DIV" && old.isContentEditable) {
-          __defineValueProxy(old);
-          __linkifyCE(old);
-          return;
-        }
-        if (old.nodeName !== "TEXTAREA") return;
+  // 統一綁 handlers（避免重複綁定）
+  const bindRichHandlers = (el) => {
+    if (el.__richBound) return;
 
-        const div = document.createElement("div");
-        div.id = old.id;
-        div.className = (old.className || "") + " rt-editor";
-        div.setAttribute("contenteditable", "true");
-        const ph = old.getAttribute("placeholder");
-        if (ph) div.setAttribute("data-placeholder", ph);
-        // 將現有值帶入
-        div.textContent = old.value || "";
-        
-div.addEventListener('paste', (e) => {
-  e.preventDefault();
-  const text = (e.clipboardData || window.clipboardData).getData('text') || '';
-  const sel = window.getSelection();
-  if (!sel || !sel.rangeCount) return;
-  const r = sel.getRangeAt(0);
-  const parts = text.split(/\r?\n/);
-  parts.forEach((chunk, i) => {
-    if (chunk) r.insertNode(document.createTextNode(chunk));
-    if (i < parts.length - 1) r.insertNode(document.createElement('br'));
-    r.collapse(false);
-  });
-  sel.removeAllRanges();
-  sel.addRange(r);
-  setTimeout(() => __linkifyCE(div), 0);
-}, true);        // 取代節點
-        old.parentNode.replaceChild(div, old);
+    // Enter → 單一 <br>，避免瀏覽器產生多層 block
+    el.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const r = sel.getRangeAt(0);
+      const br = document.createElement("br");
+      r.insertNode(br);
+      r.setStartAfter(br);
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      // 之後做一次規整（把\n/<br>統一）
+      setTimeout(() => __linkifyCE(el), 0);
+    });
 
-        // 補上 .value 介面，並先做一次 linkify
-        __defineValueProxy(div);
-        __linkifyCE(div);
+    // 文字/貼上後做一次規整（微延遲避開重入）
+    let t = null;
+    const refresh = () => {
+      clearTimeout(t);
+      t = setTimeout(() => __linkifyCE(el), 0);
+    };
+    el.addEventListener("input", refresh);
+    el.addEventListener("paste", () => setTimeout(refresh, 0));
 
-        // 在輸入/貼上時做連結化（用微小延遲避免重入）
-        let t = null;
-        const refresh = () => {
-          clearTimeout(t);
-          t = setTimeout(() => __linkifyCE(div), 0);
-        };
-        div.addEventListener("input", refresh);
-        div.addEventListener("paste", () => setTimeout(refresh, 0));
+    // 點連結開新分頁
+    el.addEventListener("click", (e) => {
+      const a = e.target.closest("a");
+      if (!a) return;
+      e.preventDefault();
+      window.open(a.href, "_blank", "noopener");
+    });
 
-        // 點連結就開新分頁（若怕誤觸，可改成需 Ctrl/Cmd）
-        div.addEventListener("click", (e) => {
-          const a = e.target.closest("a");
-          if (!a) return;
-          window.open(a.href, "_blank", "noopener");
-          e.preventDefault();
-        });
-      }
+    el.__richBound = true;
+  };
+
+  // 已是 contenteditable：補代理＋綁事件＋立即規整
+  if (old.nodeName === "DIV" && old.isContentEditable) {
+    __defineValueProxy(old);
+    bindRichHandlers(old);
+    __linkifyCE(old);
+    return;
+  }
+
+  // 僅接受 textarea 升級
+  if (old.nodeName !== "TEXTAREA") return;
+
+  // 建立 contenteditable div
+  const div = document.createElement("div");
+  div.id = old.id;
+  div.className = (old.className || "") + " rt-editor";
+  div.setAttribute("contenteditable", "true");
+  const ph = old.getAttribute("placeholder");
+  if (ph) div.setAttribute("data-placeholder", ph);
+
+  // 先放純文字（包含原本 \n）
+  div.textContent = old.value || "";
+
+  // 取代節點
+  old.parentNode.replaceChild(div, old);
+
+  // 補上 .value 代理 + 綁 handlers + 規整一次（\n→<br>、網址轉<a>）
+  __defineValueProxy(div);
+  bindRichHandlers(div);
+  __linkifyCE(div);
+}
 
       /* 6) 設定唯讀（textarea 與 contenteditable 都能處理） */
       function setRichReadOnly(id, readonly) {
