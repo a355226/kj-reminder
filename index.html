@@ -1187,18 +1187,28 @@ button.palette-btn:active {
 /* 置底的政策連結（不擋畫面） */
 /* 置底，左右分佈的政策連結 */
 /* 置底，置中排列，兩個連結左右分開 */
+/* 連絡我們/政策列：手機也固定橫向排列 */
 .legal-links{
   position: fixed;
   left: 50%;
   bottom: max(16px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   display: flex;
-  gap: 40px;        /* 兩個連結之間的距離，你可以調大或調小 */
-  font-size: 14px;
-  font-weight: 700;
+  flex-wrap: nowrap;               /* ⬅ 不允許換行 */
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
   z-index: 150;
+
+  /* 窄螢幕時可水平滑動，不會擠壓跑版 */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 8px;
+  max-width: 100vw;                /* 避免超出螢幕 */
 }
+
 .legal-links a{
+  flex: 0 0 auto;                  /* ⬅ 固定橫向一顆接一顆 */
   color: #176dff;
   text-decoration: none;
   background: #eef6ff;
@@ -1206,12 +1216,42 @@ button.palette-btn:active {
   padding: 8px 12px;
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(0,0,0,.06);
-  min-width: 120px;   /* 保持按鈕一致寬度（可調整或拿掉） */
+  min-width: 100px;                /* 保持可點的按鈕寬 */
   text-align: center;
-  margin-bottom:5rem;
+  font-size: 14px;
+  font-weight: 700;
 }
+
+/* 可選：隱藏水平捲軸（保留可滑動） */
+.legal-links::-webkit-scrollbar{ display:none; }
+
 .legal-links a:hover{ background:#e6f1ff; }
 .legal-links a:active{ transform: translateY(1px); }
+
+/* 超小螢幕時（≤360px），每個按鈕吃滿行寬，避免擠壓 */
+@media (max-width: 360px){
+  .legal-links{
+    gap: 8px;
+    width: calc(100% - 24px);  /* 邊緣保留些許空白 */
+  }
+  .legal-links a{
+    min-width: unset;
+    width: 100%;
+  }
+}
+
+/* 更多視窗中的「連絡我們」輕量樣式 */
+.more-contact{
+  margin-top: .25rem;
+  text-align: center;
+  font-size: .92rem;
+}
+.more-contact a{
+  color:#176dff;
+  text-decoration:none;
+}
+.more-contact a:hover{ text-decoration: underline; }
+
 
 
 
@@ -1251,6 +1291,9 @@ button.palette-btn:active {
     <a href="https://kjapps.com/terms.html"
        target="_blank" rel="noopener noreferrer"
        aria-label="開啟服務條款（新分頁）">服務條款</a>
+         <!-- ✅ 新增：連絡我們（mailto） -->
+  <a href="mailto:a355226@hotmail.com"
+  aria-label="以電子郵件聯絡我們">連絡我們</a>
   </div>
   <!-- ▲ 新增結束 -->
 </div>
