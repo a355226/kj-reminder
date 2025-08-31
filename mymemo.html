@@ -3226,54 +3226,95 @@ document.addEventListener('keydown', function (e) {
   // ★ 保留換行
   return withLinks.replace(/\n/g, "<br>");
 }
-      /* 2) caret 位置保存/還原（避免連結化時游標跳走） */
-      function __getCaretOffset(el) {
-        const sel = window.getSelection();
-        if (!sel || sel.rangeCount === 0) return 0;
-        const r = sel.getRangeAt(0).cloneRange();
-        const pre = document.createRange();
-        pre.selectNodeContents(el);
-        pre.setEnd(r.endContainer, r.endOffset);
-        return pre.toString().length;
-      }
-      function __setCaretOffset(el, offset) {
-        const walker = document.createTreeWalker(
-          el,
-          NodeFilter.SHOW_TEXT,
-          null
-        );
-        let cur = 0,
-          node;
-        while ((node = walker.nextNode())) {
-          const next = cur + node.nodeValue.length;
-          if (offset <= next) {
-            const range = document.createRange();
-            range.setStart(node, Math.max(0, offset - cur));
-            range.collapse(true);
-            const sel = window.getSelection();
-            sel.removeAllRanges();
-            sel.addRange(range);
-            return;
-          }
-          cur = next;
-        }
-        // 放到末尾
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
+  // === BR-aware caret helpers ===
+function __nodeLinearLength(node) {
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.length;
+  if (node.nodeName === "BR") return 1; // 把 <br> 視為 1 個字元（\n）
+  let sum = 0;
+  for (let i = 0; i < node.childNodes.length; i++) {
+    sum += __nodeLinearLength(node.childNodes[i]);
+  }
+  return sum;
+}
 
-      /* 3) 把純文字轉成含 <a> 的 HTML，並盡量保留 caret */
-     function __linkifyCE(el) {
+function __getCaretOffset(root) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return 0;
+  const r = sel.getRangeAt(0);
+
+  let total = 0, done = false;
+  (function dfs(node){
+    if (done) return;
+
+    if (node === r.startContainer) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        total += r.startOffset;
+      } else {
+        // element 節點：把在它之前的子節點長度都加總
+        for (let i = 0; i < Math.min(r.startOffset, node.childNodes.length); i++) {
+          total += __nodeLinearLength(node.childNodes[i]);
+        }
+      }
+      done = true;
+      return;
+    }
+
+    if (node.nodeType === Node.TEXT_NODE) { total += node.nodeValue.length; return; }
+    if (node.nodeName === "BR") { total += 1; return; }
+
+    for (let i = 0; i < node.childNodes.length; i++) dfs(node.childNodes[i]);
+  })(root);
+
+  return total;
+}
+
+function __setCaretOffset(root, target) {
+  function locate(node, acc) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const len = node.nodeValue.length;
+      if (target <= acc + len) {
+        return { container: node, offset: target - acc };
+      }
+      return null;
+    }
+    if (node.nodeName === "BR") {
+      // 命中 <br>：把 caret 放在 <br> 後面（parent, index+1）
+      if (target <= acc + 1) {
+        const p = node.parentNode;
+        const idx = Array.prototype.indexOf.call(p.childNodes, node);
+        return { container: p, offset: idx + 1 };
+      }
+      return null;
+    }
+    // element：往子節點走並累加長度
+    let cur = acc;
+    for (let i = 0; i < node.childNodes.length; i++) {
+      const child = node.childNodes[i];
+      const len = __nodeLinearLength(child);
+      if (target <= cur + len) return locate(child, cur);
+      cur += len;
+    }
+    // 走到盡頭：放到該節點最後
+    return { container: node, offset: node.childNodes.length };
+  }
+
+  const pos = locate(root, 0);
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.setStart(pos.container, pos.offset);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// 文字→HTML（含網址轉 <a>）後，保留 caret（含 <br> 的位置）
+function __linkifyCE(el) {
   const focused = document.activeElement === el;
-  const caret = focused ? __getCaretOffset(el) : 0;
-  const plain = el.innerText || "";        // ← 改用 innerText，包含換行
-  el.innerHTML = __linkifyHTML(plain);     // 會把 \n 轉成 <br>
+  const caret = focused ? __getCaretOffset(el) : 0; // 這次會把 <br> 算進去
+  const plain = el.innerText || "";                  // 取含換行的純文字
+  el.innerHTML = __linkifyHTML(plain);               // \n 會被轉為 <br>
   if (focused) {
-    __setCaretOffset(el, Math.min(caret, (el.innerText || "").length));
+    __setCaretOffset(el, Math.min(caret, __nodeLinearLength(el)));
   }
 }
       /* 4) 在 contenteditable 上補一個 .value 存取子，讓舊程式不用改 */
