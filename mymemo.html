@@ -1450,25 +1450,22 @@ body.scroll-locked {
     </div>
 
     <script>
-    // ★ 讓全域 Enter 監聽【不要】攔截編輯器裡的 Enter
+// ★ 讓全域 Enter 監聽「不要」攔截編輯器裡的 Enter（放在 bubble 階段）
 document.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter') return;
   const t = e.target;
   const isEditable =
     t &&
-    (
-      t.tagName === 'TEXTAREA' ||
-      t.isContentEditable ||
-      (t.closest && t.closest('[contenteditable="true"]'))
-    );
+    (t.tagName === 'TEXTAREA' ||
+     t.isContentEditable ||
+     (t.closest && t.closest('[contenteditable="true"]')));
 
   if (isEditable) {
-    // 在編輯區內按 Enter：直接放行，並阻止其它全域 Enter 監聽介入
-    e.stopImmediatePropagation();
-    return;
+    // 讓目標上的 keydown 先跑（包含富編輯器自己的 Enter）
+    // 然後阻止其它「全域」bubble 監聽收到
+    e.stopPropagation();
   }
-}, true); // ← 用 capture，確保最早攔截到
-
+}, false);
       /* ===== 基本設定 ===== */
       const firebaseConfig = {
         apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
@@ -3333,81 +3330,81 @@ function __linkifyCE(el) {
   el.__valueProxyReady = true;
 }
 
-      /* 5) 升級：把 textarea#id 換成 <div contenteditable>（保留原 class/id） */
-     function upgradeToRichEditor(id) {
+function upgradeToRichEditor(id) {
   const old = document.getElementById(id);
   if (!old) return;
 
-  // 統一綁 handlers（避免重複綁定）
-  const bindRichHandlers = (el) => {
-    if (el.__richBound) return;
-
-    // Enter → 單一 <br>，避免瀏覽器產生多層 block
-    el.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
-      e.preventDefault();
-      const sel = window.getSelection();
-      if (!sel || !sel.rangeCount) return;
-      const r = sel.getRangeAt(0);
-      const br = document.createElement("br");
-      r.insertNode(br);
-      r.setStartAfter(br);
-      r.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(r);
-      // 之後做一次規整（把\n/<br>統一）
-      setTimeout(() => __linkifyCE(el), 0);
-    });
-
-    // 文字/貼上後做一次規整（微延遲避開重入）
-    let t = null;
-    const refresh = () => {
-      clearTimeout(t);
-      t = setTimeout(() => __linkifyCE(el), 0);
-    };
-    el.addEventListener("input", refresh);
-    el.addEventListener("paste", () => setTimeout(refresh, 0));
-
-    // 點連結開新分頁
-    el.addEventListener("click", (e) => {
-      const a = e.target.closest("a");
-      if (!a) return;
-      e.preventDefault();
-      window.open(a.href, "_blank", "noopener");
-    });
-
-    el.__richBound = true;
-  };
-
-  // 已是 contenteditable：補代理＋綁事件＋立即規整
+  // 已是 contenteditable：刷新連結後返回
   if (old.nodeName === "DIV" && old.isContentEditable) {
     __defineValueProxy(old);
-    bindRichHandlers(old);
     __linkifyCE(old);
     return;
   }
-
-  // 僅接受 textarea 升級
   if (old.nodeName !== "TEXTAREA") return;
 
-  // 建立 contenteditable div
   const div = document.createElement("div");
   div.id = old.id;
   div.className = (old.className || "") + " rt-editor";
   div.setAttribute("contenteditable", "true");
   const ph = old.getAttribute("placeholder");
   if (ph) div.setAttribute("data-placeholder", ph);
-
-  // 先放純文字（包含原本 \n）
   div.textContent = old.value || "";
+
+  // ---- Enter：插入 <br> 並把 caret 放在後面（beforeinput 為主、keydown 後備）----
+  const scheduleLinkify = () => setTimeout(() => __linkifyCE(div), 0);
+  const insertBR = () => {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    r.deleteContents();                 // 先清掉選取
+    const br = document.createElement("br");
+    r.insertNode(br);                   // 在 caret 處插入 <br>
+    r.setStartAfter(br);                // caret 到 <br> 後
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    scheduleLinkify();                  // 之後再做一次 linkify
+  };
+
+  // 現代瀏覽器：專門攔截換行意圖
+  div.addEventListener("beforeinput", (e) => {
+    if (e.inputType === "insertParagraph") {
+      e.preventDefault();
+      insertBR();
+    }
+  });
+
+  // 後備：萬一 beforeinput 不支援
+  div.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      insertBR();
+    }
+  });
 
   // 取代節點
   old.parentNode.replaceChild(div, old);
 
-  // 補上 .value 代理 + 綁 handlers + 規整一次（\n→<br>、網址轉<a>）
+  // 補上 .value 介面，並先做一次 linkify
   __defineValueProxy(div);
-  bindRichHandlers(div);
   __linkifyCE(div);
+
+  // 在輸入/貼上時做連結化
+  let t = null;
+  const refresh = () => {
+    clearTimeout(t);
+    t = setTimeout(() => __linkifyCE(div), 0);
+  };
+  div.addEventListener("input", refresh);
+  div.addEventListener("paste", () => setTimeout(refresh, 0));
+
+  // 點連結就開新分頁
+  div.addEventListener("click", (e) => {
+    const a = e.target.closest("a");
+    if (!a) return;
+    window.open(a.href, "_blank", "noopener");
+    e.preventDefault();
+  });
 }
 
       /* 6) 設定唯讀（textarea 與 contenteditable 都能處理） */
