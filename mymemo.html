@@ -3307,27 +3307,28 @@ function __setCaretOffset(root, target) {
 // 文字→HTML（含網址轉 <a>）後，保留 caret（含 <br> 的位置）
 function __linkifyCE(el) {
   const focused = document.activeElement === el;
-  const caret = focused ? __getCaretOffset(el) : 0; // 這次會把 <br> 算進去
-  const plain = el.innerText || "";                  // 取含換行的純文字
-  el.innerHTML = __linkifyHTML(plain);               // \n 會被轉為 <br>
+  const caret = focused ? __getCaretOffset(el) : 0;
+
+  // 檢查重建前，最後一個實質節點是否為 <br>
+  const hadTrailingBR = (() => {
+    let n = el.lastChild;
+    while (n && n.nodeType === Node.TEXT_NODE && n.nodeValue.length === 0) {
+      n = n.previousSibling;
+    }
+    return n && n.nodeName === 'BR';
+  })();
+
+  const plain = el.innerText || "";       // 會把內部換行變 \n（尾端常被裁掉）
+  el.innerHTML = __linkifyHTML(plain);    // 再把 \n 轉回 <br> 並連結化網址
+
+  // 若原本末尾有 <br>，但被 innerText 吃掉，就手動補一個
+  if (hadTrailingBR) {
+    el.appendChild(document.createElement('br'));
+  }
+
   if (focused) {
     __setCaretOffset(el, Math.min(caret, __nodeLinearLength(el)));
   }
-}
-      /* 4) 在 contenteditable 上補一個 .value 存取子，讓舊程式不用改 */
-      function __defineValueProxy(el) {
-  if (el.__valueProxyReady) return;
-  Object.defineProperty(el, "value", {
-    get() {
-      // ★ innerText 會把 <br> / 區塊換行轉成 \n
-      return el.innerText || "";
-    },
-    set(v) {
-      el.textContent = v || "";   // 先塞純文字
-      __linkifyCE(el);            // 再連結化 + 還原 <br>
-    },
-  });
-  el.__valueProxyReady = true;
 }
 
 function upgradeToRichEditor(id) {
