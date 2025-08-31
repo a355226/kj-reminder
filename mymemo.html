@@ -3308,27 +3308,9 @@ function __setCaretOffset(root, target) {
 function __linkifyCE(el) {
   const focused = document.activeElement === el;
   const caret = focused ? __getCaretOffset(el) : 0;
-
-  // 檢查重建前，最後一個實質節點是否為 <br>
-  const hadTrailingBR = (() => {
-    let n = el.lastChild;
-    while (n && n.nodeType === Node.TEXT_NODE && n.nodeValue.length === 0) {
-      n = n.previousSibling;
-    }
-    return n && n.nodeName === 'BR';
-  })();
-
-  const plain = el.innerText || "";       // 會把內部換行變 \n（尾端常被裁掉）
-  el.innerHTML = __linkifyHTML(plain);    // 再把 \n 轉回 <br> 並連結化網址
-
-  // 若原本末尾有 <br>，但被 innerText 吃掉，就手動補一個
-  if (hadTrailingBR) {
-    el.appendChild(document.createElement('br'));
-  }
-
-  if (focused) {
-    __setCaretOffset(el, Math.min(caret, __nodeLinearLength(el)));
-  }
+  const plain = el.innerText || "";
+  el.innerHTML = __linkifyHTML(plain);             // 會把 \n 轉成 <br>
+  if (focused) __setCaretOffset(el, Math.min(caret, __nodeLinearLength(el)));
 }
 
 function upgradeToRichEditor(id) {
