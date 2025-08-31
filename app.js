@@ -1,27 +1,4 @@
 (() => {
-  // --- 這行以下貼你的原本腳本（原樣貼上即可） ---
-  document.addEventListener(
-    "keydown",
-    function (e) {
-      if (e.key !== "Enter") return;
-
-      // 如果焦點在 textarea，直接 return（允許換行）
-      if (e.target.tagName === "TEXTAREA") return;
-
-      const openModals = Array.from(document.querySelectorAll(".modal")).filter(
-        (m) => getComputedStyle(m).display !== "none"
-      );
-      if (openModals.length === 0) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      // 可選：如果你想 Enter = 點「確認」：
-      // const top = openModals[openModals.length - 1];
-      // top.querySelector('.confirm-btn')?.click();
-    },
-    true
-  ); // 用捕獲階段，優先攔住
   let tasksLoaded = false;
   let completedLoaded = false;
   // categoriesLoaded 已存在，保留使用
