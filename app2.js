@@ -720,25 +720,18 @@
   }
 
   /* ===== Memo CRUD ===== */
-function memoCardHTML(m) {
-  const showHandle = memoView === "active" && isEditing;
-  const handle = showHandle ? '<span class="memo-drag">☰</span>' : "";
-
-  // 簡單轉義 + 可自行調整預覽長度（減少 DOM 負擔）
-  const previewRaw = (m.content || "").slice(0, 200);
-  const esc = (s="") => String(s)
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-
-  return `
+  function memoCardHTML(m) {
+    const showHandle = memoView === "active" && isEditing;
+    const handle = showHandle ? '<span class="memo-drag">☰</span>' : "";
+    return `
     <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
     <div class="task-content">
-      <div class="task-title">${handle}${m.important ? "❗ " : ""}${esc(m.title || "")}</div>
-      <!-- ★ 這行是關鍵：供 linkify 腳本把其中網址轉 <a> -->
-      <div class="task-preview" data-raw="${esc(previewRaw)}">${esc(previewRaw)}</div>
+      <div class="task-title">${handle}${m.important ? "❗ " : ""}${
+      m.title || ""
+    }</div>
     </div>
   `;
-}
+  }
 
   function renderAll() {
     // 清空每個分類的 memo 卡
@@ -843,7 +836,6 @@ function memoCardHTML(m) {
     if (isEditing && memoView === "active") initMemoSortables();
 
     // 依目前檢視重建月份選單
-__linkifyAllPreviews(document); 
     buildMemoMonthMenu();
   }
 
@@ -1029,29 +1021,29 @@ __linkifyAllPreviews(document);
       task.addEventListener("lostpointercapture", onCancel);
 
       // 吞 click，自己判定「點一下」
-    // 吞 click，自己判定「點一下」
-task.addEventListener("click", (e) => {
-  // 👉 如果是點在我們產出的超連結上：完全放行（不阻擋預設、不攔截冒泡）
-  if (e.target.closest('a[data-memo-link]')) return;
+      task.addEventListener(
+        "click",
+        (e) => {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        },
+        true
+      );
 
-  e.preventDefault();
-  e.stopImmediatePropagation();
-}, true);
-function onDown(e) {
-  // 👉 點在連結上就完全不進入滑動/點擊判定，交給瀏覽器處理
-  if (e.target.closest('a[data-memo-link]')) return;
-
-  if (e.target.closest("button,input,select,textarea")) return;
-  isDown = true;
-  activeId = e.pointerId;
-  sx = e.clientX;
-  sy = e.clientY;
-  dx = dy = 0;
-  width = task.offsetWidth || 1;
-  mode = "pending";
-  task.style.transition = "none";
-  try { task.setPointerCapture(e.pointerId); } catch (_) {}
-}
+      function onDown(e) {
+        if (e.target.closest("button,input,select,textarea")) return;
+        isDown = true;
+        activeId = e.pointerId;
+        sx = e.clientX;
+        sy = e.clientY;
+        dx = dy = 0;
+        width = task.offsetWidth || 1;
+        mode = "pending";
+        task.style.transition = "none";
+        try {
+          task.setPointerCapture(e.pointerId);
+        } catch (_) {}
+      }
       function onMove(e) {
         if (!isDown || e.pointerId !== activeId) return;
         if (mode === "scroll") return;
@@ -2410,119 +2402,6 @@ function onDown(e) {
   window.__realOpenDetail = openDetail;
   window.openDetail ??= openDetail;
 
-/* ===== 只在顯示階段做「網址 → 連結」(不改 textarea) ===== */
-
-/* 1) 安全轉義，再把 \n 轉 <br> */
-function __escapeHtml(s) {
-  return (s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/* 2) 把文中的 URL 轉成 <a>（支援 http/https、www.）*/
-function __linkifyText(plain) {
-  const esc = __escapeHtml(plain);
-  // 粗用、快：避免對非常長字串造成負擔
-  const urlRe = /\b((https?:\/\/|www\.)[^\s<>{}"]{3,})/gi;
-  return esc.replace(urlRe, (m) => {
-    let href = m;
-    if (!/^https?:\/\//i.test(href)) href = "https://" + href;
-    return `<a href="${href}" target="_blank" rel="noopener" data-memo-link>${m}</a>`;
-  });
-}
-
-/* 3) 套在清單卡片的預覽文字（含已移除） */
-function __linkifyAllPreviews(root = document) {
-  const nodes = root.querySelectorAll(".task .task-preview");
-  nodes.forEach((el) => {
-    const raw = el.textContent || "";          // ← 直接用純文字
-    el.innerHTML = __linkifyText(raw);         // 轉成可點連結
-  });
-}
-
-/* 4) 建立詳情展開用的只讀 HTML 區塊（與 textarea 並存，平時隱藏） */
-(function __ensureViewerHtml() {
-  const txt = document.getElementById("viewerBody");
-  if (!txt) return;
-  if (!document.getElementById("viewerHtml")) {
-    const div = document.createElement("div");
-    div.id = "viewerHtml";
-    div.className = "viewer-body";
-    div.style.display = "none";
-    // 放在 textarea 後面
-    txt.insertAdjacentElement("afterend", div);
-  }
-})();
-
-/* 5) 當「展開閱讀」啟用時，把 textarea 的內容轉為可點 HTML 顯示 */
-function __refreshViewerHtml() {
-  const viewer = document.getElementById("detailViewer");
-  const txt = document.getElementById("viewerBody");
-  const html = document.getElementById("viewerHtml");
-  if (!viewer || !txt || !html) return;
-
-  const isOpen =
-    viewer.classList.contains("show") ||
-    getComputedStyle(viewer).display !== "none";
-
-  if (isOpen) {
-    // 將目前內容轉為可點連結 + 保留換行
-    const raw = txt.value || "";
-    html.innerHTML = __linkifyText(raw).replace(/\n/g, "<br>");
-    html.style.display = "";      // 顯示 HTML 版
-    txt.style.display = "none";   // 隱藏 textarea（只在展開檢視時）
-  } else {
-    // 關閉展開 → 還原
-    html.style.display = "none";
-    txt.style.display = "";       // 回到原本 textarea
-  }
-}
-
-/* 6) 監聽 DOM 變動：每次 render/列表改動自動 linkify */
-const __mo = new MutationObserver((muts) => {
-  // 只要 #section-container 有變就重跑；加一點點 debouce
-  clearTimeout(window.__memo_linkify_t);
-  window.__memo_linkify_t = setTimeout(() => {
-    __linkifyAllPreviews(document);
-  }, 30);
-});
-const sc = document.getElementById("section-container");
-if (sc) {
-  __mo.observe(sc, { childList: true, subtree: true, characterData: false });
-}
-
-/* 7) 初次進入頁面也跑一次（避免空窗） */
-document.addEventListener("DOMContentLoaded", () => {
-  __linkifyAllPreviews(document);
-});
-
-/* 8) 監看「展開閱讀」顯示狀態切換 */
-(function __watchDetailViewer() {
-  const dv = document.getElementById("detailViewer");
-  if (!dv) return;
-  const mv = new MutationObserver(() => __refreshViewerHtml());
-  mv.observe(dv, { attributes: true, attributeFilter: ["class", "style"] });
-
-  // 同時綁定展開/關閉按鈕（保險起見）
-  document.addEventListener("click", (e) => {
-    const t = e.target;
-    if (!(t instanceof Element)) return;
-    if (t.classList.contains("expand-icon") || t.classList.contains("viewer-close")) {
-      setTimeout(__refreshViewerHtml, 0);
-    }
-  });
-})();
-
-/* 9) 讓清單裡的 <a> 不會觸發卡片點擊（阻止冒泡） */
-document.addEventListener("click", (e) => {
-  const a = e.target.closest && e.target.closest("a[data-memo-link]");
-  if (a) {
-    e.stopPropagation(); // 不讓父層 .task 的點擊事件被觸發
-  }
-}, true);
   // --- 這行以上 ---
 })();
 
