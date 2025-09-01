@@ -843,6 +843,7 @@ function memoCardHTML(m) {
     if (isEditing && memoView === "active") initMemoSortables();
 
     // 依目前檢視重建月份選單
+__linkifyAllPreviews(document); 
     buildMemoMonthMenu();
   }
 
@@ -1028,14 +1029,11 @@ function memoCardHTML(m) {
       task.addEventListener("lostpointercapture", onCancel);
 
       // 吞 click，自己判定「點一下」
-      task.addEventListener(
-        "click",
-        (e) => {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-        },
-        true
-      );
+      task.addEventListener("click", (e) => {
+  if (e.target.closest('a[data-memo-link]')) return; // 讓連結正常工作
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
 
       function onDown(e) {
         if (e.target.closest("button,input,select,textarea")) return;
@@ -2437,10 +2435,8 @@ function __linkifyText(plain) {
 function __linkifyAllPreviews(root = document) {
   const nodes = root.querySelectorAll(".task .task-preview");
   nodes.forEach((el) => {
-    // 來源通常是純文字：用 textContent 產出，再覆寫 innerHTML
-    const raw = el.getAttribute("data-raw") ?? el.textContent ?? "";
-    el.setAttribute("data-raw", raw); // 記一份原始文字，避免重覆轉義
-    el.innerHTML = __linkifyText(raw);
+    const raw = el.textContent || "";          // ← 直接用純文字
+    el.innerHTML = __linkifyText(raw);         // 轉成可點連結
   });
 }
 
