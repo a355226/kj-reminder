@@ -720,32 +720,18 @@
   }
 
   /* ===== Memo CRUD ===== */
- function memoCardHTML(m) {
-  const showHandle = memoView === "active" && isEditing;
-  const handle = showHandle ? '<span class="memo-drag">☰</span>' : "";
-
-  // 安全轉義
-  const esc = (s="") => String(s)
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-
-  // 把 http/https 或 www. 開頭的片段轉 <a>
-  const linkify = (txt="") => {
-    const safe = esc(txt);
-    return safe.replace(/\b((https?:\/\/|www\.)[^\s<>"']{3,})/gi, (m) => {
-      let href = m;
-      if (!/^https?:\/\//i.test(href)) href = "https://" + href;
-      return `<a href="${href}" target="_blank" rel="noopener" data-memo-link>${m}</a>`;
-    });
-  };
-
-  return `
+  function memoCardHTML(m) {
+    const showHandle = memoView === "active" && isEditing;
+    const handle = showHandle ? '<span class="memo-drag">☰</span>' : "";
+    return `
     <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
     <div class="task-content">
-      <div class="task-title">${handle}${m.important ? "❗ " : ""}${linkify(m.title || "")}</div>
+      <div class="task-title">${handle}${m.important ? "❗ " : ""}${
+      m.title || ""
+    }</div>
     </div>
   `;
-}
+  }
 
   function renderAll() {
     // 清空每個分類的 memo 卡
@@ -1035,14 +1021,16 @@
       task.addEventListener("lostpointercapture", onCancel);
 
       // 吞 click，自己判定「點一下」
-     task.addEventListener("click", (e) => {
-  if (e.target.closest('a[data-memo-link]')) return; // 讓連結正常點擊
-  e.preventDefault();
-  e.stopImmediatePropagation();
-}, true);
+      task.addEventListener(
+        "click",
+        (e) => {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        },
+        true
+      );
 
       function onDown(e) {
-        if (e.target.closest('a[data-memo-link]')) return;
         if (e.target.closest("button,input,select,textarea")) return;
         isDown = true;
         activeId = e.pointerId;
@@ -2414,66 +2402,6 @@
   window.__realOpenDetail = openDetail;
   window.openDetail ??= openDetail;
 
-/* === 最小補丁：清單標題自動變連結 + 絕對可點開（不動既有 swipe） === */
-(function enableTaskLinksMinimal() {
-  const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<>{}"']{3,})/gi;
-
-  function mkAnchor(urlText) {
-    let href = urlText;
-    if (!/^https?:\/\//i.test(href)) href = "https://" + href;
-    const a = document.createElement("a");
-    a.href = href;
-    a.target = "_blank";
-    a.rel = "noopener";
-    a.textContent = urlText;
-    a.setAttribute("data-task-link", "1");
-    return a;
-  }
-
-  // 只替換 .task-title 裡的「文字節點」；保留你原本的把手/圖示等元素
-  function linkifyNode(node) {
-    if (!node) return;
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.nodeValue || "";
-      if (!URL_RE.test(text)) return; // 沒網址就不動
-      URL_RE.lastIndex = 0;
-
-      const frag = document.createDocumentFragment();
-      let last = 0, m;
-      while ((m = URL_RE.exec(text))) {
-        const idx = m.index, raw = m[1];
-        if (idx > last) frag.appendChild(document.createTextNode(text.slice(last, idx)));
-        frag.appendChild(mkAnchor(raw));
-        last = idx + raw.length;
-      }
-      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
-      node.replaceWith(frag);
-      return;
-    }
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      Array.from(node.childNodes).forEach(linkifyNode);
-    }
-  }
-
-  // 包一層 renderAll：每次重繪後把標題裡的網址變成 <a>
-  const _renderAll = window.renderAll || renderAll;
-  window.renderAll = function () {
-    const ret = _renderAll.apply(this, arguments);
-    try {
-      document.querySelectorAll(".task .task-title").forEach(linkifyNode);
-    } catch (_) {}
-    return ret;
-  };
-
-  // 最高層（document）捕獲 click：只要點到我們的連結，就先開分頁並終止後續捕獲/冒泡
-  document.addEventListener("click", function (e) {
-    const a = e.target && e.target.closest && e.target.closest('a[data-task-link]');
-    if (!a) return;
-    e.preventDefault();
-    e.stopImmediatePropagation(); // 阻斷卡片上的捕獲 click（避免被 swipe 邏輯吃掉）
-    try { window.open(a.href, "_blank", "noopener"); } catch (_) { location.href = a.href; }
-  }, true);
-})();
   // --- 這行以上 ---
 })();
 
