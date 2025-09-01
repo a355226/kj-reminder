@@ -1029,26 +1029,29 @@ __linkifyAllPreviews(document);
       task.addEventListener("lostpointercapture", onCancel);
 
       // 吞 click，自己判定「點一下」
-      task.addEventListener("click", (e) => {
-  if (e.target.closest('a[data-memo-link]')) return; // 讓連結正常工作
+    // 吞 click，自己判定「點一下」
+task.addEventListener("click", (e) => {
+  // 👉 如果是點在我們產出的超連結上：完全放行（不阻擋預設、不攔截冒泡）
+  if (e.target.closest('a[data-memo-link]')) return;
+
   e.preventDefault();
   e.stopImmediatePropagation();
 }, true);
+function onDown(e) {
+  // 👉 點在連結上就完全不進入滑動/點擊判定，交給瀏覽器處理
+  if (e.target.closest('a[data-memo-link]')) return;
 
-      function onDown(e) {
-        if (e.target.closest("button,input,select,textarea")) return;
-        isDown = true;
-        activeId = e.pointerId;
-        sx = e.clientX;
-        sy = e.clientY;
-        dx = dy = 0;
-        width = task.offsetWidth || 1;
-        mode = "pending";
-        task.style.transition = "none";
-        try {
-          task.setPointerCapture(e.pointerId);
-        } catch (_) {}
-      }
+  if (e.target.closest("button,input,select,textarea")) return;
+  isDown = true;
+  activeId = e.pointerId;
+  sx = e.clientX;
+  sy = e.clientY;
+  dx = dy = 0;
+  width = task.offsetWidth || 1;
+  mode = "pending";
+  task.style.transition = "none";
+  try { task.setPointerCapture(e.pointerId); } catch (_) {}
+}
       function onMove(e) {
         if (!isDown || e.pointerId !== activeId) return;
         if (mode === "scroll") return;
