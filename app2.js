@@ -720,18 +720,32 @@
   }
 
   /* ===== Memo CRUD ===== */
-  function memoCardHTML(m) {
-    const showHandle = memoView === "active" && isEditing;
-    const handle = showHandle ? '<span class="memo-drag">☰</span>' : "";
-    return `
+ function memoCardHTML(m) {
+  const showHandle = memoView === "active" && isEditing;
+  const handle = showHandle ? '<span class="memo-drag">☰</span>' : "";
+
+  // 安全轉義
+  const esc = (s="") => String(s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+
+  // 把 http/https 或 www. 開頭的片段轉 <a>
+  const linkify = (txt="") => {
+    const safe = esc(txt);
+    return safe.replace(/\b((https?:\/\/|www\.)[^\s<>"']{3,})/gi, (m) => {
+      let href = m;
+      if (!/^https?:\/\//i.test(href)) href = "https://" + href;
+      return `<a href="${href}" target="_blank" rel="noopener" data-memo-link>${m}</a>`;
+    });
+  };
+
+  return `
     <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
     <div class="task-content">
-      <div class="task-title">${handle}${m.important ? "❗ " : ""}${
-      m.title || ""
-    }</div>
+      <div class="task-title">${handle}${m.important ? "❗ " : ""}${linkify(m.title || "")}</div>
     </div>
   `;
-  }
+}
 
   function renderAll() {
     // 清空每個分類的 memo 卡
@@ -1021,16 +1035,14 @@
       task.addEventListener("lostpointercapture", onCancel);
 
       // 吞 click，自己判定「點一下」
-      task.addEventListener(
-        "click",
-        (e) => {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-        },
-        true
-      );
+     task.addEventListener("click", (e) => {
+  if (e.target.closest('a[data-memo-link]')) return; // 讓連結正常點擊
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
 
       function onDown(e) {
+        if (e.target.closest('a[data-memo-link]')) return;
         if (e.target.closest("button,input,select,textarea")) return;
         isDown = true;
         activeId = e.pointerId;
