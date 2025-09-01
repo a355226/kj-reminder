@@ -720,18 +720,25 @@
   }
 
   /* ===== Memo CRUD ===== */
-  function memoCardHTML(m) {
-    const showHandle = memoView === "active" && isEditing;
-    const handle = showHandle ? '<span class="memo-drag">☰</span>' : "";
-    return `
+function memoCardHTML(m) {
+  const showHandle = memoView === "active" && isEditing;
+  const handle = showHandle ? '<span class="memo-drag">☰</span>' : "";
+
+  // 簡單轉義 + 可自行調整預覽長度（減少 DOM 負擔）
+  const previewRaw = (m.content || "").slice(0, 200);
+  const esc = (s="") => String(s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+
+  return `
     <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
     <div class="task-content">
-      <div class="task-title">${handle}${m.important ? "❗ " : ""}${
-      m.title || ""
-    }</div>
+      <div class="task-title">${handle}${m.important ? "❗ " : ""}${esc(m.title || "")}</div>
+      <!-- ★ 這行是關鍵：供 linkify 腳本把其中網址轉 <a> -->
+      <div class="task-preview" data-raw="${esc(previewRaw)}">${esc(previewRaw)}</div>
     </div>
   `;
-  }
+}
 
   function renderAll() {
     // 清空每個分類的 memo 卡
