@@ -982,7 +982,7 @@
     if (title) {
       title.textContent =
         memoView === "removed"
-          ? "確定要永久刪除此備忘？"
+          ? "確定要永久刪除此則備忘？"
           : "確定要移到「已移除」？";
     }
     openModal("confirmModal");
