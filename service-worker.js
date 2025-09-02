@@ -18,7 +18,7 @@ if (bypass.some((host) => url.hostname.includes(host))) return; // 不接管
 // ...其餘你的快取策略
 
 const CACHE_NAME = "cms-quota-v1"; // ← 可改版號以觸發更新
-const URLS_TO_CACHE = ["/", "/index.html", "/reminder.png", "/manifest.json"];
+const URLS_TO_CACHE = ["/", "/index.html",  "/mymemo.html","/reminder.png", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting(); // 安裝後立即啟用
