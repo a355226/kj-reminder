@@ -14,6 +14,44 @@
   // 放在全域
   let dbUnsubscribers = [];
 
+  // === 放在整支 JS 的最上面（在 (()=>{ 之前） ===
+  (function () {
+    // 舊名：提供給舊的 Drive 模組呼叫
+    if (!("getCurrentDetailMemo" in window)) {
+      window.getCurrentDetailMemo = function () {
+        try {
+          const id = window.selectedTaskId;
+          const list = Array.isArray(window.tasks) ? window.tasks : [];
+          const t = list.find((x) => x.id === id) || null;
+          if (!t) return null;
+
+          // 回傳一份淺拷貝；若詳情視窗打開，優先帶表單目前值
+          const out = JSON.parse(JSON.stringify(t));
+          const modal = document.getElementById("detailModal");
+          if (modal && getComputedStyle(modal).display !== "none") {
+            out.section =
+              document.getElementById("detailSection")?.value ?? out.section;
+            out.title =
+              document.getElementById("detailTitle")?.value ?? out.title;
+            out.content =
+              document.getElementById("detailContent")?.value ?? out.content;
+            out.date = document.getElementById("detailDate")?.value ?? out.date;
+            out.note = document.getElementById("detailNote")?.value ?? out.note;
+            out.important =
+              !!document.getElementById("detailImportant")?.checked;
+          }
+          return out;
+        } catch (e) {
+          return null;
+        }
+      };
+    }
+
+    // 新名別名（兩個都可用）
+    window.getCurrentDetailTask =
+      window.getCurrentDetailTask || window.getCurrentDetailMemo;
+  })();
+
   function detachDbListeners() {
     try {
       dbUnsubscribers.forEach((off) => off && off());
@@ -350,6 +388,21 @@
   let dayMode = "work"; // 'work' 工作天(預設) / 'calendar' 日曆天
   let tasks = [];
   let selectedTaskId = null;
+
+  // === 加在這裡：把 IIFE 內部狀態映射到 window，保持即時同步 ===
+  Object.defineProperty(window, "tasks", {
+    get() {
+      return tasks;
+    },
+  });
+  Object.defineProperty(window, "selectedTaskId", {
+    get() {
+      return selectedTaskId;
+    },
+    set(v) {
+      selectedTaskId = v;
+    },
+  });
 
   (function () {
     // ------ utils ------
