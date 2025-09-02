@@ -4400,23 +4400,21 @@
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
+  // —— 全域：提供 Drive 區塊可以呼叫的「目前詳情任務」Getter —— //
   function getCurrentDetailTask() {
-    if (selectedTaskId) {
-      return (
-        (Array.isArray(tasks) ? tasks : []).find(
-          (t) => t.id === selectedTaskId
-        ) || null
-      );
-    }
-    if (selectedCompletedId) {
-      return (
-        (Array.isArray(completedTasks) ? completedTasks : []).find(
-          (t) => t.id === selectedCompletedId
-        ) || null
-      );
-    }
-    return null;
+    const id = window.selectedTaskId;
+    if (!id) return null;
+    const list = Array.isArray(window.tasks) ? window.tasks : [];
+    return list.find((t) => t.id === id) || null;
   }
+
+  // 相容舊版/另一個 App：Drive 模組若找 getCurrentDetailMemo，也給同一支
+  if (!window.getCurrentDetailMemo) {
+    window.getCurrentDetailMemo = getCurrentDetailTask;
+  }
+
+  // 也把 task 版的名稱掛出去（確保外部能叫到）
+  window.getCurrentDetailTask = getCurrentDetailTask;
 
   /* 主流程：建立或開啟資料夾 */
   async function openOrCreateDriveFolderForCurrentTask() {
