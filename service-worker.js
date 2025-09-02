@@ -32,3 +32,22 @@ self.addEventListener("fetch", (event) => {
   // 不做任何快取，直接用 fetch 確保都是最新資料
   event.respondWith(fetch(event.request));
 });
+
+
+const SHELLS = ['/', '/index.html'];
+
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (SHELLS.includes(url.pathname)) {
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(event.request, { cache: 'no-store' });
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(event.request, fresh.clone());
+        return fresh;
+      } catch {
+        return caches.match(event.request);
+      }
+    })());
+  }
+});
