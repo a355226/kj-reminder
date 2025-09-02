@@ -1,5 +1,4 @@
 (() => {
- 
   // --- 這行以下貼你的原本腳本（原樣貼上即可） ---
   const firebaseConfig = {
     apiKey: "AIzaSyBs9sWJ2WHIuTmU0Jw7U_120uMManBES1E",
@@ -940,6 +939,9 @@
     }
 
     document.getElementById("detailModal").style.display = "flex";
+    try {
+      ensureDriveButtonsInlineUI(m);
+    } catch (_) {}
   }
 
   function saveMemo() {
