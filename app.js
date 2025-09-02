@@ -11,6 +11,9 @@
   let categoriesRef = null;
   // ✅ 重新畫出所有分類區塊（依照 categories 順序）
 
+  // 只有使用者真的點了 gdrive 按鈕，才允許跳授權
+let __gd_userGesture = false;
+
   // 放在全域
   let dbUnsubscribers = [];
 
@@ -4201,75 +4204,52 @@
     });
   }
 
-  function ensureDriveAuth() {
-    return new Promise(async (resolve, reject) => {
-      await loadGapiOnce();
+  async function ensureDriveAuth() {
+  // 安全讀取 token 與到期時間
+  const skew = 10 * 60 * 1000; // 10 分鐘緩衝
+  const exp = parseInt(localStorage.getItem('gdrive_token_exp') || '0', 10);
+  const hasGapi = !!(window.gapi && gapi.client && gapi.client.getToken);
+  const token = hasGapi ? gapi.client.getToken() : null;
 
-      // 簡易有效期（預設 50 分鐘，留 10 分鐘提早刷新）
-      const skew = 10 * 60 * 1000;
-      const exp = +localStorage.getItem("gdrive_token_exp") || 0;
-      const tok = gapi.client.getToken();
-      if (tok?.access_token && Date.now() + skew < exp) {
-        return resolve();
+  // 1) 有效 token → 直接 OK（不會彈任何東西）
+  if (token && Date.now() < exp - skew) return true;
+
+  // 2) 沒 token/過期，但不是使用者點擊 → 靜默返回，不要觸發授權彈窗
+  if (!__gd_userGesture) return false;
+
+  // 3) 使用者真的有點按鈕 → 才觸發授權流程
+  return await new Promise((resolve) => {
+    try {
+      // __tokenClient 應該已由你原本的載入流程建立好
+      if (!window.__tokenClient) {
+        // 沒有 client 就不要硬彈，避免空白視窗；交由呼叫端處理
+        return resolve(false);
       }
+      window.__tokenClient.requestAccessToken({
+        // 第一次要 'consent'，後續就空字串減少打擾
+        prompt: localStorage.getItem('gdrive_consent_done') === '1' ? '' : 'consent',
+        callback: (resp) => {
+          if (resp && resp.access_token) {
+            // 設定 gapi token
+            try { gapi.client.setToken({ access_token: resp.access_token }); } catch (_) {}
 
-      const alreadyConsented =
-        localStorage.getItem("gdrive_consent_done") === "1";
+            // 記住到期時間（留一點緩衝）
+            const life = (resp.expires_in ? parseInt(resp.expires_in, 10) : 3600) - 60;
+            localStorage.setItem('gdrive_token_exp', String(Date.now() + life * 1000));
+            localStorage.setItem('gdrive_consent_done', '1');
 
-      const finishOk = (resp) => {
-        gapi.client.setToken({ access_token: resp.access_token });
-        const ttl = resp.expires_in ? resp.expires_in * 1000 : 60 * 60 * 1000;
-        localStorage.setItem(
-          "gdrive_token_exp",
-          String(Date.now() + ttl - skew)
-        );
-        localStorage.setItem("gdrive_consent_done", "1");
-
-        // ✅ 若是第一次授權且頁面沒有被跳走，直接補跑一次開啟
-        if (localStorage.getItem(GD_POST_OPEN_KEY) === "1") {
-          setTimeout(async () => {
-            try {
-              const t = getCurrentDetailTask();
-              if (t) {
-                const id = await ensureExistingOrRecreateFolder(t);
-                updateDriveButtonState(t);
-                openDriveFolderWeb(id);
-              }
-            } finally {
-              localStorage.removeItem(GD_POST_OPEN_KEY);
-            }
-          }, 0);
-        }
-
-        resolve();
-      };
-      const finishErr = (err) =>
-        reject(err instanceof Error ? err : new Error(err || "授權失敗"));
-
-      __tokenClient.callback = (resp) => {
-        if (resp && resp.access_token) return finishOk(resp);
-        return finishErr(resp?.error || "授權失敗");
-      };
-
-      // 先試靜默；若已經同意過通常可成功（桌機/行動瀏覽器）
-      try {
-        __tokenClient.requestAccessToken({
-          prompt: alreadyConsented ? "" : "consent",
-        });
-      } catch (e) {
-        // 少數環境（含 iOS PWA）可能仍需重新同意
-        if (alreadyConsented) {
-          try {
-            __tokenClient.requestAccessToken({ prompt: "consent" });
-          } catch (e2) {
-            finishErr(e2);
+            resolve(true);
+          } else {
+            resolve(false); // 不丟例外，讓呼叫端自己決定後續
           }
-        } else {
-          finishErr(e);
         }
-      }
-    });
-  }
+      });
+    } catch (_) {
+      resolve(false);
+    }
+  });
+}
+
 
   function ensureDriveGlowCss() {
     if (document.getElementById("driveGlowCss")) return;
@@ -4514,7 +4494,8 @@
     updateDriveButtonState(taskObj);
   }
 
-  async function onDriveButtonClick() {
+async function onDriveButtonClick(ev) {
+  __gd_userGesture = true;                // ← 加這行
     const t = getCurrentDetailTask();
     if (!t) return;
 
@@ -4584,6 +4565,7 @@
                 openDriveFolderWeb(id);
               }
             } finally {
+              __gd_userGesture = false;  
               localStorage.removeItem(GD_POST_OPEN_KEY);
             }
           })().catch(() => {});
