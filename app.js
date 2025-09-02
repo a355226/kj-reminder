@@ -4559,10 +4559,94 @@
         "background:#f9f9f9 url('https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/drive.png')" +
         " no-repeat center/18px 18px;border-radius:6px;cursor:pointer;";
       btn.className = "btn-gdrive";
-      btn.onclick = onDriveButtonClick; // ← 這行需要 C) 的實作
+      btn.onclick = (ev) => openDriveWithGuard(ev, taskObj);
       row.appendChild(btn);
     }
     updateDriveButtonState(taskObj);
+  }
+
+  // 從任務物件推算 Google Drive 連結（沒有就退到「我的雲端硬碟」）
+  function __driveUrlFromTask(task) {
+    const id =
+      task?.driveFolderId ||
+      task?.gdriveFolderId ||
+      task?.folderId ||
+      task?.drive?.folderId ||
+      task?.gDrive?.folderId ||
+      null;
+    return id
+      ? `https://drive.google.com/drive/folders/${id}`
+      : "https://drive.google.com/drive/my-drive";
+  }
+
+  // 安全開啟（先開空白分頁→把 onDriveButtonClick 照常執行→等資料夾ID出現就導過去）
+  function openDriveWithGuard(e, taskObj) {
+    try {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+    } catch (_) {}
+
+    // 1) 先同步開一個分頁，避免之後被瀏覽器擋（這是關鍵）
+    let popup = null;
+    try {
+      popup = window.open("about:blank", "_blank", "noopener,noreferrer");
+    } catch (_) {}
+
+    // 2) 若當下就有資料夾ID，直接導過去
+    const nowUrl = __driveUrlFromTask(taskObj || {});
+    if (popup && nowUrl && !nowUrl.endsWith("/my-drive")) {
+      try {
+        popup.location.replace(nowUrl);
+        popup.focus?.();
+      } catch (_) {}
+      return;
+    }
+
+    // 3) 把你原本的 onDriveButtonClick 原封不動呼叫一次
+    //    期間暫時把 window.open 指回我們剛開的分頁，避免又蹦出第二個視窗
+    const oldOpen = window.open;
+    window.open = function () {
+      return popup;
+    };
+    try {
+      if (typeof onDriveButtonClick === "function") onDriveButtonClick(e);
+    } catch (_) {
+      // 忽略內部錯誤，下面還會用輪詢補導向
+    } finally {
+      window.open = oldOpen;
+    }
+
+    // 4) 輪詢 7 秒內是否有寫回資料夾ID（建立完成後通常會回寫到 task）
+    const t0 = Date.now();
+    const tick = setInterval(() => {
+      // 盡量拿到最新的詳情任務
+      let cur =
+        taskObj ||
+        (typeof window.getCurrentDetailTask === "function" &&
+          window.getCurrentDetailTask()) ||
+        (typeof window.getCurrentDetailMemo === "function" &&
+          window.getCurrentDetailMemo()) ||
+        null;
+
+      const url = __driveUrlFromTask(cur || {});
+      if (url && !url.endsWith("/my-drive")) {
+        clearInterval(tick);
+        try {
+          if (popup && !popup.closed) {
+            popup.location.replace(url);
+            popup.focus?.();
+          }
+        } catch (_) {}
+      } else if (Date.now() - t0 > 7000) {
+        // 超時就帶去「我的雲端硬碟」，避免停在空白
+        clearInterval(tick);
+        try {
+          if (popup && !popup.closed) {
+            popup.location.replace("https://drive.google.com/drive/my-drive");
+          }
+        } catch (_) {}
+      }
+    }, 250);
   }
 
   // 放在檔案任一共用區即可（偵測 iOS PWA）
