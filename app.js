@@ -4514,40 +4514,35 @@
     updateDriveButtonState(taskObj);
   }
 
-  async function onDriveButtonClick() {
-    const t = getCurrentDetailTask();
-    if (!t) return;
+  // 放在檔案任一共用區即可（偵測 iOS PWA）
+  const IS_IOS = /iP(ad|hone|od)/.test(navigator.userAgent);
+  const IS_STANDALONE =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    navigator.standalone;
+  const IS_IOS_PWA = IS_IOS && IS_STANDALONE;
+
+  async function onDriveButtonClick(e) {
+    // ✅ 只有 iOS PWA 需要預開分頁；其它平台不要預開，避免吃掉彈窗名額
+    const preWin = IS_IOS_PWA ? window.open("about:blank") : null;
 
     try {
-      const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
-      if (firstTime && !isIOSPWA) {
-        localStorage.setItem(GD_POST_OPEN_KEY, "1");
-        try {
-          __gd_prewin = window.open("", "_blank");
-        } catch (_) {
-          __gd_prewin = null;
-        }
-      } else {
-        // iOS PWA：不要用預備分頁，避免留下空白 about:blank
-        localStorage.removeItem(GD_POST_OPEN_KEY);
-        __gd_prewin = null;
-      }
-
+      // 這裡會觸發 GIS/FedCM 的授權 UI（桌機要保留彈窗名額）
       await ensureDriveAuth();
-      const folderId = await ensureExistingOrRecreateFolder(t);
-      updateDriveButtonState(t);
 
-      openDriveFolderWeb(folderId, __gd_prewin);
+      // 建/找資料夾（你原本的邏輯）
+      const folderId = await ensureExistingOrRecreateFolder(
+        getCurrentDetailTask?.() || curTask?.()
+      );
 
-      localStorage.removeItem(GD_POST_OPEN_KEY);
-      __gd_prewin = null;
-    } catch (e) {
-      localStorage.removeItem(GD_POST_OPEN_KEY);
-      __gd_prewin = null;
-
-      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-      alert("Google 雲端硬碟動作失敗：" + msg);
-      console.error("Drive error:", e);
+      // 導向資料夾：iOS PWA 用預開分頁，桌機直接開新分頁
+      openDriveFolderWeb(folderId, preWin);
+    } catch (err) {
+      if (preWin) {
+        try {
+          preWin.close();
+        } catch (_) {}
+      }
+      alert("Google Drive 操作失敗：" + (err?.message || err));
     }
   }
 
