@@ -15,21 +15,6 @@
 <link rel="icon" type="image/png" sizes="32x32" href="reminder.png">
 <link rel="apple-touch-icon" sizes="180x180" href="reminder.png">
 <link rel="manifest" href="manifest.json">
-<script>
-   // 用房間專屬 key，避免跨帳互相影響
-    const welcomeKey = roomPath ? `welcome_shown_${roomPath}` : 'welcome_shown';
-
-    if (cloud === null) {
-      // 第一次登入此房：不自動補預設，保持空清單
-      categories = [];
-
-      // 首次顯示歡迎窗（只對此房顯示一次）
-      if (!localStorage.getItem(welcomeKey)) {
-        const w = document.getElementById('welcomeModal');
-        if (w) w.style.display = 'flex';
-        localStorage.setItem(welcomeKey, '1');
-      }
-</script>
   <title>MyTask</title>
   <style>
 
