@@ -12,7 +12,7 @@
   // ✅ 重新畫出所有分類區塊（依照 categories 順序）
 
   // 只有使用者真的點了 gdrive 按鈕，才允許跳授權
-let __gd_userGesture = false;
+  let __gd_userGesture = false;
 
   // 放在全域
   let dbUnsubscribers = [];
@@ -114,6 +114,7 @@ let __gd_userGesture = false;
           if (app) app.style.display = "";
           loadTasksFromFirebase();
           updateSectionOptions();
+          maybeShowWelcome(); // ★ 新增這行
         } else {
           document.documentElement.classList.add("show-login");
         }
@@ -242,6 +243,7 @@ let __gd_userGesture = false;
       // 成功 → 顯示主畫面
       document.documentElement.classList.add("show-app");
       loadTasksFromFirebase();
+      maybeShowWelcome(); // ★ 新增這行
       updateSectionOptions();
     } catch (e) {
       // 失敗 → 停在登入頁
@@ -299,6 +301,7 @@ let __gd_userGesture = false;
       updateSectionOptions?.();
       authBusy = false;
       setLoginBusy(false);
+      maybeShowWelcome(); // ★ 新增這行
       return;
     }
 
@@ -2564,6 +2567,7 @@ let __gd_userGesture = false;
 
         loadTasksFromFirebase();
         updateSectionOptions();
+        maybeShowWelcome(); // ★ 新增這行
       } else {
         // ⚠️ 不要在這裡 signOut()！只切畫面回登入即可
         document.documentElement.classList.add("show-login");
@@ -4205,51 +4209,59 @@ let __gd_userGesture = false;
   }
 
   async function ensureDriveAuth() {
-  // 安全讀取 token 與到期時間
-  const skew = 10 * 60 * 1000; // 10 分鐘緩衝
-  const exp = parseInt(localStorage.getItem('gdrive_token_exp') || '0', 10);
-  const hasGapi = !!(window.gapi && gapi.client && gapi.client.getToken);
-  const token = hasGapi ? gapi.client.getToken() : null;
+    // 安全讀取 token 與到期時間
+    const skew = 10 * 60 * 1000; // 10 分鐘緩衝
+    const exp = parseInt(localStorage.getItem("gdrive_token_exp") || "0", 10);
+    const hasGapi = !!(window.gapi && gapi.client && gapi.client.getToken);
+    const token = hasGapi ? gapi.client.getToken() : null;
 
-  // 1) 有效 token → 直接 OK（不會彈任何東西）
-  if (token && Date.now() < exp - skew) return true;
+    // 1) 有效 token → 直接 OK（不會彈任何東西）
+    if (token && Date.now() < exp - skew) return true;
 
-  // 2) 沒 token/過期，但不是使用者點擊 → 靜默返回，不要觸發授權彈窗
-  if (!__gd_userGesture) return false;
+    // 2) 沒 token/過期，但不是使用者點擊 → 靜默返回，不要觸發授權彈窗
+    if (!__gd_userGesture) return false;
 
-  // 3) 使用者真的有點按鈕 → 才觸發授權流程
-  return await new Promise((resolve) => {
-    try {
-      // __tokenClient 應該已由你原本的載入流程建立好
-      if (!window.__tokenClient) {
-        // 沒有 client 就不要硬彈，避免空白視窗；交由呼叫端處理
-        return resolve(false);
-      }
-      window.__tokenClient.requestAccessToken({
-        // 第一次要 'consent'，後續就空字串減少打擾
-        prompt: localStorage.getItem('gdrive_consent_done') === '1' ? '' : 'consent',
-        callback: (resp) => {
-          if (resp && resp.access_token) {
-            // 設定 gapi token
-            try { gapi.client.setToken({ access_token: resp.access_token }); } catch (_) {}
-
-            // 記住到期時間（留一點緩衝）
-            const life = (resp.expires_in ? parseInt(resp.expires_in, 10) : 3600) - 60;
-            localStorage.setItem('gdrive_token_exp', String(Date.now() + life * 1000));
-            localStorage.setItem('gdrive_consent_done', '1');
-
-            resolve(true);
-          } else {
-            resolve(false); // 不丟例外，讓呼叫端自己決定後續
-          }
+    // 3) 使用者真的有點按鈕 → 才觸發授權流程
+    return await new Promise((resolve) => {
+      try {
+        // __tokenClient 應該已由你原本的載入流程建立好
+        if (!window.__tokenClient) {
+          // 沒有 client 就不要硬彈，避免空白視窗；交由呼叫端處理
+          return resolve(false);
         }
-      });
-    } catch (_) {
-      resolve(false);
-    }
-  });
-}
+        window.__tokenClient.requestAccessToken({
+          // 第一次要 'consent'，後續就空字串減少打擾
+          prompt:
+            localStorage.getItem("gdrive_consent_done") === "1"
+              ? ""
+              : "consent",
+          callback: (resp) => {
+            if (resp && resp.access_token) {
+              // 設定 gapi token
+              try {
+                gapi.client.setToken({ access_token: resp.access_token });
+              } catch (_) {}
 
+              // 記住到期時間（留一點緩衝）
+              const life =
+                (resp.expires_in ? parseInt(resp.expires_in, 10) : 3600) - 60;
+              localStorage.setItem(
+                "gdrive_token_exp",
+                String(Date.now() + life * 1000)
+              );
+              localStorage.setItem("gdrive_consent_done", "1");
+
+              resolve(true);
+            } else {
+              resolve(false); // 不丟例外，讓呼叫端自己決定後續
+            }
+          },
+        });
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
 
   function ensureDriveGlowCss() {
     if (document.getElementById("driveGlowCss")) return;
@@ -4494,8 +4506,8 @@ let __gd_userGesture = false;
     updateDriveButtonState(taskObj);
   }
 
-async function onDriveButtonClick(ev) {
-  __gd_userGesture = true;                // ← 加這行
+  async function onDriveButtonClick(ev) {
+    __gd_userGesture = true; // ← 加這行
     const t = getCurrentDetailTask();
     if (!t) return;
 
@@ -4565,7 +4577,7 @@ async function onDriveButtonClick(ev) {
                 openDriveFolderWeb(id);
               }
             } finally {
-              __gd_userGesture = false;  
+              __gd_userGesture = false;
               localStorage.removeItem(GD_POST_OPEN_KEY);
             }
           })().catch(() => {});
@@ -4913,6 +4925,42 @@ async function onDriveButtonClick(ev) {
       e.target.placeholder = e.target.value ? "" : "在MyTask中搜尋";
     }
   });
+
+  // 顯示歡迎窗：同一個帳號密碼（room）只會顯示一次（跨裝置）
+  // 若雲端寫入失敗，退回本機 localStorage。
+  // 用來記住「這個分頁上一次已檢查過的 roomPath」
+  // 同一個 room 只檢查一次；換 room 就會再檢查
+  let welcomeCheckDone = null;
+
+  async function maybeShowWelcome() {
+    const rp = roomPath;
+    if (!rp || !auth || !auth.currentUser) return;
+
+    // 本頁面已經檢查過這個 room，就略過；換了 room 就再檢查
+    if (welcomeCheckDone === rp) return;
+    welcomeCheckDone = rp;
+
+    try {
+      const ref = db.ref(rp + "/meta/welcomeShown");
+      const snap = await ref.once("value");
+      const shown = !!snap.val();
+      if (!shown) {
+        var m = document.getElementById("welcomeModal");
+        if (m) m.style.display = "flex";
+        await ref.set(true); // 記錄到雲端（跨裝置只顯示一次）
+      }
+    } catch (e) {
+      console.warn("[welcome] RTDB 檢查/寫入失敗，改用 localStorage：", e);
+      try {
+        const key = "welcomed:" + rp;
+        if (!localStorage.getItem(key)) {
+          var m2 = document.getElementById("welcomeModal");
+          if (m2) m2.style.display = "flex";
+          localStorage.setItem(key, "1"); // 本機退路
+        }
+      } catch (_) {}
+    }
+  }
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
