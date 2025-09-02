@@ -1753,6 +1753,29 @@
   const GD_POST_OPEN_KEY = "gdrive_post_open_memo";
   let __gd_prewin = null;
 
+  const POST_OPEN_TTL = 15000; // 15秒有效視窗
+
+  const postOpen = {
+    set() {
+      try {
+        sessionStorage.setItem(GD_POST_OPEN_KEY, String(Date.now()));
+      } catch {}
+    },
+    isFresh() {
+      try {
+        const t = +sessionStorage.getItem(GD_POST_OPEN_KEY) || 0;
+        return t && Date.now() - t < POST_OPEN_TTL;
+      } catch {
+        return false;
+      }
+    },
+    clear() {
+      try {
+        sessionStorage.removeItem(GD_POST_OPEN_KEY);
+      } catch {}
+    },
+  };
+
   /* 判斷 iOS PWA（供開 App 深連結時使用） */
   const isIOSPWA = (() => {
     try {
@@ -1818,73 +1841,72 @@
 
   /* ---- OAuth / Token ---- */
   // 取代你現有的 ensureDriveAuth()
- // 取代你現有的 ensureDriveAuth（其餘不動）
-async function ensureDriveAuth() {
-  await loadGapiOnce();
+  // 取代你現有的 ensureDriveAuth（其餘不動）
+  async function ensureDriveAuth() {
+    await loadGapiOnce();
 
-  // 若 token 仍有效，直接通過
-  const skew = 10 * 60 * 1000; // 10 分鐘緩衝
-  const exp = +localStorage.getItem("gdrive_token_exp") || 0;
-  const tok = gapi?.client?.getToken?.();
-  if (tok?.access_token && Date.now() + skew < exp) return true;
+    // 若 token 仍有效，直接通過
+    const skew = 10 * 60 * 1000; // 10 分鐘緩衝
+    const exp = +localStorage.getItem("gdrive_token_exp") || 0;
+    const tok = gapi?.client?.getToken?.();
+    if (tok?.access_token && Date.now() + skew < exp) return true;
 
-  // 沒有手勢 & 也不是首次授權的補跑 → 絕不彈窗
-  const canPrompt =
-    __gd_userGesture || localStorage.getItem(GD_POST_OPEN_KEY) === "1";
-  if (!canPrompt) return false;
+    // 沒有手勢 & 也不是首次授權的補跑 → 絕不彈窗
+    const canPrompt =
+      __gd_userGesture || localStorage.getItem(GD_POST_OPEN_KEY) === "1";
+    if (!canPrompt) return false;
 
-  const alreadyConsented = localStorage.getItem("gdrive_consent_done") === "1";
+    const alreadyConsented =
+      localStorage.getItem("gdrive_consent_done") === "1";
 
-  // 要求/更新 access token（必要時才 prompt）
-  const resp = await new Promise((resolve, reject) => {
-    __tokenClient.callback = (r) => {
-      if (r?.access_token) return resolve(r);
-      reject(r?.error || "授權失敗");
-    };
-    try {
-      __tokenClient.requestAccessToken({
-        prompt: alreadyConsented ? "" : "consent",
-      });
-    } catch (e) {
-      if (alreadyConsented) {
-        try {
-          __tokenClient.requestAccessToken({ prompt: "consent" });
-        } catch (e2) {
-          reject(e2);
-        }
-      } else {
-        reject(e);
-      }
-    }
-  });
-
-  // 記錄 token 與到期
-  gapi.client.setToken({ access_token: resp.access_token });
-  const ttl = resp.expires_in ? resp.expires_in * 1000 : 60 * 60 * 1000;
-  localStorage.setItem("gdrive_token_exp", String(Date.now() + ttl - skew));
-  localStorage.setItem("gdrive_consent_done", "1");
-
-  // 首次授權的「自動補開資料夾」流程
-  if (localStorage.getItem(GD_POST_OPEN_KEY) === "1") {
-    setTimeout(async () => {
+    // 要求/更新 access token（必要時才 prompt）
+    const resp = await new Promise((resolve, reject) => {
+      __tokenClient.callback = (r) => {
+        if (r?.access_token) return resolve(r);
+        reject(r?.error || "授權失敗");
+      };
       try {
-        const m = getCurrentDetailMemo();
-        if (m) {
-          const id = await ensureExistingOrRecreateFolder(m);
-          updateDriveButtonState(m);
-          openDriveFolderWeb(id, __gd_prewin);
+        __tokenClient.requestAccessToken({
+          prompt: alreadyConsented ? "" : "consent",
+        });
+      } catch (e) {
+        if (alreadyConsented) {
+          try {
+            __tokenClient.requestAccessToken({ prompt: "consent" });
+          } catch (e2) {
+            reject(e2);
+          }
+        } else {
+          reject(e);
         }
-      } finally {
-        localStorage.removeItem(GD_POST_OPEN_KEY);
-        __gd_prewin = null;
       }
-    }, 0);
+    });
+
+    // 記錄 token 與到期
+    gapi.client.setToken({ access_token: resp.access_token });
+    const ttl = resp.expires_in ? resp.expires_in * 1000 : 60 * 60 * 1000;
+    localStorage.setItem("gdrive_token_exp", String(Date.now() + ttl - skew));
+    localStorage.setItem("gdrive_consent_done", "1");
+
+    // 首次授權的「自動補開資料夾」流程
+    if (localStorage.getItem(GD_POST_OPEN_KEY) === "1") {
+      setTimeout(async () => {
+        try {
+          const m = getCurrentDetailMemo();
+          if (m) {
+            const id = await ensureExistingOrRecreateFolder(m);
+            updateDriveButtonState(m);
+            openDriveFolderWeb(id, __gd_prewin);
+          }
+        } finally {
+          postOpen.clear();
+          __gd_prewin = null;
+        }
+      }, 0);
+    }
+
+    return true;
   }
-
-  return true;
-}
-
-
 
   /* ---- 外觀：按鈕高亮（有資料夾時） ---- */
   function ensureDriveGlowCss() {
@@ -2114,12 +2136,12 @@ async function ensureDriveAuth() {
       }
       return;
     }
-__gd_userGesture = true; 
+    __gd_userGesture = true;
     try {
       const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
       if (firstTime) {
         // 首次授權一律立旗標，讓 ensureDriveAuth 完成後自動補跑開啟
-        localStorage.setItem(GD_POST_OPEN_KEY, "1");
+        postOpen.set();
         if (!isIOSPWA) {
           // 非 iOS PWA 才開預備分頁（提升喚起成功率）
           try {
@@ -2133,7 +2155,7 @@ __gd_userGesture = true;
         }
       } else {
         // 非首次：不需要旗標與預備分頁
-        localStorage.removeItem(GD_POST_OPEN_KEY);
+        postOpen.clear();
         __gd_prewin = null;
       }
 
@@ -2145,16 +2167,16 @@ __gd_userGesture = true;
 
       openDriveFolderWeb(folderId, __gd_prewin);
 
-      localStorage.removeItem(GD_POST_OPEN_KEY);
+      postOpen.clear();
       __gd_prewin = null;
     } catch (e) {
-      localStorage.removeItem(GD_POST_OPEN_KEY);
+      postOpen.clear();
       __gd_prewin = null;
       const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
       console.error("Drive error:", e);
-        } finally {
-    __gd_userGesture = false;       // ← 加這行：清旗標
+    } finally {
+      __gd_userGesture = false; // ← 加這行：清旗標
     }
   }
 
@@ -2177,7 +2199,7 @@ __gd_userGesture = true;
         if (!__gapiReady || !__gisReady || !__tokenClient) {
           loadGapiOnce().catch(() => {});
         }
-        if (localStorage.getItem(GD_POST_OPEN_KEY) === "1") {
+        if (postOpen.isFresh()) {
           (async () => {
             try {
               await ensureDriveAuth();
@@ -2188,7 +2210,7 @@ __gd_userGesture = true;
                 openDriveFolderWeb(id, __gd_prewin);
               }
             } finally {
-              localStorage.removeItem(GD_POST_OPEN_KEY);
+              postOpen.clear();
               __gd_prewin = null;
             }
           })().catch(() => {});
