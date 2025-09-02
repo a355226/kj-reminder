@@ -32,6 +32,22 @@
   let memoMonthFilterRemoved = "all";
   let pendingCategoryMode = "active"; // 'active' | 'removed'
   let __gd_userGesture = false;
+  
+    //快取
+  const v = Date.now(); // 每次刷新都帶入唯一值，避開快取
+  document
+    .querySelectorAll('link[rel="icon"], link[rel="manifest"]')
+    .forEach((el) => {
+      if (el.href) {
+        el.href += (el.href.includes("?") ? "&" : "?") + "v=" + v;
+      }
+    });
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker
+      .register("/service-worker.js?v=" + v)
+      .then((reg) => console.log("SW 註冊成功", reg.scope))
+      .catch((err) => console.log("SW 註冊失敗", err));
+  }
 
   function applyViewAffordances() {
     const fab = document.querySelector(".fab");
