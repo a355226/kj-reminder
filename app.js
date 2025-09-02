@@ -4172,95 +4172,87 @@
     }
   })();
 
-  function loadGapiOnce() {
+  function addScriptOnce(src, id) {
     return new Promise((res, rej) => {
-      if (__gapiReady && __gisReady && __tokenClient) return res();
-      const wait = () => {
-        if (
-          window.gapi &&
-          window.google &&
-          google.accounts &&
-          google.accounts.oauth2
-        ) {
-          gapi.load("client", async () => {
-            try {
-              await gapi.client.init({});
-              await gapi.client.load("drive", "v3"); // discovery
-              __gapiReady = true;
-              __tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: GOOGLE_CLIENT_ID,
-                scope: GD_SCOPES,
-                callback: () => {}, // 之後再覆寫
-                use_fedcm_for_prompt: true, // ✅ 有助於被擋問題
-              });
-
-              __gisReady = true;
-              res();
-            } catch (e) {
-              rej(e);
-            }
-          });
-        } else {
-          setTimeout(wait, 50);
-        }
-      };
-      wait();
+      if (id && document.getElementById(id)) return res();
+      const s = document.createElement("script");
+      if (id) s.id = id;
+      s.src = src;
+      s.async = true;
+      s.defer = true;
+      s.onload = () => res();
+      s.onerror = () => rej(new Error("load fail: " + src));
+      document.head.appendChild(s);
     });
   }
 
+  async function loadGapiOnce() {
+    if (__gapiReady && __gisReady && __tokenClient) return;
+
+    if (!window.google?.accounts?.oauth2) {
+      await addScriptOnce(
+        "https://accounts.google.com/gsi/client",
+        "gsi_client_js"
+      );
+    }
+    if (!window.gapi) {
+      await addScriptOnce("https://apis.google.com/js/api.js", "gapi_js");
+    }
+    await new Promise((r) => gapi.load("client", r));
+    await gapi.client.init({});
+    // 用 discovery doc 載入 Drive v3（比老式載入穩）
+    await gapi.client.load(
+      "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"
+    );
+    __gapiReady = true;
+
+    __tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GD_SCOPES,
+      callback: () => {},
+    });
+    __gisReady = true;
+  }
+
+  // 只有在「使用者點擊」時才允許彈出授權視窗
   async function ensureDriveAuth() {
-    // 安全讀取 token 與到期時間
-    const skew = 10 * 60 * 1000; // 10 分鐘緩衝
-    const exp = parseInt(localStorage.getItem("gdrive_token_exp") || "0", 10);
-    const hasGapi = !!(window.gapi && gapi.client && gapi.client.getToken);
-    const token = hasGapi ? gapi.client.getToken() : null;
+    await loadGapiOnce();
 
-    // 1) 有效 token → 直接 OK（不會彈任何東西）
-    if (token && Date.now() < exp - skew) return true;
+    const skew = 10 * 60 * 1000; // 提前 10 分鐘視為過期
+    const exp = +localStorage.getItem("gdrive_token_exp") || 0;
+    const tok = gapi?.client?.getToken?.();
+    if (tok?.access_token && Date.now() + skew < exp) return true;
 
-    // 2) 沒 token/過期，但不是使用者點擊 → 靜默返回，不要觸發授權彈窗
-    if (!__gd_userGesture) return false;
+    if (!__gd_userGesture) return false; // 沒使用者手勢就不彈窗
 
-    // 3) 使用者真的有點按鈕 → 才觸發授權流程
-    return await new Promise((resolve) => {
+    const alreadyConsented =
+      localStorage.getItem("gdrive_consent_done") === "1";
+    const resp = await new Promise((resolve, reject) => {
+      __tokenClient.callback = (r) =>
+        r?.access_token ? resolve(r) : reject(r?.error || "auth failed");
       try {
-        // __tokenClient 應該已由你原本的載入流程建立好
-        if (!window.__tokenClient) {
-          // 沒有 client 就不要硬彈，避免空白視窗；交由呼叫端處理
-          return resolve(false);
-        }
-        window.__tokenClient.requestAccessToken({
-          // 第一次要 'consent'，後續就空字串減少打擾
-          prompt:
-            localStorage.getItem("gdrive_consent_done") === "1"
-              ? ""
-              : "consent",
-          callback: (resp) => {
-            if (resp && resp.access_token) {
-              // 設定 gapi token
-              try {
-                gapi.client.setToken({ access_token: resp.access_token });
-              } catch (_) {}
-
-              // 記住到期時間（留一點緩衝）
-              const life =
-                (resp.expires_in ? parseInt(resp.expires_in, 10) : 3600) - 60;
-              localStorage.setItem(
-                "gdrive_token_exp",
-                String(Date.now() + life * 1000)
-              );
-              localStorage.setItem("gdrive_consent_done", "1");
-
-              resolve(true);
-            } else {
-              resolve(false); // 不丟例外，讓呼叫端自己決定後續
-            }
-          },
+        __tokenClient.requestAccessToken({
+          prompt: alreadyConsented ? "" : "consent",
         });
-      } catch (_) {
-        resolve(false);
+      } catch (e) {
+        if (alreadyConsented) {
+          // 有些環境需要強制帶 consent
+          try {
+            __tokenClient.requestAccessToken({ prompt: "consent" });
+          } catch (e2) {
+            reject(e2);
+          }
+        } else {
+          reject(e);
+        }
       }
     });
+
+    gapi.client.setToken({ access_token: resp.access_token });
+    const ttl = (resp.expires_in || 3600) * 1000;
+    localStorage.setItem("gdrive_token_exp", String(Date.now() + ttl - skew));
+    localStorage.setItem("gdrive_consent_done", "1");
+    return true;
   }
 
   function ensureDriveGlowCss() {
@@ -4508,6 +4500,7 @@
 
   async function onDriveButtonClick(ev) {
     __gd_userGesture = true; // ← 加這行
+
     const t = getCurrentDetailTask();
     if (!t) return;
 
