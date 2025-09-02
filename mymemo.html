@@ -1388,7 +1388,41 @@
         } catch (e) {}
       })();
     </script>
+<script>
+(function () {
+  if (!('serviceWorker' in navigator)) return;
 
+  const SW_URL = '/service-worker.js';
+
+  // 1) 註冊 SW
+  navigator.serviceWorker.register(SW_URL).then(reg => {
+    // 啟動時就主動檢查更新一次
+    reg.update && reg.update();
+  }).catch(err => {
+    console.warn('SW 註冊失敗：', err);
+  });
+
+  // 2) 新 SW 變成 controller（接手）時，自動 reload 一次讓殼與 JS 變新
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
+
+  // 3) App 回到前景時，主動檢查一次（iOS PWA 重要）
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      navigator.serviceWorker.getRegistration().then(r => r && r.update && r.update());
+    }
+  });
+
+  // 4) iOS PWA：pageshow 也補一下（有時載入不觸發 load）
+  window.addEventListener('pageshow', () => {
+    navigator.serviceWorker.getRegistration().then(r => r && r.update && r.update());
+  });
+})();
+</script>
     <!-- Loading（切換中） -->
     <div id="loadingScreen" style="display: none">
       <div class="loading-wrap">
