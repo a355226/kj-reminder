@@ -14,44 +14,6 @@
   // 放在全域
   let dbUnsubscribers = [];
 
-  // === 放在整支 JS 的最上面（在 (()=>{ 之前） ===
-  (function () {
-    // 舊名：提供給舊的 Drive 模組呼叫
-    if (!("getCurrentDetailMemo" in window)) {
-      window.getCurrentDetailMemo = function () {
-        try {
-          const id = window.selectedTaskId;
-          const list = Array.isArray(window.tasks) ? window.tasks : [];
-          const t = list.find((x) => x.id === id) || null;
-          if (!t) return null;
-
-          // 回傳一份淺拷貝；若詳情視窗打開，優先帶表單目前值
-          const out = JSON.parse(JSON.stringify(t));
-          const modal = document.getElementById("detailModal");
-          if (modal && getComputedStyle(modal).display !== "none") {
-            out.section =
-              document.getElementById("detailSection")?.value ?? out.section;
-            out.title =
-              document.getElementById("detailTitle")?.value ?? out.title;
-            out.content =
-              document.getElementById("detailContent")?.value ?? out.content;
-            out.date = document.getElementById("detailDate")?.value ?? out.date;
-            out.note = document.getElementById("detailNote")?.value ?? out.note;
-            out.important =
-              !!document.getElementById("detailImportant")?.checked;
-          }
-          return out;
-        } catch (e) {
-          return null;
-        }
-      };
-    }
-
-    // 新名別名（兩個都可用）
-    window.getCurrentDetailTask =
-      window.getCurrentDetailTask || window.getCurrentDetailMemo;
-  })();
-
   function detachDbListeners() {
     try {
       dbUnsubscribers.forEach((off) => off && off());
@@ -388,21 +350,6 @@
   let dayMode = "work"; // 'work' 工作天(預設) / 'calendar' 日曆天
   let tasks = [];
   let selectedTaskId = null;
-
-  // === 加在這裡：把 IIFE 內部狀態映射到 window，保持即時同步 ===
-  Object.defineProperty(window, "tasks", {
-    get() {
-      return tasks;
-    },
-  });
-  Object.defineProperty(window, "selectedTaskId", {
-    get() {
-      return selectedTaskId;
-    },
-    set(v) {
-      selectedTaskId = v;
-    },
-  });
 
   (function () {
     // ------ utils ------
@@ -4453,21 +4400,23 @@
   }
 
   /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
-  // —— 全域：提供 Drive 區塊可以呼叫的「目前詳情任務」Getter —— //
   function getCurrentDetailTask() {
-    const id = window.selectedTaskId;
-    if (!id) return null;
-    const list = Array.isArray(window.tasks) ? window.tasks : [];
-    return list.find((t) => t.id === id) || null;
+    if (selectedTaskId) {
+      return (
+        (Array.isArray(tasks) ? tasks : []).find(
+          (t) => t.id === selectedTaskId
+        ) || null
+      );
+    }
+    if (selectedCompletedId) {
+      return (
+        (Array.isArray(completedTasks) ? completedTasks : []).find(
+          (t) => t.id === selectedCompletedId
+        ) || null
+      );
+    }
+    return null;
   }
-
-  // 相容舊版/另一個 App：Drive 模組若找 getCurrentDetailMemo，也給同一支
-  if (!window.getCurrentDetailMemo) {
-    window.getCurrentDetailMemo = getCurrentDetailTask;
-  }
-
-  // 也把 task 版的名稱掛出去（確保外部能叫到）
-  window.getCurrentDetailTask = getCurrentDetailTask;
 
   /* 主流程：建立或開啟資料夾 */
   async function openOrCreateDriveFolderForCurrentTask() {
@@ -4565,62 +4514,41 @@
     updateDriveButtonState(taskObj);
   }
 
-  // 放在檔案任一共用區即可（偵測 iOS PWA）
-  const IS_IOS = /iP(ad|hone|od)/.test(navigator.userAgent);
-  const IS_STANDALONE =
-    window.matchMedia("(display-mode: standalone)").matches ||
-    navigator.standalone;
-  const IS_IOS_PWA = IS_IOS && IS_STANDALONE;
-
-  async function onDriveButtonClick(e) {
-    const needConsentPopup = willPromptConsent();
-
-    // 只有「不會跳授權」才預開分頁，才能保住使用者手勢
-    const preWin = !needConsentPopup
-      ? window.open("", "_blank", "noopener")
-      : null;
+  async function onDriveButtonClick() {
+    const t = getCurrentDetailTask();
+    if (!t) return;
 
     try {
-      await ensureDriveAuth(); // 可能會開授權視窗（Chrome/Brave 要留名額給它）
-
-      const memo = getCurrentDetailMemo?.();
-      if (!memo) throw new Error("找不到目前備忘");
-      const folderId = await ensureExistingOrRecreateFolder(memo);
-
-      const go = (id) => openDriveFolderWeb(id, preWin);
-
-      if (preWin && !preWin.closed) {
-        // 已有預開分頁 → 導到目標（在 Brave/Chrome 不會被擋）
-        go(folderId);
+      const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
+      if (firstTime && !isIOSPWA) {
+        localStorage.setItem(GD_POST_OPEN_KEY, "1");
+        try {
+          __gd_prewin = window.open("", "_blank");
+        } catch (_) {
+          __gd_prewin = null;
+        }
       } else {
-        // 沒預開（多半是因為要授權），避免再開新窗被擋 → 用同分頁導向
-        // 若你還是想嘗試新分頁，先試 window.open，失敗再回退同分頁
-        const url = `https://drive.google.com/drive/folders/${folderId}`;
-        const w = window.open(url, "_blank", "noopener");
-        if (!w) location.href = url;
+        // iOS PWA：不要用預備分頁，避免留下空白 about:blank
+        localStorage.removeItem(GD_POST_OPEN_KEY);
+        __gd_prewin = null;
       }
-    } catch (err) {
-      // 失敗把預開分頁關掉
-      try {
-        preWin?.close();
-      } catch (_) {}
-      alert("Google Drive 操作失敗：" + (err?.message || err));
-    }
-  }
 
-  function willPromptConsent() {
-    const skew = 10 * 60 * 1000;
-    const exp = +localStorage.getItem("gdrive_token_exp") || 0;
-    const tok =
-      (window.gapi &&
-        gapi.client &&
-        gapi.client.getToken &&
-        gapi.client.getToken()) ||
-      null;
-    const hasFreshToken = tok?.access_token && Date.now() + skew < exp;
-    const consented = localStorage.getItem("gdrive_consent_done") === "1";
-    // 沒新鮮 token 且之前也沒做過 consent → 幾乎可確定要跳授權視窗
-    return !hasFreshToken && !consented;
+      await ensureDriveAuth();
+      const folderId = await ensureExistingOrRecreateFolder(t);
+      updateDriveButtonState(t);
+
+      openDriveFolderWeb(folderId, __gd_prewin);
+
+      localStorage.removeItem(GD_POST_OPEN_KEY);
+      __gd_prewin = null;
+    } catch (e) {
+      localStorage.removeItem(GD_POST_OPEN_KEY);
+      __gd_prewin = null;
+
+      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+      alert("Google 雲端硬碟動作失敗：" + msg);
+      console.error("Drive error:", e);
+    }
   }
 
   // 開頁即暖機，確保第一次點擊前就把 gapi/gis/tokenClient 準備好
