@@ -4522,28 +4522,54 @@
   const IS_IOS_PWA = IS_IOS && IS_STANDALONE;
 
   async function onDriveButtonClick(e) {
-    // ✅ 只有 iOS PWA 需要預開分頁；其它平台不要預開，避免吃掉彈窗名額
-    const preWin = IS_IOS_PWA ? window.open("about:blank") : null;
+    const needConsentPopup = willPromptConsent();
+
+    // 只有「不會跳授權」才預開分頁，才能保住使用者手勢
+    const preWin = !needConsentPopup
+      ? window.open("", "_blank", "noopener")
+      : null;
 
     try {
-      // 這裡會觸發 GIS/FedCM 的授權 UI（桌機要保留彈窗名額）
-      await ensureDriveAuth();
+      await ensureDriveAuth(); // 可能會開授權視窗（Chrome/Brave 要留名額給它）
 
-      // 建/找資料夾（你原本的邏輯）
-      const folderId = await ensureExistingOrRecreateFolder(
-        getCurrentDetailTask?.() || curTask?.()
-      );
+      const memo = getCurrentDetailMemo?.();
+      if (!memo) throw new Error("找不到目前備忘");
+      const folderId = await ensureExistingOrRecreateFolder(memo);
 
-      // 導向資料夾：iOS PWA 用預開分頁，桌機直接開新分頁
-      openDriveFolderWeb(folderId, preWin);
-    } catch (err) {
-      if (preWin) {
-        try {
-          preWin.close();
-        } catch (_) {}
+      const go = (id) => openDriveFolderWeb(id, preWin);
+
+      if (preWin && !preWin.closed) {
+        // 已有預開分頁 → 導到目標（在 Brave/Chrome 不會被擋）
+        go(folderId);
+      } else {
+        // 沒預開（多半是因為要授權），避免再開新窗被擋 → 用同分頁導向
+        // 若你還是想嘗試新分頁，先試 window.open，失敗再回退同分頁
+        const url = `https://drive.google.com/drive/folders/${folderId}`;
+        const w = window.open(url, "_blank", "noopener");
+        if (!w) location.href = url;
       }
+    } catch (err) {
+      // 失敗把預開分頁關掉
+      try {
+        preWin?.close();
+      } catch (_) {}
       alert("Google Drive 操作失敗：" + (err?.message || err));
     }
+  }
+
+  function willPromptConsent() {
+    const skew = 10 * 60 * 1000;
+    const exp = +localStorage.getItem("gdrive_token_exp") || 0;
+    const tok =
+      (window.gapi &&
+        gapi.client &&
+        gapi.client.getToken &&
+        gapi.client.getToken()) ||
+      null;
+    const hasFreshToken = tok?.access_token && Date.now() + skew < exp;
+    const consented = localStorage.getItem("gdrive_consent_done") === "1";
+    // 沒新鮮 token 且之前也沒做過 consent → 幾乎可確定要跳授權視窗
+    return !hasFreshToken && !consented;
   }
 
   // 開頁即暖機，確保第一次點擊前就把 gapi/gis/tokenClient 準備好
