@@ -4137,7 +4137,7 @@
     }
   }
 
-  /* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
+/* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
 /* ✅ 設定你的 Google OAuth Client ID（必填） */
 const GOOGLE_CLIENT_ID =
   "735593435771-otisn8depskof8vmvp6sp5sl9n3t5e25.apps.googleusercontent.com";
@@ -4182,63 +4182,22 @@ function addScriptOnce(src, id) {
   });
 }
 
-/* 防呆：阻擋任何 files.list（就算舊碼殘留也會被攔截） */
-function __blockListOnce() {
+/* 防呆：阻擋任何 files.list / files.get（就算舊碼殘留也會被攔截） */
+function __blockDriveReadsOnce() {
   try {
     const drv = gapi?.client?.drive?.files;
     if (!drv || drv.__blockInstalled) return;
-    const orig = drv.list;
-    drv.list = function () {
-      console.warn("[BLOCKED] gapi.client.drive.files.list 被攔截");
-      return Promise.reject(new Error("files.list is disabled"));
-    };
+
+    const mkBlock = (name) =>
+      function () {
+        console.warn(`[BLOCKED] gapi.client.drive.files.${name} 已被停用`);
+        return Promise.reject(new Error(`${name} is disabled`));
+      };
+
+    drv.list = mkBlock("list");
+    drv.get = mkBlock("get");
     drv.__blockInstalled = true;
   } catch (_) {}
-}
-
-/* 取得 token 後，自動檢查並下修 scope（避免沿用舊的 metadata 權限） */
-async function __downscopeIfNeeded() {
-  try {
-    const tok = gapi?.client?.getToken?.();
-    if (!tok?.access_token) return;
-
-    const res = await fetch(
-      "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=" +
-        encodeURIComponent(tok.access_token)
-    );
-    const info = await res.json();
-    const scopes = String(info?.scope || "").split(/\s+/);
-
-    const BAD = [
-      "https://www.googleapis.com/auth/drive.metadata.readonly",
-      "https://www.googleapis.com/auth/drive.readonly",
-      "https://www.googleapis.com/auth/drive",
-    ];
-    const hasBad = scopes.some((s) => BAD.includes(s));
-    if (!hasBad) return; // 已是最小權限
-
-    // 撤銷目前 token
-    await new Promise((r) => {
-      try {
-        google.accounts.oauth2.revoke(tok.access_token, r);
-      } catch (_) {
-        r();
-      }
-    });
-
-    // 清掉本地續存旗標
-    localStorage.removeItem("gdrive_token_exp");
-    localStorage.removeItem("gdrive_consent_done");
-
-    // 重新要 token（只含 drive.file）
-    await new Promise((resolve, reject) => {
-      __tokenClient.callback = (r) =>
-        r?.access_token ? resolve(r) : reject(r?.error || "downscope auth failed");
-      __tokenClient.requestAccessToken({ prompt: "consent", scope: GD_SCOPES });
-    });
-  } catch (e) {
-    console.warn("downscope 檢查/重授權失敗（忽略）", e);
-  }
 }
 
 async function loadGapiOnce() {
@@ -4263,8 +4222,8 @@ async function loadGapiOnce() {
   });
   __gisReady = true;
 
-  // 立即安裝「list 攔截」
-  __blockListOnce();
+  // 立即安裝「讀取類 API 攔截」
+  __blockDriveReadsOnce();
 }
 
 // 只有在「使用者點擊」時才允許彈出授權視窗
@@ -4304,10 +4263,6 @@ async function ensureDriveAuth() {
   const ttl = (resp.expires_in || 3600) * 1000;
   localStorage.setItem("gdrive_token_exp", String(Date.now() + ttl - skew));
   localStorage.setItem("gdrive_consent_done", "1");
-
-  // 取得 token 後主動檢查並下修（若發現多餘 scope）
-  await __downscopeIfNeeded();
-
   return true;
 }
 
@@ -4604,6 +4559,7 @@ function ensureDriveButtonsInlineUI(taskObj) {
   }
   updateDriveButtonState(taskObj);
 }
+
 
 
   async function onDriveButtonClick(ev) {
