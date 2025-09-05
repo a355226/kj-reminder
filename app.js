@@ -4278,6 +4278,7 @@
 
 // 取代你原本的 findOrCreateFolderByName（僅用 drive.file）
 // 不用 files.get；用 RTDB 鎖＋映射避免 list/search 與重複建立
+// 僅用 drive.file；不讀 metadata（無 get/list），只在必要時 create；用 RTDB 鎖避免重建
 async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
   const keyRaw = `${parentId}::${name}`;
   const key = sanitizeKey(keyRaw);
@@ -4285,67 +4286,93 @@ async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
     ? db.ref(`${roomPath}/gdriveMap/${key}`)
     : null;
 
-  // 沒有 RTDB（極端情況）→ 直接建立
+  // 若沒有 RTDB（極端情況），就直接建立並回傳
   if (!mapRef) {
     const created = await gapi.client.drive.files.create({
       resource: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] },
+      // 最小化回傳欄位；需要 id 來後續使用
       fields: "id",
       supportsAllDrives: true,
     });
     return created.result.id;
   }
 
-  // 先看是否已有 ID
-  let cur = null;
-  try { const snap = await mapRef.once("value"); cur = snap.val() || null; } catch (_) {}
-  if (typeof cur === "string" && cur) return cur;            // 已有 ID，直接用
-  if (cur && cur.state === "PENDING") {                      // 有人正在建立 → 等它完成
+  // 先讀映射：若已有 id（字串）就直接用
+  let curVal = null;
+  try {
+    const snap = await mapRef.once("value");
+    curVal = snap.val() || null;
+  } catch (_) {}
+  if (typeof curVal === "string" && curVal) return curVal;
+
+  // 若有人正在建立，等它完成（加上過期保護，避免永遠 PENDING）
+  const PENDING_TTL_MS = 15000; // 15 秒鎖過期
+  const waitForId = async (msTimeout = 10000) => {
     const start = Date.now();
-    const id = await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const off = mapRef.on("value", (s) => {
         const v = s.val();
-        if (typeof v === "string" && v) { mapRef.off("value", off); resolve(v); }
-        else if (Date.now() - start > 10000) { mapRef.off("value", off); reject(new Error("timeout")); }
+        if (typeof v === "string" && v) {
+          mapRef.off("value", off);
+          resolve(v);
+        } else if (v && v.state === "PENDING" && v.ts && Date.now() - v.ts > PENDING_TTL_MS) {
+          // 鎖超時，交由外層重新嘗試搶鎖
+          mapRef.off("value", off);
+          reject(new Error("pending_expired"));
+        } else if (Date.now() - start > msTimeout) {
+          mapRef.off("value", off);
+          reject(new Error("timeout"));
+        }
       });
-    }).catch(() => null);
-    if (id) return id;
-    // 超時：跌回自己來建
+    });
+  };
+
+  if (curVal && curVal.state === "PENDING") {
+    try {
+      const id = await waitForId(10000);
+      if (id) return id;
+    } catch (_) {
+      // 超時或 pending_expired：繼續往下搶鎖
+    }
   }
 
-  // 嘗試搶鎖（誰搶到誰建）
+  // 嘗試搶鎖（透過 transaction）
   const owner = Math.random().toString(36).slice(2);
   let won = false;
-  await mapRef.transaction((val) => {
-    if (!val) { won = true; return { state: "PENDING", owner, ts: Date.now() }; }
-    return val;
-  }, { applyLocally: false });
+  await mapRef.transaction(
+    (val) => {
+      // 只有在「空」或「鎖已過期」時才下鎖
+      if (!val || (val.state === "PENDING" && val.ts && Date.now() - val.ts > PENDING_TTL_MS)) {
+        won = true;
+        return { state: "PENDING", owner, ts: Date.now() };
+      }
+      return val;
+    },
+    { applyLocally: false }
+  );
 
   if (!won) {
-    // 沒搶到 → 再等一次（避免與上面的 PENDING 分支重複）
-    const start = Date.now();
-    const id = await new Promise((resolve, reject) => {
-      const off = mapRef.on("value", (s) => {
-        const v = s.val();
-        if (typeof v === "string" && v) { mapRef.off("value", off); resolve(v); }
-        else if (Date.now() - start > 10000) { mapRef.off("value", off); reject(new Error("timeout")); }
-      });
-    }).catch(() => null);
-    if (id) return id;
-    // 若真的等不到，就繼續往下由自己建立（最後一道保險）
+    // 沒搶到：再等一次；等不到就放棄並重試一輪（呼叫端通常會重進）
+    try {
+      const id = await waitForId(12000);
+      if (id) return id;
+    } catch (_) {
+      // 仍等不到 → 落回自己建立（最後保險；由下方 try-catch 收尾）
+    }
   }
 
-  // 我方負責建立
+  // 我方負責建立（僅此一步會觸發 metadata "寫入"；無讀取）
   try {
     const created = await gapi.client.drive.files.create({
       resource: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] },
-      fields: "id",
+      fields: "id",                 // 只取 id（必要最小）
       supportsAllDrives: true,
     });
     const newId = created.result.id;
     try { await mapRef.set(newId); } catch (_) {}
     return newId;
   } catch (e) {
-    // 建立失敗，清掉鎖，避免卡住
+    // 建立失敗：若是我方鎖，清掉避免鎖死
     try {
       const snap = await mapRef.once("value");
       const v = snap.val();
@@ -4483,31 +4510,6 @@ async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
     }
   }
 
-// --- 小工具：用一次「建立→刪除」來驗證某 folderId 是否可寫（不用 files.get）---
-async function __probeFolderWritable(folderId) {
-  try {
-    // 建一個暫時的 Google Docs（或你也可用空資料夾），馬上刪掉
-    const created = await gapi.client.drive.files.create({
-      resource: {
-        name: ".mt_ping",
-        mimeType: "application/vnd.google-apps.document",
-        parents: [folderId],
-      },
-      fields: "id",
-      supportsAllDrives: true,
-    });
-    const tmpId = created.result.id;
-    try {
-      await gapi.client.drive.files.delete({
-        fileId: tmpId,
-        supportsAllDrives: true,
-      });
-    } catch (_) { /* 刪失敗也不影響判定 */ }
-    return true;  // 能寫就當作有效
-  } catch (_) {
-    return false; // 父資料夾無效或無權限
-  }
-}
 
 // --- 取代你的 ensureExistingOrRecreateFolder（無 files.get / 無 list / 無本地儲存）---
 async function ensureExistingOrRecreateFolder(t) {
