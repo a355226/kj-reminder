@@ -4145,7 +4145,6 @@
   /* 建議 scope：建立/讀取 app 建立的資料夾 + 讀取檔案名稱 */
   const GD_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/drive.metadata.readonly",
   ].join(" ");
 
   let __gapiReady = false;
@@ -4277,37 +4276,61 @@
     return String(s).replace(/['\\]/g, "\\$&");
   }
 
-  async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
-    const q = [
-      `name = '${escapeForQuery(name)}'`,
-      `mimeType = 'application/vnd.google-apps.folder'`,
-      `'${parentId}' in parents`,
-      "trashed = false",
-    ].join(" and ");
+// 取代你原本的 findOrCreateFolderByName（僅用 drive.file）
+async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
+  // 以 parentId + name 在 RTDB 建一個映射，避免用 list 搜尋
+  const keyRaw = `${parentId}::${name}`;
+  const key = sanitizeKey(keyRaw); // 你檔案裡已定義：把 . # $ [ ] / 換掉
+  const mapRef = (roomPath && typeof db?.ref === "function")
+    ? db.ref(`${roomPath}/gdriveMap/${key}`)
+    : null;
 
-    const list = await gapi.client.drive.files.list({
-      q,
-      fields: "files(id,name)",
-      pageSize: 1,
-      includeItemsFromAllDrives: true,
-      supportsAllDrives: true,
-    });
-
-    if (list?.result?.files?.length) {
-      return list.result.files[0].id;
-    }
-
-    const created = await gapi.client.drive.files.create({
-      resource: {
-        name,
-        mimeType: "application/vnd.google-apps.folder",
-        parents: [parentId],
-      },
-      fields: "id",
-      supportsAllDrives: true,
-    });
-    return created.result.id;
+  // 1) 先從 RTDB 讀取既有 folderId
+  let folderId = null;
+  if (mapRef) {
+    try {
+      const snap = await mapRef.once("value");
+      folderId = snap.val() || null;
+    } catch (_) {}
   }
+
+  // 2) 若有 ID，僅用 files.get 驗證（drive.file 可讀取本 App 建立/授權的檔案）
+  if (folderId) {
+    try {
+      const r = await gapi.client.drive.files.get({
+        fileId: folderId,
+        fields: "id, trashed",
+        supportsAllDrives: true,
+      });
+      if (r?.result?.id && !r.result.trashed) {
+        return folderId; // 有效就直接用
+      }
+    } catch (_) {
+      // 失效則走建立流程
+      folderId = null;
+    }
+  }
+
+  // 3) 建立新資料夾（避免使用 files.list）
+  const created = await gapi.client.drive.files.create({
+    resource: {
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentId],
+    },
+    fields: "id",
+    supportsAllDrives: true,
+  });
+  const newId = created.result.id;
+
+  // 4) 回寫映射到 RTDB，供下次直接命中
+  if (mapRef) {
+    try { await mapRef.set(newId); } catch (_) {}
+  }
+
+  return newId;
+}
+
 
   async function ensureFolderPath(segments) {
     let parent = "root";
@@ -4435,37 +4458,41 @@
     }
   }
 
-  async function ensureExistingOrRecreateFolder(t) {
-    // 有 ID 先驗證
-    if (t.driveFolderId) {
-      try {
-        const r = await gapi.client.drive.files.get({
-          fileId: t.driveFolderId,
-          fields: "id, trashed",
-          supportsAllDrives: true,
-        });
-        if (r?.result?.id && !r.result.trashed) {
-          return t.driveFolderId; // 現存
-        }
-      } catch (_) {
-        // 404 / 無權限 → 重建
+ // 僅用 drive.file；無 files.list；無本地儲存
+async function ensureExistingOrRecreateFolder(t) {
+  // 1) 先驗證現有 ID（drive.file 可讀本 App 建立/使用者授權的檔案）
+  if (t.driveFolderId) {
+    try {
+      const r = await gapi.client.drive.files.get({
+        fileId: t.driveFolderId,
+        fields: "id, trashed",
+        supportsAllDrives: true,
+      });
+      if (r?.result?.id && !r.result.trashed) {
+        return t.driveFolderId; // 現存可用
       }
-      t.driveFolderId = null; // 清掉無效 ID
-      saveTasksToFirebase?.();
+    } catch (_) {
+      // 404 / 無權限 → 視同失效
     }
-
-    // 重建整條路徑
-    const segs = [
-      "MyTask",
-      t.section || "未分類",
-      (t.title || "未命名").slice(0, 100),
-    ];
-    const newId = await ensureFolderPath(segs);
-    t.driveFolderId = newId;
+    t.driveFolderId = null; // 清掉無效 ID
     saveTasksToFirebase?.();
-    updateDriveButtonState(t);
-    return newId;
   }
+
+  // 2) 用你前一步改好的 ensureFolderPath（內部只用 get/create + RTDB 映射）
+  const segs = [
+    "MyTask",
+    t.section || "未分類",
+    (t.title || "未命名").slice(0, 100),
+  ];
+  const newId = await ensureFolderPath(segs);
+
+  // 3) 回寫任務並更新 UI
+  t.driveFolderId = newId;
+  saveTasksToFirebase?.();
+  updateDriveButtonState?.(t);
+  return newId;
+}
+
 
   /* 只開，不建（若沒記錄會退回主流程建） */
   function openCurrentTaskDriveFolder() {
