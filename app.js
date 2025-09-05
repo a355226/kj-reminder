@@ -12,9 +12,7 @@
   // ✅ 重新畫出所有分類區塊（依照 categories 順序）
 
   // 只有使用者真的點了 gdrive 按鈕，才允許跳授權
-  if (typeof window.__gd_userGesture === "undefined") {
-  window.__gd_userGesture = false;
-}
+  let __gd_userGesture = false;
 
   // 放在全域
   let dbUnsubscribers = [];
@@ -4139,521 +4137,366 @@
     }
   }
 
-/* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
-/* ✅ 設定你的 Google OAuth Client ID（必填） */
-const GOOGLE_CLIENT_ID =
-  "735593435771-otisn8depskof8vmvp6sp5sl9n3t5e25.apps.googleusercontent.com";
+  /* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
+  /* ✅ 設定你的 Google OAuth Client ID（必填） */
+  const GOOGLE_CLIENT_ID =
+    "735593435771-otisn8depskof8vmvp6sp5sl9n3t5e25.apps.googleusercontent.com";
 
-/* ✅ 最小權限：只用 drive.file（不使用 files.list / 不載入 Drive discovery）*/
-const GD_SCOPE = "https://www.googleapis.com/auth/drive.file";
+  /* 建議 scope：建立/讀取 app 建立的資料夾 + 讀取檔案名稱 */
+  const GD_SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
+  ].join(" ");
 
-/* ====== 狀態 ====== */
-let __gisReady = false;
-let __tokenClient = null;
-let __driveAccessToken = null; // 只存在記憶體
-const GD_POST_OPEN_KEY = "gdrive_post_open"; // 第一次授權預備視窗旗標
-let __gd_prewin = null; // 第一次授權時的預備分頁
+  let __gapiReady = false;
+  let __gisReady = false;
+  let __tokenClient = null;
+  // ✅ 第一次授權後要自動補跑一次的旗標
+  // ✅ 第一次授權後要自動補跑一次的旗標 & 預備視窗
+  const GD_POST_OPEN_KEY = "gdrive_post_open";
+  let __gd_prewin = null; // 只在「第一次授權」時短暫使用
+  // 全域：一次判斷 iOS PWA（避免第一次 click 時 ReferenceError）
+  const isIOSPWA = (() => {
+    try {
+      const ua = navigator.userAgent || "";
+      const isiOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      const standalone = !!(
+        window.matchMedia?.("(display-mode: standalone)")?.matches ||
+        navigator.standalone
+      );
+      return isiOS && standalone;
+    } catch {
+      return false;
+    }
+  })();
 
-// 全域：一次判斷 iOS PWA（避免第一次 click 時 ReferenceError）
-const isIOSPWA = (() => {
-  try {
-    const ua = navigator.userAgent || "";
-    const isiOS =
-      /iPad|iPhone|iPod/.test(ua) ||
-      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-    const standalone = !!(
-      window.matchMedia?.("(display-mode: standalone)")?.matches ||
-      navigator.standalone
+  function addScriptOnce(src, id) {
+    return new Promise((res, rej) => {
+      if (id && document.getElementById(id)) return res();
+      const s = document.createElement("script");
+      if (id) s.id = id;
+      s.src = src;
+      s.async = true;
+      s.defer = true;
+      s.onload = () => res();
+      s.onerror = () => rej(new Error("load fail: " + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function loadGapiOnce() {
+    if (__gapiReady && __gisReady && __tokenClient) return;
+
+    if (!window.google?.accounts?.oauth2) {
+      await addScriptOnce(
+        "https://accounts.google.com/gsi/client",
+        "gsi_client_js"
+      );
+    }
+    if (!window.gapi) {
+      await addScriptOnce("https://apis.google.com/js/api.js", "gapi_js");
+    }
+    await new Promise((r) => gapi.load("client", r));
+    await gapi.client.init({});
+    // 用 discovery doc 載入 Drive v3（比老式載入穩）
+    await gapi.client.load(
+      "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"
     );
-    return isiOS && standalone;
-  } catch {
-    return false;
-  }
-})();
+    __gapiReady = true;
 
-/* ====== 工具：載入 GSI ====== */
-function addScriptOnce(src, id) {
-  return new Promise((res, rej) => {
-    if (id && document.getElementById(id)) return res();
-    const s = document.createElement("script");
-    if (id) s.id = id;
-    s.src = src;
-    s.async = true;
-    s.defer = true;
-    s.onload = () => res();
-    s.onerror = () => rej(new Error("load fail: " + src));
-    document.head.appendChild(s);
-  });
-}
-
-async function loadGisOnce() {
-  if (__gisReady && __tokenClient) return;
-  if (!window.google?.accounts?.oauth2) {
-    await addScriptOnce("https://accounts.google.com/gsi/client", "gsi_client_js");
-  }
-  __tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: GD_SCOPE,
-    callback: () => {},
-  });
-  __gisReady = true;
-}
-
-/* ====== OAuth：只在使用者手勢下要求 token（不載入 gapi drive、無 list）====== */
-async function getDriveAccessToken() {
-  await loadGisOnce();
-
-  // 10 分鐘前就當將到期（緩衝）
-  const skew = 10 * 60 * 1000;
-  const exp = +localStorage.getItem("gdrive_token_exp") || 0;
-  if (__driveAccessToken && Date.now() + skew < exp) {
-    return __driveAccessToken;
+    __tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GD_SCOPES,
+      callback: () => {},
+    });
+    __gisReady = true;
   }
 
-  if (!__gd_userGesture) {
-    // 沒有使用者手勢就不跳提示
+  // 只有在「使用者點擊」時才允許彈出授權視窗
+  async function ensureDriveAuth() {
+    await loadGapiOnce();
+
+    const skew = 10 * 60 * 1000; // 提前 10 分鐘視為過期
+    const exp = +localStorage.getItem("gdrive_token_exp") || 0;
+    const tok = gapi?.client?.getToken?.();
+    if (tok?.access_token && Date.now() + skew < exp) return true;
+
+    if (!__gd_userGesture) return false; // 沒使用者手勢就不彈窗
+
+    const alreadyConsented =
+      localStorage.getItem("gdrive_consent_done") === "1";
+    const resp = await new Promise((resolve, reject) => {
+      __tokenClient.callback = (r) =>
+        r?.access_token ? resolve(r) : reject(r?.error || "auth failed");
+      try {
+        __tokenClient.requestAccessToken({
+          prompt: alreadyConsented ? "" : "consent",
+        });
+      } catch (e) {
+        if (alreadyConsented) {
+          // 有些環境需要強制帶 consent
+          try {
+            __tokenClient.requestAccessToken({ prompt: "consent" });
+          } catch (e2) {
+            reject(e2);
+          }
+        } else {
+          reject(e);
+        }
+      }
+    });
+
+    gapi.client.setToken({ access_token: resp.access_token });
+    const ttl = (resp.expires_in || 3600) * 1000;
+    localStorage.setItem("gdrive_token_exp", String(Date.now() + ttl - skew));
+    localStorage.setItem("gdrive_consent_done", "1");
+    return true;
+  }
+
+  function ensureDriveGlowCss() {
+    if (document.getElementById("driveGlowCss")) return;
+    const css = `
+      .btn-gdrive { margin-left:.35rem;padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer; }
+      .btn-gdrive.has-folder { background:#FFD54F; border-color:#FFC107; box-shadow:0 0 .6rem rgba(255,193,7,.6); animation:drive-glow 1.2s ease-in-out infinite alternate; }
+      @keyframes drive-glow { from { box-shadow:0 0 .35rem rgba(255,193,7,.45);} to { box-shadow:0 0 1rem rgba(255,193,7,.95);} }
+    `;
+    const st = document.createElement("style");
+    st.id = "driveGlowCss";
+    st.textContent = css;
+    document.head.appendChild(st);
+  }
+  function updateDriveButtonState(taskObj) {
+    const btn = document.getElementById("gdriveBtn");
+    if (!btn) return;
+    btn.classList.toggle("has-folder", !!(taskObj && taskObj.driveFolderId));
+  }
+
+  function escapeForQuery(s) {
+    return String(s).replace(/['\\]/g, "\\$&");
+  }
+
+  async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
+    const q = [
+      `name = '${escapeForQuery(name)}'`,
+      `mimeType = 'application/vnd.google-apps.folder'`,
+      `'${parentId}' in parents`,
+      "trashed = false",
+    ].join(" and ");
+
+    const list = await gapi.client.drive.files.list({
+      q,
+      fields: "files(id,name)",
+      pageSize: 1,
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+
+    if (list?.result?.files?.length) {
+      return list.result.files[0].id;
+    }
+
+    const created = await gapi.client.drive.files.create({
+      resource: {
+        name,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentId],
+      },
+      fields: "id",
+      supportsAllDrives: true,
+    });
+    return created.result.id;
+  }
+
+  async function ensureFolderPath(segments) {
+    let parent = "root";
+    for (const seg of segments) {
+      parent = await findOrCreateFolderByName(seg, parent);
+    }
+    return parent; // 最底層資料夾 id
+  }
+
+  function openDriveFolderWeb(id, preWin) {
+    const webUrl = `https://drive.google.com/drive/folders/${id}`;
+    const ua = (navigator.userAgent || "").toLowerCase();
+    const isAndroid = /android/.test(ua);
+    const isIOS =
+      /iphone|ipad|ipod/.test(ua) ||
+      ((navigator.userAgent || "").includes("Macintosh") &&
+        navigator.maxTouchPoints > 1);
+
+    const iosSchemeUrl = `googledrive://${webUrl}`;
+    const androidIntentUrl =
+      `intent://drive.google.com/drive/folders/${id}` +
+      `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+
+    const usePreWin = (url) => {
+      try {
+        if (preWin && !preWin.closed) {
+          preWin.location.href = url;
+          setTimeout(() => {
+            try {
+              preWin.close();
+            } catch (_) {}
+          }, 1500);
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    };
+
+    if (isAndroid) {
+      if (!usePreWin(androidIntentUrl)) {
+        try {
+          window.location.href = androidIntentUrl;
+        } catch (_) {}
+      }
+      return;
+    }
+
+    if (isIOS) {
+      if (isIOSPWA) {
+        // iOS PWA：直接用頂層視窗喚醒 App，避免預備分頁在 iPad 留下空白頁
+        try {
+          window.location.href = iosSchemeUrl;
+        } catch (_) {}
+        return;
+      }
+      // iOS Safari（非 PWA）：維持原本邏輯
+      if (!usePreWin(iosSchemeUrl)) {
+        try {
+          window.location.href = iosSchemeUrl;
+        } catch (_) {}
+      }
+      return;
+    }
+
+    // 桌機：仍開網頁版（新分頁）
+    try {
+      const w = window.open(webUrl, "_blank");
+      w?.focus?.();
+    } catch (_) {
+      try {
+        window.location.href = webUrl;
+      } catch (_) {}
+    }
+  }
+
+  /* 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成） */
+  function getCurrentDetailTask() {
+    if (selectedTaskId) {
+      return (
+        (Array.isArray(tasks) ? tasks : []).find(
+          (t) => t.id === selectedTaskId
+        ) || null
+      );
+    }
+    if (selectedCompletedId) {
+      return (
+        (Array.isArray(completedTasks) ? completedTasks : []).find(
+          (t) => t.id === selectedCompletedId
+        ) || null
+      );
+    }
     return null;
   }
 
-  const alreadyConsented = localStorage.getItem("gdrive_consent_done") === "1";
-  const token = await new Promise((resolve, reject) => {
+  /* 主流程：建立或開啟資料夾 */
+  async function openOrCreateDriveFolderForCurrentTask() {
     try {
-      __tokenClient.callback = (resp) => {
-        if (resp?.access_token) {
-          resolve(resp);
-        } else {
-          reject(resp?.error || new Error("auth failed"));
-        }
-      };
-      __tokenClient.requestAccessToken({
-        prompt: alreadyConsented ? "" : "consent",
-      });
+      const t = getCurrentDetailTask();
+      if (!t) return;
+
+      await ensureDriveAuth();
+
+      const segs = [
+        "MyTask",
+        t.section || "未分類",
+        (t.title || "未命名").slice(0, 100), // 名稱太長就截斷一下
+      ];
+      const folderId = await ensureFolderPath(segs);
+
+      // 記住資料夾 ID（之後就能顯示 🔍，下次直接開）
+      t.driveFolderId = folderId;
+      saveTasksToFirebase?.();
+
+      // UI：顯示 🔍
+      try {
+        const btn = document.getElementById("gdriveOpenBtn");
+        if (btn) btn.style.display = "";
+      } catch (_) {}
+
+      openDriveFolderWeb(folderId);
     } catch (e) {
-      // 某些裝置需要強制帶 consent
+      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+      alert("開啟 Google 雲端硬碟失敗：" + msg);
+      console.error("Drive error:", e);
+    }
+  }
+
+  async function ensureExistingOrRecreateFolder(t) {
+    // 有 ID 先驗證
+    if (t.driveFolderId) {
       try {
-        __tokenClient.requestAccessToken({ prompt: "consent" });
-      } catch (e2) {
-        reject(e2);
+        const r = await gapi.client.drive.files.get({
+          fileId: t.driveFolderId,
+          fields: "id, trashed",
+          supportsAllDrives: true,
+        });
+        if (r?.result?.id && !r.result.trashed) {
+          return t.driveFolderId; // 現存
+        }
+      } catch (_) {
+        // 404 / 無權限 → 重建
       }
+      t.driveFolderId = null; // 清掉無效 ID
+      saveTasksToFirebase?.();
     }
-  });
 
-  __driveAccessToken = token.access_token || null;
-  const ttl = (token.expires_in || 3600) * 1000;
-  localStorage.setItem("gdrive_token_exp", String(Date.now() + ttl - skew));
-  localStorage.setItem("gdrive_consent_done", "1");
-  return __driveAccessToken;
-}
-
-/* ====== 樣式 / 按鈕狀態 ====== */
-function ensureDriveGlowCss() {
-  if (document.getElementById("driveGlowCss")) return;
-  const css = `
-    .btn-gdrive { margin-left:.35rem;padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer; }
-    .btn-gdrive.has-folder { background:#FFD54F; border-color:#FFC107; box-shadow:0 0 .6rem rgba(255,193,7,.6); animation:drive-glow 1.2s ease-in-out infinite alternate; }
-    @keyframes drive-glow { from { box-shadow:0 0 .35rem rgba(255,193,7,.45);} to { box-shadow:0 0 1rem rgba(255,193,7,.95);} }
-  `;
-  const st = document.createElement("style");
-  st.id = "driveGlowCss";
-  st.textContent = css;
-  document.head.appendChild(st);
-}
-function updateDriveButtonState(taskObj) {
-  const btn = document.getElementById("gdriveBtn");
-  if (!btn) return;
-  btn.classList.toggle("has-folder", !!(taskObj && taskObj.driveFolderId));
-}
-
-/* ====== 索引（避免 list）：只記住我們自己建立的 root/section ======
-   結構：{ rootId: "xxx", sections: { "分類名": "folderId", ... } } */
-let __gdIndex = null;
-
-async function loadGdIndexOnce() {
-  if (__gdIndex) return __gdIndex;
-  __gdIndex = { rootId: null, sections: {} };
-  try {
-    if (db && roomPath) {
-      const snap = await db.ref(`${roomPath}/gdriveIndex`).once("value");
-      const v = snap.val();
-      if (v && typeof v === "object") {
-        __gdIndex.rootId = v.rootId || null;
-        __gdIndex.sections = v.sections || {};
-      }
-    }
-  } catch (_) {}
-  return __gdIndex;
-}
-
-async function saveGdIndexPatch(patchObj) {
-  await loadGdIndexOnce();
-  if ("rootId" in patchObj) __gdIndex.rootId = patchObj.rootId;
-  if (patchObj.sections && typeof patchObj.sections === "object") {
-    __gdIndex.sections = Object.assign({}, __gdIndex.sections, patchObj.sections);
-  }
-  try {
-    if (db && roomPath) {
-      await db.ref(`${roomPath}/gdriveIndex`).update(patchObj);
-    }
-  } catch (_) {}
-}
-
-/* ====== Drive REST：只用 fetch，完全不觸碰 gapi.client.drive.* ====== */
-
-// 只對「已知 id」讀必要欄位（允許確認是否被丟垃圾桶）；不使用 list
-async function driveFilesGet(fileId, token, fields = "id,trashed,webViewLink") {
-  const r = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(fields)}`,
-    { headers: { Authorization: "Bearer " + token } }
-  );
-  if (r.status === 404) throw new Error("not_found");
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-
-// 建立資料夾（可指定 parent 與 appProperties）
-async function driveCreateFolder(name, parentId, token, appProps = {}) {
-  const meta = {
-    name,
-    mimeType: "application/vnd.google-apps.folder",
-    appProperties: Object.assign(
-      { app: "kjreminder", room: roomPath || "" },
-      appProps || {}
-    ),
-    parents: Array.isArray(parentId) ? parentId : [parentId],
-  };
-  const r = await fetch(
-    "https://www.googleapis.com/drive/v3/files?fields=id,webViewLink",
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + token,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(meta),
-    }
-  );
-  if (!r.ok) throw new Error(await r.text());
-  return r.json(); // { id, webViewLink }
-}
-
-/* ====== 路徑：MyTask / 分類 / 任務（不使用 list；用索引 + 失效重建） ====== */
-
-// 確保 MyTask 根；若舊 rootId 失效，直接重建
-async function ensureMyTaskRootId(token) {
-  await loadGdIndexOnce();
-  let id = __gdIndex.rootId || null;
-
-  if (id) {
-    // 可選：輕量驗證（若你擔心偵測，就註解這段即可）
-    try {
-      const meta = await driveFilesGet(id, token, "id,trashed");
-      if (!meta.trashed) return id;
-    } catch (_) {
-      // 失效 → 重建
-    }
+    // 重建整條路徑
+    const segs = [
+      "MyTask",
+      t.section || "未分類",
+      (t.title || "未命名").slice(0, 100),
+    ];
+    const newId = await ensureFolderPath(segs);
+    t.driveFolderId = newId;
+    saveTasksToFirebase?.();
+    updateDriveButtonState(t);
+    return newId;
   }
 
-  const created = await driveCreateFolder("MyTask", "root", token, { level: "root" });
-  id = created.id;
-  await saveGdIndexPatch({ rootId: id });
-  return id;
-}
-
-// 確保「分類」資料夾（不用 list，不比對名稱）：有索引就用；失效就重建
-async function ensureSectionFolderId(sectionName, token) {
-  await loadGdIndexOnce();
-  const key = sectionName || "未分類";
-  let id = (__gdIndex.sections && __gdIndex.sections[key]) || null;
-
-  if (id) {
-    // 可選：輕量驗證（若你擔心偵測，就註解這段即可）
-    try {
-      const meta = await driveFilesGet(id, token, "id,trashed");
-      if (!meta.trashed) return id;
-    } catch (_) {
-      // 失效 → 重建
-    }
-  }
-
-  const rootId = await ensureMyTaskRootId(token);
-  const created = await driveCreateFolder(key, rootId, token, {
-    level: "section",
-    section: key,
-  });
-  id = created.id;
-
-  const patch = { sections: {} };
-  patch.sections[key] = id;
-  await saveGdIndexPatch(patch);
-  return id;
-}
-
-// 嘗試以既有 parent 建立；若 parent 失效→自我修復再重試（避免任何 list）
-async function createUnderParentWithHeal(name, parentId, token, level, sectionName) {
-  try {
-    const r = await driveCreateFolder(name, parentId, token, {
-      level,
-      section: sectionName || "",
-    });
-    return r.id;
-  } catch (e) {
-    const msg = String(e?.message || "");
-    const is404 = /not_found/i.test(msg) || /File not found/i.test(msg) || /parent/i.test(msg);
-    if (!is404) throw e;
-
-    if (level === "section") {
-      // 父層是 root：重建 root 後再建 section
-      const rootId = await ensureMyTaskRootId(token);
-      const r2 = await driveCreateFolder(sectionName || "未分類", rootId, token, {
-        level: "section",
-        section: sectionName || "未分類",
-      });
-      const sid = r2.id;
-      await saveGdIndexPatch({ sections: { [sectionName || "未分類"]: sid } });
-      return sid;
-    }
-    if (level === "task") {
-      // 父層是 section：重建 section 後再建 task
-      const secId = await ensureSectionFolderId(sectionName || "未分類", token);
-      const r3 = await driveCreateFolder(name, secId, token, {
-        level: "task",
-        section: sectionName || "未分類",
-      });
-      return r3.id;
-    }
-    throw e;
-  }
-}
-
-// 取代原本 findOrCreateFolderByName/ensureFolderPath（不再使用 list）
-// segments: ["MyTask", sectionName, taskName]
-async function ensureFolderPath(segments, token) {
-  const sectionName = segments[1] || "未分類";
-  const taskName = (segments[2] || "未命名").slice(0, 100);
-
-  const secId = await ensureSectionFolderId(sectionName, token);
-  const tid = await createUnderParentWithHeal(taskName, secId, token, "task", sectionName);
-  return tid; // 最底層資料夾 id
-}
-
-/* ====== 開啟資料夾（App / Web）====== */
-function openDriveFolderWeb(id, preWin) {
-  const webUrl = `https://drive.google.com/drive/folders/${id}`;
-  const ua = (navigator.userAgent || "").toLowerCase();
-  const isAndroid = /android/.test(ua);
-  const isIOS =
-    /iphone|ipad|ipod/.test(ua) ||
-    ((navigator.userAgent || "").includes("Macintosh") &&
-      navigator.maxTouchPoints > 1);
-
-  const iosSchemeUrl = `googledrive://${webUrl}`;
-  const androidIntentUrl =
-    `intent://drive.google.com/drive/folders/${id}` +
-    `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
-
-  const usePreWin = (url) => {
-    try {
-      if (preWin && !preWin.closed) {
-        preWin.location.href = url;
-        setTimeout(() => {
-          try {
-            preWin.close();
-          } catch (_) {}
-        }, 1500);
-        return true;
-      }
-    } catch (_) {}
-    return false;
-  };
-
-  if (isAndroid) {
-    if (!usePreWin(androidIntentUrl)) {
-      try {
-        window.location.href = androidIntentUrl;
-      } catch (_) {}
-    }
-    return;
-  }
-
-  if (isIOS) {
-    if (isIOSPWA) {
-      // iOS PWA：直接用頂層視窗喚醒 App，避免預備分頁在 iPad 留下空白頁
-      try {
-        window.location.href = iosSchemeUrl;
-      } catch (_) {}
-      return;
-    }
-    // iOS Safari（非 PWA）：維持原本邏輯
-    if (!usePreWin(iosSchemeUrl)) {
-      try {
-        window.location.href = iosSchemeUrl;
-      } catch (_) {}
-    }
-    return;
-  }
-
-  // 桌機：仍開網頁版（新分頁）
-  try {
-    const w = window.open(webUrl, "_blank");
-    w?.focus?.();
-  } catch (_) {
-    try {
-      window.location.href = webUrl;
-    } catch (_) {}
-  }
-}
-
-/* ====== 取得目前「任務資訊」對應 Task（支援 進行中 / 已完成）====== */
-function getCurrentDetailTask() {
-  if (selectedTaskId) {
-    return (
-      (Array.isArray(tasks) ? tasks : []).find(
-        (t) => t.id === selectedTaskId
-      ) || null
-    );
-  }
-  if (selectedCompletedId) {
-    return (
-      (Array.isArray(completedTasks) ? completedTasks : []).find(
-        (t) => t.id === selectedCompletedId
-      ) || null
-    );
-  }
-  return null;
-}
-
-/* ====== 主流程：建立或開啟資料夾（維持原本路徑與 UI 位置）====== */
-async function openOrCreateDriveFolderForCurrentTask() {
-  try {
+  /* 只開，不建（若沒記錄會退回主流程建） */
+  function openCurrentTaskDriveFolder() {
     const t = getCurrentDetailTask();
     if (!t) return;
-
-    // 先取得 token（只在使用者手勢下）
-    const token = await getDriveAccessToken();
-    if (!token) return; // 無手勢或無法取得就離開
-
-    // ✅ 使用「驗證既有 ID→可能重建」的流程（不使用 files.list）
-    const folderId = await ensureExistingOrRecreateFolder(t, token);
-
-    // 記住資料夾 ID
-    t.driveFolderId = folderId;
-    saveTasksToFirebase?.();
-
-    // UI：顯示 🔍（若你有放）
-    try {
-      const btn = document.getElementById("gdriveOpenBtn");
-      if (btn) btn.style.display = "";
-    } catch (_) {}
-
-    openDriveFolderWeb(folderId, __gd_prewin);
-  } catch (e) {
-    localStorage.removeItem(GD_POST_OPEN_KEY);
-    __gd_prewin = null;
-    const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-    alert("開啟 Google 雲端硬碟失敗：" + msg);
-    console.error("Drive error:", e);
+    if (t.driveFolderId) openDriveFolderWeb(t.driveFolderId);
+    else openOrCreateDriveFolderForCurrentTask();
   }
-}
 
-/* 驗證現有 ID；失效則按「MyTask / 分類 / 任務」重建。完全不呼叫 list。*/
-async function ensureExistingOrRecreateFolder(t, token) {
-  // 有 ID → 使用 files.get（僅讀已知 id 的最小欄位）
-  if (t.driveFolderId) {
-    try {
-      const r = await driveFilesGet(t.driveFolderId, token, "id,trashed");
-      if (r?.id && !r.trashed) {
-        return t.driveFolderId; // 現存
-      }
-    } catch (_) {
-      // 404 / 無權限 → 重建
+  /* 在詳情的「重要」右邊插入：💾（建立/開啟）與 🔍（僅開啟；有記錄才顯示） */
+  function ensureDriveButtonsInlineUI(taskObj) {
+    ensureDriveGlowCss();
+    const row = document.querySelector("#detailForm .inline-row");
+    if (!row) return;
+
+    if (!row.querySelector("#gdriveBtn")) {
+      const btn = document.createElement("button");
+      btn.id = "gdriveBtn";
+      btn.type = "button";
+      btn.title = "建立/開啟此任務的雲端資料夾";
+      btn.textContent = "";
+      btn.style.cssText =
+        "width:30px;height:30px;padding:0;border:1px solid #ddd;" +
+        "background:#f9f9f9 url('https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/drive.png')" +
+        " no-repeat center/18px 18px;border-radius:6px;cursor:pointer;";
+      btn.className = "btn-gdrive";
+      btn.onclick = onDriveButtonClick; // ← 這行需要 C) 的實作
+      row.appendChild(btn);
     }
-    t.driveFolderId = null; // 清掉無效 ID
-    saveTasksToFirebase?.();
+    updateDriveButtonState(taskObj);
   }
-
-  // 重建整條路徑（用索引，不做任何 list）
-  const segs = [
-    "MyTask",
-    t.section || "未分類",
-    (t.title || "未命名").slice(0, 100),
-  ];
-  const newId = await ensureFolderPath(segs, token);
-  t.driveFolderId = newId;
-  saveTasksToFirebase?.();
-  updateDriveButtonState(t);
-  return newId;
-}
-
-/* 只開，不建（若沒記錄會退回主流程建） */
-function openCurrentTaskDriveFolder() {
-  const t = getCurrentDetailTask();
-  if (!t) return;
-  if (t.driveFolderId) openDriveFolderWeb(t.driveFolderId);
-  else openOrCreateDriveFolderForCurrentTask();
-}
-
-/* ====== 詳情右側按鈕（維持原本擺放位置：#detailForm .inline-row）====== */
-function ensureDriveButtonsInlineUI(taskObj) {
-  ensureDriveGlowCss();
-  const row = document.querySelector("#detailForm .inline-row");
-  if (!row) return;
-
-  if (!row.querySelector("#gdriveBtn")) {
-    const btn = document.createElement("button");
-    btn.id = "gdriveBtn";
-    btn.type = "button";
-    btn.title = "建立/開啟此任務的雲端資料夾";
-    btn.textContent = "";
-    btn.style.cssText =
-      "width:30px;height:30px;padding:0;border:1px solid #ddd;" +
-      "background:#f9f9f9 url('https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/drive.png')" +
-      " no-repeat center/18px 18px;border-radius:6px;cursor:pointer;";
-    btn.className = "btn-gdrive";
-    btn.onclick = onDriveButtonClick;
-    row.appendChild(btn);
-  }
-  updateDriveButtonState(taskObj);
-}
-
-/* ====== 點擊按鈕：維持原本預備分頁/喚醒 App 的邏輯 ====== */
-async function onDriveButtonClick() {
-  __gd_userGesture = true; // 沿用你的全域旗標
-
-  const t = getCurrentDetailTask();
-  if (!t) return;
-
-  try {
-    const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
-    if (firstTime && !isIOSPWA) {
-      localStorage.setItem(GD_POST_OPEN_KEY, "1");
-      try {
-        __gd_prewin = window.open("", "_blank");
-      } catch (_) {
-        __gd_prewin = null;
-      }
-    } else {
-      // iOS PWA：不要用預備分頁，避免留下空白 about:blank
-      localStorage.removeItem(GD_POST_OPEN_KEY);
-      __gd_prewin = null;
-    }
-
-    // （token 會在 openOrCreateDriveFolderForCurrentTask 內取得）
-    await openOrCreateDriveFolderForCurrentTask();
-
-    localStorage.removeItem(GD_POST_OPEN_KEY);
-    __gd_prewin = null;
-  } catch (e) {
-    localStorage.removeItem(GD_POST_OPEN_KEY);
-    __gd_prewin = null;
-    const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-    alert("Google 雲端硬碟動作失敗：" + msg);
-    console.error("Drive error:", e);
-  } finally {
-    __gd_userGesture = false;
-  }
-}
-
-
 
   async function onDriveButtonClick(ev) {
     __gd_userGesture = true; // ← 加這行
@@ -5111,7 +4954,6 @@ async function onDriveButtonClick() {
       } catch (_) {}
     }
   }
-
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
