@@ -12,7 +12,9 @@
   // ✅ 重新畫出所有分類區塊（依照 categories 順序）
 
   // 只有使用者真的點了 gdrive 按鈕，才允許跳授權
-  let __gd_userGesture = false;
+  if (typeof window.__gd_userGesture === "undefined") {
+  window.__gd_userGesture = false;
+}
 
   // 放在全域
   let dbUnsubscribers = [];
