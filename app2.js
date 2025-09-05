@@ -1754,7 +1754,6 @@
   /* 權限：僅限本 App 建立/讀取 + 讀取檔名 */
   const GD_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/drive.metadata.readonly",
   ].join(" ");
 
   /* 根資料夾改為 MyMemo */
