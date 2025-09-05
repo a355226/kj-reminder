@@ -4215,46 +4215,7 @@
   }
 
   // 只有在「使用者點擊」時才允許彈出授權視窗
-  async function ensureDriveAuth() {
-    await loadGapiOnce();
-
-    const skew = 10 * 60 * 1000; // 提前 10 分鐘視為過期
-    const exp = +localStorage.getItem("gdrive_token_exp") || 0;
-    const tok = gapi?.client?.getToken?.();
-    if (tok?.access_token && Date.now() + skew < exp) return true;
-
-    if (!__gd_userGesture) return false; // 沒使用者手勢就不彈窗
-
-    const alreadyConsented =
-      localStorage.getItem("gdrive_consent_done") === "1";
-    const resp = await new Promise((resolve, reject) => {
-      __tokenClient.callback = (r) =>
-        r?.access_token ? resolve(r) : reject(r?.error || "auth failed");
-      try {
-        __tokenClient.requestAccessToken({
-          prompt: alreadyConsented ? "" : "consent",
-        });
-      } catch (e) {
-        if (alreadyConsented) {
-          // 有些環境需要強制帶 consent
-          try {
-            __tokenClient.requestAccessToken({ prompt: "consent" });
-          } catch (e2) {
-            reject(e2);
-          }
-        } else {
-          reject(e);
-        }
-      }
-    });
-
-    gapi.client.setToken({ access_token: resp.access_token });
-    const ttl = (resp.expires_in || 3600) * 1000;
-    localStorage.setItem("gdrive_token_exp", String(Date.now() + ttl - skew));
-    localStorage.setItem("gdrive_consent_done", "1");
-    return true;
-  }
-
+ 
   function ensureDriveGlowCss() {
     if (document.getElementById("driveGlowCss")) return;
     const css = `
@@ -4473,29 +4434,6 @@
     if (!t) return;
     if (t.driveFolderId) openDriveFolderWeb(t.driveFolderId);
     else openOrCreateDriveFolderForCurrentTask();
-  }
-
-  /* 在詳情的「重要」右邊插入：💾（建立/開啟）與 🔍（僅開啟；有記錄才顯示） */
-  function ensureDriveButtonsInlineUI(taskObj) {
-    ensureDriveGlowCss();
-    const row = document.querySelector("#detailForm .inline-row");
-    if (!row) return;
-
-    if (!row.querySelector("#gdriveBtn")) {
-      const btn = document.createElement("button");
-      btn.id = "gdriveBtn";
-      btn.type = "button";
-      btn.title = "建立/開啟此任務的雲端資料夾";
-      btn.textContent = "";
-      btn.style.cssText =
-        "width:30px;height:30px;padding:0;border:1px solid #ddd;" +
-        "background:#f9f9f9 url('https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/drive.png')" +
-        " no-repeat center/18px 18px;border-radius:6px;cursor:pointer;";
-      btn.className = "btn-gdrive";
-      btn.onclick = onDriveButtonClick; // ← 這行需要 C) 的實作
-      row.appendChild(btn);
-    }
-    updateDriveButtonState(taskObj);
   }
 
   async function onDriveButtonClick(ev) {
