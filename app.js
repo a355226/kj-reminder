@@ -4272,51 +4272,133 @@
     btn.classList.toggle("has-folder", !!(taskObj && taskObj.driveFolderId));
   }
 
-  function escapeForQuery(s) {
-    return String(s).replace(/['\\]/g, "\\$&");
-  }
+  /* === 取代搜尋(list)的最小方案：用索引 + 驗證(get) + 建立(create) === */
 
-  async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
-    const q = [
-      `name = '${escapeForQuery(name)}'`,
-      `mimeType = 'application/vnd.google-apps.folder'`,
-      `'${parentId}' in parents`,
-      "trashed = false",
-    ].join(" and ");
+// 1) 本地快取索引（會同步到 RTDB：/rooms/.../gdriveIndex）
+let __gdIndex = null;
+// 結構：{ rootId: "xxx", sections: { "分類名": "folderId", ... } }
 
-    const list = await gapi.client.drive.files.list({
-      q,
-      fields: "files(id,name)",
-      pageSize: 1,
-      includeItemsFromAllDrives: true,
-      supportsAllDrives: true,
-    });
-
-    if (list?.result?.files?.length) {
-      return list.result.files[0].id;
+async function loadGdIndexOnce() {
+  if (__gdIndex) return __gdIndex;
+  __gdIndex = { rootId: null, sections: {} };
+  try {
+    if (db && roomPath) {
+      const snap = await db.ref(`${roomPath}/gdriveIndex`).once("value");
+      const v = snap.val();
+      if (v && typeof v === "object") {
+        __gdIndex.rootId = v.rootId || null;
+        __gdIndex.sections = v.sections || {};
+      }
     }
+  } catch (_) {}
+  return __gdIndex;
+}
 
-    const created = await gapi.client.drive.files.create({
-      resource: {
-        name,
-        mimeType: "application/vnd.google-apps.folder",
-        parents: [parentId],
-      },
-      fields: "id",
-      supportsAllDrives: true,
-    });
-    return created.result.id;
+async function saveGdIndexPatch(patchObj) {
+  await loadGdIndexOnce();
+  // 合併到本地快取
+  if ("rootId" in patchObj) __gdIndex.rootId = patchObj.rootId;
+  if (patchObj.sections && typeof patchObj.sections === "object") {
+    __gdIndex.sections = Object.assign({}, __gdIndex.sections, patchObj.sections);
   }
-
-  async function ensureFolderPath(segments) {
-    let parent = "root";
-    for (const seg of segments) {
-      parent = await findOrCreateFolderByName(seg, parent);
+  // 寫回 RTDB（容錯處理）
+  try {
+    if (db && roomPath) {
+      await db.ref(`${roomPath}/gdriveIndex`).update(patchObj);
     }
-    return parent; // 最底層資料夾 id
+  } catch (_) {}
+}
+
+// 2) 小工具：get / create（只對已知 ID 取 get，不做任何 list/搜尋）
+async function driveGetMeta(fileId) {
+  const r = await gapi.client.drive.files.get({
+    fileId,
+    fields: "id, trashed, webViewLink",
+    supportsAllDrives: true,
+  });
+  return r.result; // 可能 throw（404 等）
+}
+
+async function driveCreateFolder(name, parentId, appProps) {
+  const r = await gapi.client.drive.files.create({
+    resource: {
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentId],
+      appProperties: Object.assign(
+        { app: "kjreminder", room: roomPath || "" },
+        appProps || {}
+      ),
+    },
+    fields: "id, webViewLink",
+    supportsAllDrives: true,
+  });
+  return r.result; // { id, webViewLink }
+}
+
+// 3) 確保 MyTask 根資料夾（不搜尋，優先用索引；失效就重建）
+async function ensureMyTaskRootId() {
+  await loadGdIndexOnce();
+  let id = __gdIndex.rootId || null;
+
+  if (id) {
+    try {
+      const meta = await driveGetMeta(id);
+      if (meta && !meta.trashed) return id;
+    } catch (_) {
+      // 失效就重建
+    }
   }
 
-  function openDriveFolderWeb(id, preWin) {
+  const created = await driveCreateFolder("MyTask", "root", { level: "root" });
+  id = created.id;
+  await saveGdIndexPatch({ rootId: id });
+  return id;
+}
+
+// 4) 確保「分類」資料夾（用索引，不搜尋；失效重建）
+async function ensureSectionFolderId(sectionName) {
+  await loadGdIndexOnce();
+  const key = sectionName || "未分類";
+  let id = (__gdIndex.sections && __gdIndex.sections[key]) || null;
+
+  if (id) {
+    try {
+      const meta = await driveGetMeta(id);
+      if (meta && !meta.trashed) return id;
+    } catch (_) {
+      // 失效就重建
+    }
+  }
+
+  const rootId = await ensureMyTaskRootId();
+  const created = await driveCreateFolder(key, rootId, { level: "section", section: key });
+  id = created.id;
+
+  const patch = { sections: {} };
+  patch.sections[key] = id;
+  await saveGdIndexPatch(patch);
+  return id;
+}
+
+// 5) 取代你原本的 ensureFolderPath（不再呼叫 list）：
+// segments: ["MyTask", sectionName, taskName]
+async function ensureFolderPath(segments) {
+  const sectionName = segments[1] || "未分類";
+  const taskName = (segments[2] || "未命名").slice(0, 100);
+
+  const secId = await ensureSectionFolderId(sectionName);
+
+  // 任務層：每筆任務用自己的 gdriveFolderId 保存；沒有就直接 create（不搜尋）
+  const created = await driveCreateFolder(taskName, secId, {
+    level: "task",
+    section: sectionName,
+  });
+  return created.id; // 回傳最底層資料夾 id
+}
+
+
+   function openDriveFolderWeb(id, preWin) {
     const webUrl = `https://drive.google.com/drive/folders/${id}`;
     const ua = (navigator.userAgent || "").toLowerCase();
     const isAndroid = /android/.test(ua);
@@ -4401,38 +4483,33 @@
     return null;
   }
 
-  /* 主流程：建立或開啟資料夾 */
-  async function openOrCreateDriveFolderForCurrentTask() {
+ async function openOrCreateDriveFolderForCurrentTask() {
+  try {
+    const t = getCurrentDetailTask();
+    if (!t) return;
+
+    await ensureDriveAuth();
+
+    // ✅ 改這一行：先用「驗證後可能重建」的流程
+    const folderId = await ensureExistingOrRecreateFolder(t);
+
+    // 記住資料夾 ID（已在 ensureExistingOrRecreateFolder 內處理，但保險）
+    t.driveFolderId = folderId;
+    saveTasksToFirebase?.();
+
     try {
-      const t = getCurrentDetailTask();
-      if (!t) return;
+      const btn = document.getElementById("gdriveOpenBtn");
+      if (btn) btn.style.display = "";
+    } catch (_) {}
 
-      await ensureDriveAuth();
-
-      const segs = [
-        "MyTask",
-        t.section || "未分類",
-        (t.title || "未命名").slice(0, 100), // 名稱太長就截斷一下
-      ];
-      const folderId = await ensureFolderPath(segs);
-
-      // 記住資料夾 ID（之後就能顯示 🔍，下次直接開）
-      t.driveFolderId = folderId;
-      saveTasksToFirebase?.();
-
-      // UI：顯示 🔍
-      try {
-        const btn = document.getElementById("gdriveOpenBtn");
-        if (btn) btn.style.display = "";
-      } catch (_) {}
-
-      openDriveFolderWeb(folderId);
-    } catch (e) {
-      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-      alert("開啟 Google 雲端硬碟失敗：" + msg);
-      console.error("Drive error:", e);
-    }
+    openDriveFolderWeb(folderId);
+  } catch (e) {
+    const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+    alert("開啟 Google 雲端硬碟失敗：" + msg);
+    console.error("Drive error:", e);
   }
+}
+
 
   async function ensureExistingOrRecreateFolder(t) {
     // 有 ID 先驗證
