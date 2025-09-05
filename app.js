@@ -4956,7 +4956,7 @@
   }
 
 // === Google Drive (最小：drive.file) ===
-const GOOGLE_OAUTH_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com"; // ← 換成你的
+const GOOGLE_OAUTH_CLIENT_ID = "735593435771-otisn8depskof8vmvp6sp5sl9n3t5e25.apps.googleusercontent.com"; // ← 換成你的
 let __driveAccessToken = null;
 
 async function getDriveAccessToken() {
