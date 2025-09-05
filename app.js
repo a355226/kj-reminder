@@ -4277,59 +4277,84 @@
   }
 
 // 取代你原本的 findOrCreateFolderByName（僅用 drive.file）
+// 不用 files.get；用 RTDB 鎖＋映射避免 list/search 與重複建立
 async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
-  // 以 parentId + name 在 RTDB 建一個映射，避免用 list 搜尋
   const keyRaw = `${parentId}::${name}`;
-  const key = sanitizeKey(keyRaw); // 你檔案裡已定義：把 . # $ [ ] / 換掉
+  const key = sanitizeKey(keyRaw);
   const mapRef = (roomPath && typeof db?.ref === "function")
     ? db.ref(`${roomPath}/gdriveMap/${key}`)
     : null;
 
-  // 1) 先從 RTDB 讀取既有 folderId
-  let folderId = null;
-  if (mapRef) {
+  // 沒有 RTDB（極端情況）→ 直接建立
+  if (!mapRef) {
+    const created = await gapi.client.drive.files.create({
+      resource: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] },
+      fields: "id",
+      supportsAllDrives: true,
+    });
+    return created.result.id;
+  }
+
+  // 先看是否已有 ID
+  let cur = null;
+  try { const snap = await mapRef.once("value"); cur = snap.val() || null; } catch (_) {}
+  if (typeof cur === "string" && cur) return cur;            // 已有 ID，直接用
+  if (cur && cur.state === "PENDING") {                      // 有人正在建立 → 等它完成
+    const start = Date.now();
+    const id = await new Promise((resolve, reject) => {
+      const off = mapRef.on("value", (s) => {
+        const v = s.val();
+        if (typeof v === "string" && v) { mapRef.off("value", off); resolve(v); }
+        else if (Date.now() - start > 10000) { mapRef.off("value", off); reject(new Error("timeout")); }
+      });
+    }).catch(() => null);
+    if (id) return id;
+    // 超時：跌回自己來建
+  }
+
+  // 嘗試搶鎖（誰搶到誰建）
+  const owner = Math.random().toString(36).slice(2);
+  let won = false;
+  await mapRef.transaction((val) => {
+    if (!val) { won = true; return { state: "PENDING", owner, ts: Date.now() }; }
+    return val;
+  }, { applyLocally: false });
+
+  if (!won) {
+    // 沒搶到 → 再等一次（避免與上面的 PENDING 分支重複）
+    const start = Date.now();
+    const id = await new Promise((resolve, reject) => {
+      const off = mapRef.on("value", (s) => {
+        const v = s.val();
+        if (typeof v === "string" && v) { mapRef.off("value", off); resolve(v); }
+        else if (Date.now() - start > 10000) { mapRef.off("value", off); reject(new Error("timeout")); }
+      });
+    }).catch(() => null);
+    if (id) return id;
+    // 若真的等不到，就繼續往下由自己建立（最後一道保險）
+  }
+
+  // 我方負責建立
+  try {
+    const created = await gapi.client.drive.files.create({
+      resource: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] },
+      fields: "id",
+      supportsAllDrives: true,
+    });
+    const newId = created.result.id;
+    try { await mapRef.set(newId); } catch (_) {}
+    return newId;
+  } catch (e) {
+    // 建立失敗，清掉鎖，避免卡住
     try {
       const snap = await mapRef.once("value");
-      folderId = snap.val() || null;
+      const v = snap.val();
+      if (v && v.state === "PENDING" && v.owner === owner) await mapRef.remove();
     } catch (_) {}
+    throw e;
   }
-
-  // 2) 若有 ID，僅用 files.get 驗證（drive.file 可讀取本 App 建立/授權的檔案）
-  if (folderId) {
-    try {
-      const r = await gapi.client.drive.files.get({
-        fileId: folderId,
-        fields: "id, trashed",
-        supportsAllDrives: true,
-      });
-      if (r?.result?.id && !r.result.trashed) {
-        return folderId; // 有效就直接用
-      }
-    } catch (_) {
-      // 失效則走建立流程
-      folderId = null;
-    }
-  }
-
-  // 3) 建立新資料夾（避免使用 files.list）
-  const created = await gapi.client.drive.files.create({
-    resource: {
-      name,
-      mimeType: "application/vnd.google-apps.folder",
-      parents: [parentId],
-    },
-    fields: "id",
-    supportsAllDrives: true,
-  });
-  const newId = created.result.id;
-
-  // 4) 回寫映射到 RTDB，供下次直接命中
-  if (mapRef) {
-    try { await mapRef.set(newId); } catch (_) {}
-  }
-
-  return newId;
 }
+
 
 
   async function ensureFolderPath(segments) {
@@ -4458,27 +4483,51 @@ async function findOrCreateFolderByName(name, parentId /* or 'root' */) {
     }
   }
 
- // 僅用 drive.file；無 files.list；無本地儲存
-async function ensureExistingOrRecreateFolder(t) {
-  // 1) 先驗證現有 ID（drive.file 可讀本 App 建立/使用者授權的檔案）
-  if (t.driveFolderId) {
+// --- 小工具：用一次「建立→刪除」來驗證某 folderId 是否可寫（不用 files.get）---
+async function __probeFolderWritable(folderId) {
+  try {
+    // 建一個暫時的 Google Docs（或你也可用空資料夾），馬上刪掉
+    const created = await gapi.client.drive.files.create({
+      resource: {
+        name: ".mt_ping",
+        mimeType: "application/vnd.google-apps.document",
+        parents: [folderId],
+      },
+      fields: "id",
+      supportsAllDrives: true,
+    });
+    const tmpId = created.result.id;
     try {
-      const r = await gapi.client.drive.files.get({
-        fileId: t.driveFolderId,
-        fields: "id, trashed",
+      await gapi.client.drive.files.delete({
+        fileId: tmpId,
         supportsAllDrives: true,
       });
-      if (r?.result?.id && !r.result.trashed) {
-        return t.driveFolderId; // 現存可用
-      }
-    } catch (_) {
-      // 404 / 無權限 → 視同失效
-    }
-    t.driveFolderId = null; // 清掉無效 ID
+    } catch (_) { /* 刪失敗也不影響判定 */ }
+    return true;  // 能寫就當作有效
+  } catch (_) {
+    return false; // 父資料夾無效或無權限
+  }
+}
+
+// --- 取代你的 ensureExistingOrRecreateFolder（無 files.get / 無 list / 無本地儲存）---
+async function ensureExistingOrRecreateFolder(t) {
+  // 1) 若有既存 ID，改用「寫入探針」驗證
+  if (t.driveFolderId) {
+    const ok = await __probeFolderWritable(t.driveFolderId);
+    if (ok) return t.driveFolderId;
+
+    // 既存 ID 失效 → 清掉任務上的 ID
+    t.driveFolderId = null;
     saveTasksToFirebase?.();
+
+    // 也把根映射清掉，避免沿用到舊的 MyTask 路徑（讓接下來能從 root 重建）
+    try {
+      const rootKey = sanitizeKey(`root::MyTask`);
+      await db.ref(`${roomPath}/gdriveMap/${rootKey}`).remove();
+    } catch (_) {}
   }
 
-  // 2) 用你前一步改好的 ensureFolderPath（內部只用 get/create + RTDB 映射）
+  // 2) 從「MyTask / 區分類 / 標題」重建整條路徑（findOrCreateFolderByName 版本已無 files.get）
   const segs = [
     "MyTask",
     t.section || "未分類",
@@ -4486,12 +4535,13 @@ async function ensureExistingOrRecreateFolder(t) {
   ];
   const newId = await ensureFolderPath(segs);
 
-  // 3) 回寫任務並更新 UI
+  // 3) 回寫並更新 UI
   t.driveFolderId = newId;
   saveTasksToFirebase?.();
   updateDriveButtonState?.(t);
   return newId;
 }
+
 
 
   /* 只開，不建（若沒記錄會退回主流程建） */
