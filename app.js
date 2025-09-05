@@ -4139,7 +4139,7 @@
 
   /* ===== Google Drive 連動（建立/打開 MyTask / 分類 / 任務 樹狀資料夾）===== */
   /* ✅ 設定你的 Google OAuth Client ID（必填） */
-  const GOOGLE_CLIENT_ID =
+  const GOOGLE_OAUTH_CLIENT_ID =
     "735593435771-otisn8depskof8vmvp6sp5sl9n3t5e25.apps.googleusercontent.com";
 
   /* 建議 scope：建立/讀取 app 建立的資料夾 + 讀取檔案名稱 */
