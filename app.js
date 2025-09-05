@@ -4145,7 +4145,6 @@
   /* 建議 scope：建立/讀取 app 建立的資料夾 + 讀取檔案名稱 */
   const GD_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/drive.metadata.readonly",
   ].join(" ");
 
   let __gapiReady = false;
