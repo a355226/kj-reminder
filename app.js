@@ -4729,52 +4729,59 @@ if (!canPrompt) return false; // 沒使用者手勢就不彈窗
 /* ✅ 與 MyMemo 對齊的版本：iOS Safari 用 preWin 導向 scheme，PWA 才用本頁導向 */
 function openDriveFolderMobileFirst(folderId, webLink, preWin) {
   const webUrl = webLink || `https://drive.google.com/drive/folders/${folderId}`;
+  const iosSchemeUrl = `googledrive://${webUrl}`;
+
   const ua = (navigator.userAgent || "").toLowerCase();
   const isAndroid = /android/.test(ua);
   const isIOS =
     /iphone|ipad|ipod/.test(ua) ||
     ((navigator.userAgent || "").includes("Macintosh") && navigator.maxTouchPoints > 1);
 
-  const iosSchemeUrl = `googledrive://${webUrl}`;
-  const androidIntentUrl =
-    `intent://drive.google.com/drive/folders/${folderId}` +
-    `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
-
-  const usePreWin = (url) => {
-    try {
-      if (preWin && !preWin.closed) {
-        preWin.location.href = url;
-        setTimeout(() => {
-          try { preWin.close(); } catch (_) {}
-        }, 1500);
-        return true;
-      }
-    } catch (_) {}
-    return false;
+  // 小工具：操作預備分頁
+  const ensurePreWin = () => {
+    let w = null;
+    try { w = preWin && !preWin.closed ? preWin : window.open("", "_blank"); } catch {}
+    return w;
+  };
+  const safeClose = (w, ms = 1600) => {
+    setTimeout(() => { try { w && !w.closed && w.close(); } catch {} }, ms);
   };
 
   if (isAndroid) {
-    // Android：直接喚醒 App（不改變本頁）
-    try { window.location.href = androidIntentUrl; } catch (_) {}
+    // Android 仍用 intent 直跳 App
+    try {
+      window.location.href =
+        `intent://drive.google.com/drive/folders/${folderId}` +
+        `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+    } catch {}
     return;
   }
 
   if (isIOS) {
     if (isIOSPWA) {
-      // iOS PWA：直接用本頁導向 scheme，避免留下空白分頁
-      try { window.location.href = iosSchemeUrl; } catch (_) {}
+      // PWA：用本頁導向 scheme（你原本行為）
+      try { window.location.href = iosSchemeUrl; } catch {}
       return;
     }
-    // iOS Safari（非 PWA）：用「預備分頁」去導向 scheme，確保系統彈框
-    if (!usePreWin(iosSchemeUrl)) {
-      try { window.location.href = iosSchemeUrl; } catch (_) {}
+    // iOS Safari：在「預備分頁」先開 Universal Link，再補 scheme
+    const w = ensurePreWin();
+    if (!w) { // 萬一預備分頁被擋，最後備用：當前頁直接導向 scheme
+      try { window.location.href = iosSchemeUrl; } catch {}
+      return;
     }
+
+    // 1) Universal Link（高機率彈「切換 App」）
+    try { w.location.href = webUrl; } catch {}
+    // 2) 稍後補 scheme（某些版本更吃這招）
+    setTimeout(() => { try { w.location.href = iosSchemeUrl; } catch {} }, 280);
+    // 3) 收尾：關掉預備分頁（避免殘留空白分頁）
+    safeClose(w, 1800);
     return;
   }
 
-  // 桌機：開網頁版（新分頁）
+  // 桌機：新分頁開網頁
   try { window.open(webUrl, "_blank")?.focus?.(); }
-  catch (_) { try { window.location.href = webUrl; } catch (_) {} }
+  catch (_) { try { window.location.href = webUrl; } catch {} }
 }
 
   // 核心：開啟或建立（若被刪/丟垃圾桶 → 重建）
@@ -4816,30 +4823,29 @@ function openDriveFolderMobileFirst(folderId, webLink, preWin) {
       row.appendChild(btn);
     }
     btn.style.display = isReadonly ? "none" : ""; // 完成視圖（唯讀）時隱藏
-    btn.onclick = async () => {
+btn.onclick = async () => {
   try {
     __gd_userGesture = true;
-    try { syncEditsIntoTask?.(task); } catch (_) {}
+    try { syncEditsIntoTask?.(task); } catch {}
 
-    // ✅ iOS Safari（非 PWA）先開「預備分頁」並標記 postOpen：把切換 App 綁在點擊手勢上
+    // iOS Safari（非 PWA）：先開預備分頁並標記 postOpen（15 秒）
     const isiOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent || "") && !isIOSPWA;
     if (isiOSSafari) {
-      try { __gd_prewin = window.open("", "_blank"); } catch (_) { __gd_prewin = null; }
-      postOpen.set();
+      try { __gd_prewin = window.open("", "_blank"); } catch { __gd_prewin = null; }
+      postOpen?.set?.(); // 若你有前面那組 postOpen 物件
     } else {
       __gd_prewin = null;
-      postOpen.clear();
+      postOpen?.clear?.();
     }
 
-    // 🔑 走主流程（會把 __gd_prewin 往下傳到 openDriveFolderMobileFirst）
+    // 走「精準查/驗證/建立」那條（會把 preWin 下傳到 openDriveFolderMobileFirst）
     await openOrCreateDriveFolderForTask(task, __gd_prewin);
     updateDriveButtonState(task);
   } catch (e) {
     alert("Google Drive 動作失敗：" + (e?.message || e));
   } finally {
     __gd_userGesture = false;
-    // 用完就清
-    postOpen.clear();
+    postOpen?.clear?.();
     __gd_prewin = null;
   }
 };
