@@ -33,6 +33,62 @@
   let pendingCategoryMode = "active"; // 'active' | 'removed'
   let __gd_userGesture = false;
 
+  (function () {
+    try {
+      var d = document,
+        root = d.documentElement;
+
+      // 1) 動態注入：開機時隱藏 App 與登入頁
+      if (!d.getElementById("boot-guard-style")) {
+        var s = d.createElement("style");
+        s.id = "boot-guard-style";
+        s.textContent =
+          "html.booting .container{display:none!important}" +
+          "html.booting #loginPage{display:none!important}";
+        d.head.appendChild(s);
+      }
+      root.classList.add("booting"); // 先蓋住畫面
+
+      // 2) 快切寬限（可選）：若前頁設了 fast_switch=1 就拉長到 800ms
+      var fast = sessionStorage.getItem("fast_switch") === "1";
+      sessionStorage.removeItem("fast_switch");
+      var graceMs = fast ? 800 : 400;
+
+      var released = false;
+      function releaseOnce() {
+        if (released) return;
+        released = true;
+        root.classList.remove("booting"); // 掀布，讓你原本的邏輯決定顯示哪一頁
+      }
+
+      // 3) 等 Firebase Auth 就緒後，綁一次性觀察者；第一個事件就放行
+      function whenAuthReady(cb) {
+        if (window.firebase && firebase.auth) return cb(firebase.auth());
+        var t = setInterval(function () {
+          if (window.firebase && firebase.auth) {
+            clearInterval(t);
+            cb(firebase.auth());
+          }
+        }, 30);
+        setTimeout(function () {
+          clearInterval(t);
+        }, 5000); // 安全上限
+      }
+
+      var fallback = setTimeout(releaseOnce, graceMs); // 還原太慢 → 顯示登入頁
+
+      whenAuthReady(function (auth) {
+        var off = auth.onAuthStateChanged(function () {
+          try {
+            off && off();
+          } catch (_) {}
+          clearTimeout(fallback);
+          releaseOnce(); // 一拿到使用者（或確定沒使用者）就揭布
+        });
+      });
+    } catch (_) {}
+  })();
+
   //快取
   const v = Date.now(); // 每次刷新都帶入唯一值，避開快取
   document
@@ -1533,60 +1589,68 @@
     if (el) el.style.display = "none";
   }
 
+  let BOOT_GRACE_UNTIL = 0;
+  let offAuth = null;
+
+  function attachAuthObserver() {
+    if (offAuth)
+      try {
+        offAuth();
+      } catch (_) {}
+    offAuth = auth.onAuthStateChanged((user) => {
+      const now = performance.now();
+
+      // 🚫 啟動寬限期內，拿到 null 先忽略（避免先切到登入頁）
+      if (!user && now < BOOT_GRACE_UNTIL) return;
+
+      const app = document.getElementById("app");
+      const overlay = document.getElementById("autologin-overlay");
+
+      if (user) {
+        roomPath = hydrateRoomPath();
+        bindFirebase();
+        if (app) app.style.display = "block";
+        if (overlay) overlay.style.display = "none";
+        document.documentElement.classList.add("show-app");
+        document.documentElement.classList.remove("show-login");
+      } else {
+        // 超過寬限還是沒有使用者 → 才真的顯示登入頁
+        document.documentElement.classList.add("show-login");
+        document.documentElement.classList.remove("show-app");
+        if (overlay) overlay.style.display = "none";
+      }
+    });
+  }
+
   async function bootFromTask() {
     const overlay = document.getElementById("autologin-overlay");
     const app = document.getElementById("app");
 
-    // ★ 貼這三行（讀 fast_switch，決定寬限時間）
+    // 設定寬限（支援 fast_switch）
     const fast = sessionStorage.getItem("fast_switch") === "1";
     sessionStorage.removeItem("fast_switch");
     const graceMs = fast ? 800 : 400;
+    BOOT_GRACE_UNTIL = performance.now() + graceMs;
 
-    // 0) 先不要動遮罩，保持 hidden（HTML/CSS 預設 display:none）
-    // ★ 不要 overlay.style.display = "flex";
-
-    // 1) 沒 roomPath 就回登入
-    const rp = hydrateRoomPath();
-    if (!rp) {
-      location.replace("index.html");
-      return;
-    }
-    roomPath = rp;
-
-    // 2) 先綁觀察者（拿到 user 後會自動 bindFirebase + 顯示 App）
     attachAuthObserver();
 
-    // 3) 固定會話（不要阻塞 UI）
     try {
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     } catch (_) {}
 
-    // 4) 快速路徑：若 currentUser 已經就緒，直接進 App，完全不顯示遮罩
-    if (auth.currentUser) {
+    // 快速路徑：session 已還原
+    if (auth.currentUser && auth.currentUser.uid) {
+      roomPath = hydrateRoomPath();
       bindFirebase();
-      app.style.display = "block";
-      overlay.style.display = "none";
+      if (app) app.style.display = "block";
+      if (overlay) overlay.style.display = "none";
       return;
     }
 
-    // 5) ★ 寬限 400ms：這段時間等 Firebase 還原既有 session
-    const grace = setTimeout(() => {
-      // 仍然沒有使用者 → 才把遮罩打開
-      if (!auth.currentUser) overlay.style.display = "flex";
-    }, 400);
-
-    try {
-      // 6) ★ 如果真的沒有 session，就匿名登入（觀察者會在登入後關遮罩）
-      startAutoLoginWatchdog(8000);
-      await auth.signInAnonymously();
-    } catch (e) {
-      console.warn("Anonymous sign-in failed", e);
-      alert("自動登入失敗，請重新整理");
-      overlay.style.display = "none";
-    } finally {
-      clearTimeout(grace);
-      stopAutoLoginWatchdog();
-    }
+    // 過了寬限還沒有使用者 → 只開 overlay，不進登入頁（登入頁交給觀察者在超時後切）
+    setTimeout(() => {
+      if (!auth.currentUser && overlay) overlay.style.display = "flex";
+    }, graceMs);
   }
 
   document.addEventListener("DOMContentLoaded", bootFromTask);
@@ -1596,24 +1660,8 @@
   }
 
   function hydrateRoomPath() {
-    let saved = null;
-    try {
-      saved =
-        sessionStorage.getItem("todo_room_info") ||
-        localStorage.getItem("todo_room_info") ||
-        sessionStorage.getItem("todo_room_info_session") ||
-        localStorage.getItem("todo_room_info_session");
-    } catch (_) {}
-
-    if (!saved) return null;
-
-    try {
-      const { username, password } = JSON.parse(saved);
-      if (!username || !password) return null;
-      return `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-    } catch (_) {
-      return null;
-    }
+    const u = auth?.currentUser || null;
+    return u && u.uid ? `rooms/${u.uid}` : null; // 與 MyTask 一致
   }
 
   async function logout() {
@@ -1646,24 +1694,24 @@
     }
   }
 
-  // --- 觀察者：唯一入口，決定何時綁資料、顯示 App、關遮罩 ---
+  let __authUnsub = null;
   function attachAuthObserver() {
-    // 建議順便把退訂函式存起來，登出時可關掉監聽
     try {
-      window.__authUnsub?.();
+      __authUnsub?.();
     } catch {}
-    window.__authUnsub = auth.onAuthStateChanged((user) => {
+    __authUnsub = auth.onAuthStateChanged((user) => {
       const overlay = document.getElementById("autologin-overlay");
       const app = document.getElementById("app");
-      if (user) {
-        // ★ 這行就是你要加的位置（清除剛登出抑制旗標）
-        try {
-          sessionStorage.removeItem("just_logged_out");
-        } catch {}
 
-        bindFirebase();
-        app.style.display = "block";
-        overlay.style.display = "none";
+      if (user && user.uid) {
+        roomPath = hydrateRoomPath();
+        bindFirebase(); // 綁定 memos / memoCategories
+        app.style.display = "block"; // 顯示 App
+        if (overlay) overlay.style.display = "none";
+      } else {
+        unbindFirebase(); // 清掉監聽
+        app.style.display = "none"; // 先不導回登入，只顯示遮罩等待 Session 還原
+        if (overlay) overlay.style.display = "flex";
       }
     });
   }
@@ -2782,6 +2830,42 @@
       }
     };
   });
+
+  // === 快速切換提示（MyMemo → MyTask 不要閃登入頁） ===
+  (function setupFastSwitchHint() {
+    function mark() {
+      try {
+        const now = String(Date.now());
+        // 同步寫兩邊，並帶上時間戳，與舊版、MyTask 完全相容
+        sessionStorage.setItem("fast_switch", "1");
+        sessionStorage.setItem("fast_switch_at", now);
+        localStorage.setItem("fast_switch", "1");
+        localStorage.setItem("fast_switch_at", now);
+      } catch {}
+    }
+
+    // 點去 MyTask（/mytask 或 /task 都吃）就標記
+    document.addEventListener(
+      "click",
+      (e) => {
+        const a = e.target.closest("a[href]");
+        if (!a) return;
+        const href = a.getAttribute("href") || "";
+        if (/(^|\/)(mytask|task)(\.html)?([?#].*)?$/i.test(href)) mark();
+      },
+      true
+    );
+
+    // 程式導頁保險（登出時會設 just_logged_out，不要誤標記）
+    window.addEventListener("beforeunload", () => {
+      try {
+        if (!sessionStorage.getItem("just_logged_out")) mark();
+      } catch {}
+    });
+
+    // 若你有用 JS 手動切頁，可主動呼叫
+    window.markFastSwitchForNextPage = mark;
+  })();
 
   /* ===== 將 HTML inline 會呼叫到的函式掛到 window（全域） ===== */
   const __exports = {
