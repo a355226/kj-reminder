@@ -4729,7 +4729,6 @@ if (!canPrompt) return false; // 沒使用者手勢就不彈窗
 /* ✅ 與 MyMemo 對齊的版本：iOS Safari 用 preWin 導向 scheme，PWA 才用本頁導向 */
 function openDriveFolderMobileFirst(folderId, webLink, preWin) {
   const webUrl = webLink || `https://drive.google.com/drive/folders/${folderId}`;
-  const iosSchemeUrl = `googledrive://${webUrl}`;
 
   const ua = (navigator.userAgent || "").toLowerCase();
   const isAndroid = /android/.test(ua);
@@ -4737,18 +4736,16 @@ function openDriveFolderMobileFirst(folderId, webLink, preWin) {
     /iphone|ipad|ipod/.test(ua) ||
     ((navigator.userAgent || "").includes("Macintosh") && navigator.maxTouchPoints > 1);
 
-  // 小工具：操作預備分頁
   const ensurePreWin = () => {
     let w = null;
     try { w = preWin && !preWin.closed ? preWin : window.open("", "_blank"); } catch {}
     return w;
   };
-  const safeClose = (w, ms = 1600) => {
+  const safeClose = (w, ms = 2000) => {
     setTimeout(() => { try { w && !w.closed && w.close(); } catch {} }, ms);
   };
 
   if (isAndroid) {
-    // Android 仍用 intent 直跳 App
     try {
       window.location.href =
         `intent://drive.google.com/drive/folders/${folderId}` +
@@ -4759,23 +4756,28 @@ function openDriveFolderMobileFirst(folderId, webLink, preWin) {
 
   if (isIOS) {
     if (isIOSPWA) {
-      // PWA：用本頁導向 scheme（你原本行為）
-      try { window.location.href = iosSchemeUrl; } catch {}
-      return;
-    }
-    // iOS Safari：在「預備分頁」先開 Universal Link，再補 scheme
-    const w = ensurePreWin();
-    if (!w) { // 萬一預備分頁被擋，最後備用：當前頁直接導向 scheme
-      try { window.location.href = iosSchemeUrl; } catch {}
+      // PWA：本頁直接 scheme（你原本就穩）
+      try { window.location.href = `googledrive://folder/${folderId}`; } catch {}
       return;
     }
 
-    // 1) Universal Link（高機率彈「切換 App」）
-    try { w.location.href = webUrl; } catch {}
-    // 2) 稍後補 scheme（某些版本更吃這招）
-    setTimeout(() => { try { w.location.href = iosSchemeUrl; } catch {} }, 280);
-    // 3) 收尾：關掉預備分頁（避免殘留空白分頁）
-    safeClose(w, 1800);
+    // iOS Safari：全部放在「預備分頁」中執行（保留 user-gesture），用「scheme 優先」以促發系統彈窗
+    const w = ensurePreWin();
+    if (!w) { // 預備分頁被擋，最後 fallback：本頁直接 scheme
+      try { window.location.href = `googledrive://folder/${folderId}`; } catch {}
+      return;
+    }
+
+    // ① 先試（多數情況可觸發「是否開啟 App？」）
+    try { w.location.href = `googledrive://folder/${folderId}`; } catch {}
+
+    // ② 少數機型/版本吃這種寫法
+    setTimeout(() => { try { w.location.href = `googledrive://drive.google.com/drive/folders/${folderId}`; } catch {} }, 220);
+
+    // ③ 最後才給 Universal Link（避免一開始就無提示直開）
+    setTimeout(() => { try { w.location.href = webUrl; } catch {} }, 500);
+
+    safeClose(w, 2200);
     return;
   }
 
