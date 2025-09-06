@@ -1252,12 +1252,53 @@ button.palette-btn:active {
 .more-contact a:hover{ text-decoration: underline; }
 
 
+.register-btn{
+  width:100%; height:46px;
+  background:#4bce9c; color:#fff;
+  border:none; border-radius:8px;
+  font-size:16px; cursor:pointer; margin-top:.6rem;
+}
+.register-btn:hover{ background:#2fb351; }
+.register-btn:active{ transform:translateY(1px); }
+
 
 
 
   </style>
 </head>
 <body>
+
+  <!-- 註冊 Modal -->
+<div id="registerModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width:360px;width:92%;">
+    <button class="close-btn" onclick="closeModal('registerModal')">✕</button>
+    <h3 style="margin:0 0 .75rem;">建立帳號</h3>
+
+    <label style="display:block;margin:.5rem 0 .25rem;">帳號（之後以此登入）</label>
+    <input id="regUsername" type="text" placeholder="" style="width:100%;padding:.6rem;border:1px solid #ddd;border-radius:8px;">
+
+    <label style="display:block;margin:.75rem 0 .25rem;">Email（僅用於忘記密碼）</label>
+    <input id="regEmail" type="email" placeholder="you@example.com" style="width:100%;padding:.6rem;border:1px solid #ddd;border-radius:8px;">
+
+    <label style="display:block;margin:.75rem 0 .25rem;">密碼（至少 6 碼）</label>
+    <input id="regPwd" type="password" placeholder="••••••" style="width:100%;padding:.6rem;border:1px solid #ddd;border-radius:8px;">
+
+    <label style="display:block;margin:.75rem 0 .25rem;">確認密碼</label>
+    <input id="regPwd2" type="password" placeholder="••••••" style="width:100%;padding:.6rem;border:1px solid #ddd;border-radius:8px;">
+
+    <div class="confirm-buttons" style="margin-top:1rem;">
+      <button class="confirm-btn" onclick="submitRegistration()">註冊</button>
+      <button class="cancel-btn" onclick="closeModal('registerModal')">取消</button>
+    </div>
+
+    <p style="font-size:.85rem;color:#666;margin-top:.75rem;line-height:1.6;">
+      註冊成功後，您可以直接以「帳號＋密碼」登入。<br>
+      Email 僅用於「忘記密碼」的重設信寄送。
+    </p>
+  </div>
+</div>
+
+
 <!-- 登錄頁面 -->
 <div id="loginPage">
   <div id="loginCard">
@@ -1266,10 +1307,10 @@ button.palette-btn:active {
   MyTask
 </h1>
 
-    <label class="login-label">自訂帳號</label>
+    <label class="login-label">帳號</label>
     <input type="text" id="login-username" class="login-input" placeholder="請輸入帳號">
 
-    <label class="login-label">自訂密碼</label>
+    <label class="login-label">密碼</label>
     <input type="password" id="login-password" class="login-input" placeholder="請輸入密碼">
 
     <label class="login-checkrow">
@@ -1278,11 +1319,16 @@ button.palette-btn:active {
     </label>
 
     <button id="login-btn" class="login-btn">登入</button>
+    <!-- 註冊按鈕（置於登入按鈕正下方） -->
+<!-- 註冊按鈕（置於登入按鈕正下方） -->
+<button id="register-btn" class="register-btn" onclick="openModalById('registerModal')">註冊</button>
 
-<p class="login-tip" style="margin-top:2rem;">
-  <strong>平台免註冊，自訂帳號密碼即可登錄</strong><br>
-  (無提供找回密碼服務，請牢記帳密)
+<!-- 忘記密碼（僅用 email 收信重設） -->
+<p style="text-align:center;margin:2.5rem 0 0;">
+  <a href="#" id="forgotLink" onclick="return triggerPasswordReset()">忘記/重設密碼</a>
 </p>
+
+
 </div>
 
   <!-- ▼ 新增：登入頁面下方的政策連結（清楚、可點） -->
@@ -1589,8 +1635,6 @@ button.palette-btn:active {
 </div>
 
 
-
-
 <!-- 更多功能 Modal -->
 <div class="modal" id="moreModal">
   <div class="modal-content">
@@ -1708,7 +1752,184 @@ button.palette-btn:active {
     </div>
   </div>
 </div>
+<script>
+  // 取得第二個 App 的 Auth（註冊用）
+  function getRegAuth(){
+    const def = firebase.app();
+    let regApp = null;
+    (firebase.apps || []).forEach(a => { if (a && a.name === 'regApp') regApp = a; });
+    if (!regApp) regApp = firebase.initializeApp(def.options, 'regApp');
+    return regApp.auth();
+  }
+  // 取得第二個 App 的 Database（關鍵！註冊期的 DB 寫入要走這個）
+  function getRegDb(){
+    return firebase.app('regApp').database();
+  }
+  function tip(msg){ alert(msg); }
+  
+  // 註冊（帳號=之後登入用的帳號；email 僅忘記密碼）
+  window.submitRegistration = async function(){
+  const username = (document.getElementById('regUsername')?.value || '').trim();
+  const email    = (document.getElementById('regEmail')?.value || '').trim();
+  const pwd      = (document.getElementById('regPwd')?.value || '');
+  const pwd2     = (document.getElementById('regPwd2')?.value || '');
 
+  if (!username) return tip('請輸入帳號');
+  if (!email)    return tip('請輸入 Email');
+  if (pwd.length < 6) return tip('密碼至少 6 碼');
+  if (pwd !== pwd2)   return tip('兩次密碼不一致');
+
+  const key     = keyifyUsername(username);
+  const regAuth = getRegAuth();
+  const regDb   = getRegDb();
+
+  let createdUser = null; // 紀錄剛建立的使用者，用於回滾
+
+  try {
+    // 0) 預檢：帳號是否已被占（避免白建 Auth）
+    try {
+      const idxSnap = await regDb.ref('usernameIndex/' + key).get();
+      if (idxSnap.exists()) return tip('此帳號已被使用，請更換');
+    } catch (_) {
+      // 若規則不允許讀取也沒關係，繼續後續流程；真正的佔用由寫入/規則擋
+    }
+
+    // 1) 建立 Auth 使用者（這一步成功 → email 就會被占）
+    const cred = await regAuth.createUserWithEmailAndPassword(email, pwd);
+    createdUser = cred.user; // 用於失敗時回滾
+    const uid   = cred.user.uid;
+
+    // 2) 多路徑原子寫入（任何一筆過不了，整包取消）
+    const updates = {};
+    updates['users/' + uid]          = { username, email, createdAt: Date.now() };
+    updates['usernameIndex/' + key]  = uid;
+    updates['loginEmails/' + key]    = email;
+    updates['usernamesByUid/' + uid] = key;   // 可搭配規則限制每個 uid 只綁一次
+
+    await regDb.ref().update(updates);
+
+    // 3) 成功 → 收尾 UI
+    closeModal('registerModal');
+    const u = document.getElementById('login-username');
+    const p = document.getElementById('login-password');
+    if (u) u.value = username;
+    if (p) p.value = '';
+    tip('註冊成功！請以「帳號＋密碼」登入。');
+
+  } catch (e) {
+    console.error('REG ERROR:', e?.code, e?.message, e);
+
+    // ★ 關鍵回滾：只要建立過 Auth，就刪掉，避免 email 被占用
+    if (createdUser) {
+      try { await createdUser.delete(); }
+      catch (_) {
+        // 部分瀏覽器/情境可能需要用 currentUser 再試一次
+        try { await regAuth.currentUser?.delete(); } catch (_2) {}
+      }
+    }
+
+    // 友善錯誤訊息
+    let msg = '註冊失敗';
+    const em = String(e?.message || '');
+    if (e?.code === 'auth/email-already-in-use')         msg = '這個 Email 已被註冊';
+    else if (e?.code === 'auth/invalid-email')           msg = 'Email 格式不正確';
+    else if (e?.code === 'auth/operation-not-allowed')   msg = '請到 Firebase Console 啟用 Email/Password';
+    else if (e?.code === 'auth/unauthorized-domain')     msg = '網域未加入 Authorized domains';
+    else if (e?.code === 'auth/weak-password')           msg = '密碼強度不足（至少 6 碼）';
+    else if (e?.code === 'PERMISSION_DENIED')            msg = '此帳號已被使用或權限不足';
+    else if (/cannot contain|invalid path|First argument was an invalid path/i.test(em))
+      msg = '帳號不可包含 . # $ [ ] /，或請改用其他帳號';
+    tip(msg);
+
+  } finally {
+    // 總是清掉 regApp 狀態，避免干擾主程式
+    try { await regAuth.signOut(); } catch (_) {}
+    try { await firebase.app('regApp').delete(); } catch (_) {}
+  }
+};
+  
+  // 用「帳號＋密碼」登入（帳號→查公開映射 email→email/password 登入）
+  // ✅ 登入：用跟註冊相同的 keyify 規則查映射
+// ✅ 登入：用跟註冊相同的 keyify 規則查映射
+async function signInWithUsernameAndPassword(username, password){
+  const key = keyifyUsername(username);
+  if (!key) throw new Error('請輸入帳號');
+
+  // ★ 一律用 child() 串節點，避免字串手動拼錯
+  const emailSnap = await firebase.database().ref('loginEmails').child(key).get();
+  if (!emailSnap.exists()) throw new Error('帳號不存在');
+
+  const email = emailSnap.val();
+  await firebase.auth().signInWithEmailAndPassword(email, password);
+  return firebase.auth().currentUser.uid;
+}
+
+
+  
+  // 你原本綁定登入鈕的程式可沿用；確保成功後改成 rooms/{uid}
+  window.addEventListener('load', function(){
+    const loginBtn = document.getElementById('login-btn');
+    if (!loginBtn) return;
+    loginBtn.addEventListener('click', async function(){
+      const username = (document.getElementById('login-username')?.value||'').trim();
+      const password = (document.getElementById('login-password')?.value||'');
+      if (!username) return tip('請輸入帳號');
+      if (!password) return tip('請輸入密碼');
+  
+      try{
+        const uid = await signInWithUsernameAndPassword(username, password);
+        window.roomPath = 'rooms/' + uid;  // ✅ 統一路徑：rooms/{uid}
+  
+        // 顯示主畫面（若 app.js 會自行切換，這段不衝突）
+        const html = document.documentElement;
+        html.classList.remove('show-login');
+        html.classList.add('show-app');
+  
+        if (typeof window.onAuthReady === 'function') {
+          window.onAuthReady({ uid, username });
+        }
+      }catch(e){
+        console.error('LOGIN ERROR:', e?.code, e?.message, e);
+        tip(e.message || '登入失敗，請確認帳號密碼');
+      }
+    });
+  });
+  
+  // 忘記密碼：照舊，用 email 寄信
+  window.triggerPasswordReset = async function(){
+    const email = prompt('請輸入註冊時的 Email：');
+    if(!email) return false;
+    try{
+      const regAuth = getRegAuth();
+      await regAuth.sendPasswordResetEmail(email.trim());
+      try { await regAuth.signOut(); } catch(_) {}
+      try { await firebase.app('regApp').delete(); } catch(_) {}
+      tip('已寄出重設密碼信，請至信箱查收。');
+    }catch(e){
+      console.error('RESET ERROR:', e?.code, e?.message, e);
+      let msg = '寄送失敗';
+      if (e && e.code) {
+        if (e.code === 'auth/user-not-found') msg = '查無此 Email 的帳號';
+        else if (e.code === 'auth/invalid-email') msg = 'Email 格式不正確';
+        else if (e.code === 'auth/operation-not-allowed') msg = '請到 Firebase Console 啟用 Email/Password';
+      }
+      tip(msg);
+    }
+    return false;
+  };
+// 將使用者輸入的帳號 → RTDB 可用的安全鍵（可逆性不是必須，只要登入也用同樣邏輯查就行）
+function keyifyUsername(name){
+  const s = (name || '').trim().toLowerCase();
+  // 將 RTDB 禁用字元轉成百分號替代，避免碰撞
+  return s.replace(/[.#$\[\]\/]/g, ch => ({
+    '.':'%2E', '#':'%23', '$':'%24', '[':'%5B', ']':'%5D', '/':'%2F'
+  }[ch]));
+}
+  
+  </script>
+  
+  
+  
 
 </body>
 </html>
