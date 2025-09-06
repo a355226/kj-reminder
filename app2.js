@@ -2078,64 +2078,56 @@
   /* 若已有 ID，驗證存在；不存在則重建路徑 */
   async function ensureExistingOrRecreateFolder(m) {
     const token = await getDriveAccessToken();
+    const { id: myMemoRootId, accountTag } = await ensureMyMemoRoot(token);
 
-    if (m.gdriveFolderId) {
+    // 有 id 先驗
+    const knownId = m.gdriveFolderId || m.driveFolderId;
+    if (knownId) {
       try {
-        const meta = await driveFilesGet(
-          m.gdriveFolderId,
-          token,
-          "id,trashed,webViewLink"
-        );
-        if (!meta.trashed) return m.gdriveFolderId;
-      } catch (_) {
-        // 視為不存在，走重建
+        const meta = await driveFilesGet(knownId, token, "id,trashed");
+        if (meta && !meta.trashed) return knownId;
+      } catch {
+        /* fallthrough */
       }
       m.gdriveFolderId = null;
+      m.driveFolderId = null;
       try {
         window.saveMemos?.();
-      } catch (_) {}
+      } catch {}
     }
 
-    // 確保 MyMemo 根（同 #3 的片段；抽成共用亦可）
-    let myMemoRootId = localStorage.getItem("gdrive_mymemo_root_id") || null;
-    if (myMemoRootId) {
-      try {
-        const rootMeta = await driveFilesGet(myMemoRootId, token, "id,trashed");
-        if (!rootMeta || rootMeta.trashed) myMemoRootId = null;
-      } catch (_) {
-        myMemoRootId = null;
-      }
-    }
-    if (!myMemoRootId) {
-      const root = await driveCreateFolder("MyMemo", token, {
-        app: "kjreminder",
-        level: "root",
-      });
-      myMemoRootId = root.id;
-      try {
-        localStorage.setItem("gdrive_mymemo_root_id", myMemoRootId);
-      } catch (_) {}
-    }
-
-    const name = buildMemoFolderName(m);
-    const created = await driveCreateFolder(
-      name,
+    // 先找
+    let folderId = await findExistingMemoFolder(
       token,
-      {
-        app: "kjreminder",
-        memoId: m.id,
-        level: "memo",
-        section: m.section || "",
-      },
-      myMemoRootId // ← 一樣指定 parent 到 MyMemo 根
+      myMemoRootId,
+      m,
+      accountTag
     );
 
-    m.gdriveFolderId = created.id;
-    m.driveFolderId = created.id; // ← 同步給 UI/舊流程使用
+    // 找不到才建
+    if (!folderId) {
+      const name = buildMemoFolderName(m);
+      const created = await driveCreateFolder(
+        name,
+        token,
+        {
+          product: PRODUCT_NAME,
+          level: "memo",
+          appAccount: accountTag,
+          memoId: m.id,
+          section: m.section || "",
+        },
+        myMemoRootId
+      );
+      folderId = created.id;
+    }
+
+    m.gdriveFolderId = folderId;
+    m.driveFolderId = folderId;
     try {
       window.saveMemos?.();
-    } catch (_) {}
-    return created.id;
+    } catch {}
+    return folderId;
   }
 
   /* 僅開啟（若沒記錄就轉主流程建立） */
@@ -2321,8 +2313,8 @@
     const meta = {
       name,
       mimeType: "application/vnd.google-apps.folder",
-      appProperties: Object.assign({ app: "kjreminder" }, appProps),
-      parents: parentId ? [parentId] : ["root"], // ← 關鍵：指定要建立在哪一層
+      appProperties: Object.assign({ app: PRODUCT_APP }, appProps),
+      parents: parentId ? [parentId] : ["root"],
     };
     const r = await fetch(
       "https://www.googleapis.com/drive/v3/files?fields=id,webViewLink&supportsAllDrives=true",
@@ -2401,80 +2393,66 @@
     const m = getCurrentDetailMemo();
     if (!m) return;
 
-    // 1) 拿 access token（沿用你檔案裡已有的 getDriveAccessToken）
     const token = await getDriveAccessToken();
+    const { id: myMemoRootId, accountTag } = await ensureMyMemoRoot(token);
 
-    // 2) 確保「MyMemo」根資料夾（localStorage 快取 + 用 files.get 驗證存在）
-    let myMemoRootId = null;
-    try {
-      myMemoRootId = localStorage.getItem("gdrive_mymemo_root_id") || null;
-      if (myMemoRootId) {
-        const meta = await driveFilesGet(myMemoRootId, token, "id,trashed");
-        if (!meta || meta.trashed) myMemoRootId = null;
-      }
-    } catch (_) {
-      myMemoRootId = null;
-    }
-
-    if (!myMemoRootId) {
-      const root = await driveCreateFolder("MyMemo", token, {
-        app: "kjreminder",
-        level: "root",
-      });
-      myMemoRootId = root.id;
-      try {
-        localStorage.setItem("gdrive_mymemo_root_id", myMemoRootId);
-      } catch (_) {}
-    }
-
-    // 3) 若此 memo 已有資料夾 id → 只用 files.get 驗證；存在就直接開啟
-    if (m.gdriveFolderId) {
+    // 已有 id → 驗證並直開
+    const knownId = m.gdriveFolderId || m.driveFolderId;
+    if (knownId) {
       try {
         const meta = await driveFilesGet(
-          m.gdriveFolderId,
+          knownId,
           token,
           "id,trashed,webViewLink"
         );
-        if (!meta.trashed) {
+        if (meta && !meta.trashed) {
           const link =
             meta.webViewLink ||
-            `https://drive.google.com/drive/folders/${m.gdriveFolderId}`;
-          openDriveFolderMobileFirst(m.gdriveFolderId, link);
+            `https://drive.google.com/drive/folders/${knownId}`;
+          openDriveFolderMobileFirst(knownId, link);
           return;
         }
-        // 被丟垃圾桶→視為不存在，下面重建
-      } catch (_) {
-        // 404 / 無權限→視為不存在，下面重建
+      } catch {
+        /* fallthrough to search/create */
       }
     }
 
-    // 4) 建立「此備忘」的資料夾到 MyMemo 根底下（不用任何 files.list）
-    // 4) 建立「此備忘」的資料夾到 MyMemo 根底下（不用任何 files.list）
-    const name = buildMemoFolderName(m);
-    const created = await driveCreateFolder(
-      name,
+    // 沒有/失效 → 先「精準查找」是否已存在
+    let folderId = await findExistingMemoFolder(
       token,
-      {
-        app: "kjreminder",
-        memoId: m.id,
-        level: "memo",
-        section: m.section || "",
-      },
-      myMemoRootId // ← 關鍵：指定 parent
+      myMemoRootId,
+      m,
+      accountTag
     );
 
-    // 5) 記住 id 並存雲（兩個欄位都寫，避免 UI 讀不到）
-    m.gdriveFolderId = created.id;
-    m.driveFolderId = created.id; // ← 你的 updateDriveButtonState 讀這個
+    // 查無 → 建立在 root 底下
+    if (!folderId) {
+      const name = buildMemoFolderName(m);
+      const created = await driveCreateFolder(
+        name,
+        token,
+        {
+          product: PRODUCT_NAME,
+          level: "memo",
+          appAccount: accountTag,
+          memoId: m.id,
+          section: m.section || "",
+        },
+        myMemoRootId
+      );
+      folderId = created.id;
+    }
+
+    // 記錄（兩欄位都寫，避免 UI 判斷落空）
+    m.gdriveFolderId = folderId;
+    m.driveFolderId = folderId;
     try {
       window.saveMemos?.();
-    } catch (_) {}
+    } catch {}
 
-    // 6) 開啟（和 MyTask 一樣：行動裝置優先叫 App）
-    const link =
-      created.webViewLink ||
-      `https://drive.google.com/drive/folders/${created.id}`;
-    openDriveFolderMobileFirst(created.id, link);
+    // 開啟
+    const link = `https://drive.google.com/drive/folders/${folderId}`;
+    openDriveFolderMobileFirst(folderId, link);
   }
 
   // 讓詳情畫面出現一顆 GDrive 按鈕（只在非唯讀時顯示）
@@ -2503,6 +2481,149 @@
 
     updateDriveButtonState(memoObj);
   }
+
+  // === 唯一性標記 ===
+  const PRODUCT_APP = "kjreminder";
+  const PRODUCT_NAME = "MyMemo";
+
+  function getAppAccountLabel() {
+    // 1) 先從已解析好的 roomPath 擷取 username：rooms/{username}-{password}
+    if (typeof roomPath === "string" && roomPath.startsWith("rooms/")) {
+      const m = roomPath.match(/^rooms\/([^-\s]+)-/);
+      if (m && m[1]) return m[1];
+    }
+
+    // 2) 退而求其次：從本機儲存的登入資訊還原 username
+    try {
+      const saved =
+        sessionStorage.getItem("todo_room_info") ||
+        localStorage.getItem("todo_room_info") ||
+        sessionStorage.getItem("todo_room_info_session") ||
+        localStorage.getItem("todo_room_info_session");
+      if (saved) {
+        const obj = JSON.parse(saved);
+        if (obj?.username) return obj.username;
+      }
+    } catch {}
+
+    // 3) 再退：若 Firebase 有 email（非匿名），也可當帳號標籤
+    try {
+      const email =
+        typeof auth !== "undefined" && auth?.currentUser?.email
+          ? auth.currentUser.email
+          : null;
+      if (email) return email;
+    } catch {}
+
+    // 4) 最後才用你原本的備用來源
+    return (
+      window.memoOwnerTag ||
+      window.currentUserEmail ||
+      window.user?.email ||
+      localStorage.getItem("app_login_email") ||
+      "user"
+    );
+  }
+
+  function sanitizeForName(s) {
+    // 移除雲端硬碟不允許的字元，避免名字無效
+    return (
+      String(s)
+        .replace(/[\\/:*?"<>|[\]\n\r]/g, "")
+        .trim()
+        .slice(0, 40) || "user"
+    );
+  }
+  function buildRootFolderName(accountTag) {
+    return `MyMemo(${sanitizeForName(accountTag)})`;
+  }
+
+  async function findExistingRootByAccount(token, accountTag) {
+    const name = buildRootFolderName(accountTag);
+    const q = [
+      `name = '${escapeForQuery(name)}'`,
+      `mimeType = 'application/vnd.google-apps.folder'`,
+      `'root' in parents`,
+      "trashed = false",
+      `appProperties has { key='app' and value='${PRODUCT_APP}' }`,
+      `appProperties has { key='product' and value='${PRODUCT_NAME}' }`,
+      `appProperties has { key='appAccount' and value='${escapeForQuery(
+        accountTag
+      )}' }`,
+    ].join(" and ");
+
+    const resp = await gapi.client.drive.files.list({
+      q,
+      fields: "files(id,name)",
+      pageSize: 1,
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+    return resp?.result?.files?.[0]?.id || null;
+  }
+
+  async function ensureMyMemoRoot(token) {
+    const accountTag = sanitizeForName(getAppAccountLabel());
+    const LS_KEY = `gdrive_mymemo_root_id_${accountTag}`;
+
+    // 先用本機快取
+    let id = localStorage.getItem(LS_KEY) || null;
+    if (id) {
+      try {
+        const meta = await driveFilesGet(id, token, "id,trashed");
+        if (!meta || meta.trashed) id = null;
+      } catch {
+        id = null;
+      }
+    }
+
+    // 再用 Drive 側精準查找
+    if (!id) id = await findExistingRootByAccount(token, accountTag);
+
+    // 都沒有 → 建立（名稱帶入帳號）
+    if (!id) {
+      const created = await driveCreateFolder(
+        buildRootFolderName(accountTag),
+        token,
+        { product: PRODUCT_NAME, level: "root", appAccount: accountTag },
+        "root"
+      );
+      id = created.id;
+    }
+
+    try {
+      localStorage.setItem(LS_KEY, id);
+    } catch {}
+    return { id, accountTag };
+  }
+
+  async function findExistingMemoFolder(token, rootId, memo, accountTag) {
+    const q = [
+      `mimeType = 'application/vnd.google-apps.folder'`,
+      `'${rootId}' in parents`,
+      "trashed = false",
+      `appProperties has { key='app' and value='${PRODUCT_APP}' }`,
+      `appProperties has { key='product' and value='${PRODUCT_NAME}' }`,
+      `appProperties has { key='level' and value='memo' }`,
+      `appProperties has { key='appAccount' and value='${escapeForQuery(
+        accountTag
+      )}' }`,
+      `appProperties has { key='memoId' and value='${escapeForQuery(
+        memo.id
+      )}' }`,
+    ].join(" and ");
+
+    const resp = await gapi.client.drive.files.list({
+      q,
+      fields: "files(id,name)",
+      pageSize: 1,
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+    return resp?.result?.files?.[0]?.id || null;
+  }
+
+  //--------------------------------------------------驗證用
 
   Object.assign(window, {
     onDriveButtonClickMemo,
