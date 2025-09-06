@@ -4156,25 +4156,31 @@
   let __tokenClient = null;
   // ✅ 第一次授權後要自動補跑一次的旗標
   // ✅ 第一次授權後要自動補跑一次的旗標 & 預備視窗
-// ✅ 取代原本的 GD_POST_OPEN_KEY 與 __gd_prewin
-const GD_POST_OPEN_KEY = "gdrive_post_open_task";
-let __gd_prewin = null;
-const POST_OPEN_TTL = 15000; // 15 秒內視為新鮮
+  // ✅ 取代原本的 GD_POST_OPEN_KEY 與 __gd_prewin
+  const GD_POST_OPEN_KEY = "gdrive_post_open_task";
+  let __gd_prewin = null;
+  const POST_OPEN_TTL = 15000; // 15 秒內視為新鮮
 
-const postOpen = {
-  set() {
-    try { sessionStorage.setItem(GD_POST_OPEN_KEY, String(Date.now())); } catch {}
-  },
-  isFresh() {
-    try {
-      const t = +sessionStorage.getItem(GD_POST_OPEN_KEY) || 0;
-      return t && (Date.now() - t) < POST_OPEN_TTL;
-    } catch { return false; }
-  },
-  clear() {
-    try { sessionStorage.removeItem(GD_POST_OPEN_KEY); } catch {}
-  }
-}; // 只在「第一次授權」時短暫使用
+  const postOpen = {
+    set() {
+      try {
+        sessionStorage.setItem(GD_POST_OPEN_KEY, String(Date.now()));
+      } catch {}
+    },
+    isFresh() {
+      try {
+        const t = +sessionStorage.getItem(GD_POST_OPEN_KEY) || 0;
+        return t && Date.now() - t < POST_OPEN_TTL;
+      } catch {
+        return false;
+      }
+    },
+    clear() {
+      try {
+        sessionStorage.removeItem(GD_POST_OPEN_KEY);
+      } catch {}
+    },
+  }; // 只在「第一次授權」時短暫使用
   // 全域：一次判斷 iOS PWA（避免第一次 click 時 ReferenceError）
   const isIOSPWA = (() => {
     try {
@@ -4243,8 +4249,8 @@ const postOpen = {
     const tok = gapi?.client?.getToken?.();
     if (tok?.access_token && Date.now() + skew < exp) return true;
 
-  const canPrompt = __gd_userGesture || postOpen.isFresh();
-if (!canPrompt) return false; // 沒使用者手勢就不彈窗
+    const canPrompt = __gd_userGesture || postOpen.isFresh();
+    if (!canPrompt) return false; // 沒使用者手勢就不彈窗
 
     const alreadyConsented =
       localStorage.getItem("gdrive_consent_done") === "1";
@@ -4621,23 +4627,23 @@ if (!canPrompt) return false; // 沒使用者手勢就不彈窗
         }
 
         // ✅ 若第一次授權剛完成且回到 App，就自動補跑一次
-     if (postOpen.isFresh()) {
-  (async () => {
-    try {
-      await ensureDriveAuth(); // 有效 token
-      const t = getCurrentDetailTask();
-      if (t) {
-        // 這裡走「精準找/驗證/建立」→ 再開啟（會帶 __gd_prewin）
-        let fid = await ensureExistingOrRecreateFolder(t);
-        updateDriveButtonState(t);
-        openDriveFolderMobileFirst(fid, null, __gd_prewin);
-      }
-    } finally {
-      postOpen.clear();
-      __gd_prewin = null;
-    }
-  })().catch(() => {});
-}
+        if (postOpen.isFresh()) {
+          (async () => {
+            try {
+              await ensureDriveAuth(); // 有效 token
+              const t = getCurrentDetailTask();
+              if (t) {
+                // 這裡走「精準找/驗證/建立」→ 再開啟（會帶 __gd_prewin）
+                let fid = await ensureExistingOrRecreateFolder(t);
+                updateDriveButtonState(t);
+                openDriveFolderMobileFirst(fid, null, __gd_prewin);
+              }
+            } finally {
+              postOpen.clear();
+              __gd_prewin = null;
+            }
+          })().catch(() => {});
+        }
       },
       { once: true }
     );
@@ -4726,47 +4732,60 @@ if (!canPrompt) return false; // 沒使用者手勢就不彈窗
 
   /* ✅ 新增：行動裝置優先開 Google Drive App，桌機走網頁 */
   // ⬅️ 取代原本的版本（多了 preWin）
-/* ✅ 與 MyMemo 對齊的版本：iOS Safari 用 preWin 導向 scheme，PWA 才用本頁導向 */
-function openDriveFolderMobileFirst(folderId, webLink, preWin) {
-  const webUrl = webLink || `https://drive.google.com/drive/folders/${folderId}`;
-  const ua = (navigator.userAgent || "").toLowerCase();
-  const isAndroid = /android/.test(ua);
-  const isIOS =
-    /iphone|ipad|ipod/.test(ua) ||
-    ((navigator.userAgent || "").includes("Macintosh") && navigator.maxTouchPoints > 1);
+  /* ✅ 與 MyMemo 對齊的版本：iOS Safari 用 preWin 導向 scheme，PWA 才用本頁導向 */
+  function openDriveFolderMobileFirst(folderId, webLink, preWin) {
+    const webUrl =
+      webLink || `https://drive.google.com/drive/folders/${folderId}`;
+    const ua = (navigator.userAgent || "").toLowerCase();
+    const isAndroid = /android/.test(ua);
+    const isIOS =
+      /iphone|ipad|ipod/.test(ua) ||
+      ((navigator.userAgent || "").includes("Macintosh") &&
+        navigator.maxTouchPoints > 1);
 
-  if (isAndroid) {
-    try {
-      window.location.href =
-        `intent://drive.google.com/drive/folders/${folderId}` +
-        `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
-    } catch {}
-    return;
-  }
-
-  if (isIOS) {
-    const iosUrl = `googledrive://${webUrl}`;
-
-    if (isIOSPWA) {
-      // PWA：維持本頁直接跳（你原本就穩）
-      try { window.location.href = iosUrl; } catch {}
+    if (isAndroid) {
+      try {
+        window.location.href =
+          `intent://drive.google.com/drive/folders/${folderId}` +
+          `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+      } catch {}
       return;
     }
 
-    // ✅ iOS Safari（非 PWA）：用【目前頁面】導向 scheme → 會出現「是否開啟 App？」的系統詢問
-    try { window.location.href = iosUrl; } catch {}
+    if (isIOS) {
+      const iosUrl = `googledrive://${webUrl}`;
 
-    // ⛑ 後備：若沒裝 App 或被攔截，延遲開網頁版（避免一開始就走 https 導致直接開 App 而「不詢問」）
-    setTimeout(() => {
-      try { window.open(webUrl, "_blank"); } catch {}
-    }, 1200);
-    return;
+      if (isIOSPWA) {
+        // PWA：維持本頁直接跳（你原本就穩）
+        try {
+          window.location.href = iosUrl;
+        } catch {}
+        return;
+      }
+
+      // ✅ iOS Safari（非 PWA）：用【目前頁面】導向 scheme → 會出現「是否開啟 App？」的系統詢問
+      try {
+        window.location.href = iosUrl;
+      } catch {}
+
+      // ⛑ 後備：若沒裝 App 或被攔截，延遲開網頁版（避免一開始就走 https 導致直接開 App 而「不詢問」）
+      setTimeout(() => {
+        try {
+          window.open(webUrl, "_blank");
+        } catch {}
+      }, 1200);
+      return;
+    }
+
+    // 桌機
+    try {
+      window.open(webUrl, "_blank")?.focus?.();
+    } catch (_) {
+      try {
+        window.location.href = webUrl;
+      } catch {}
+    }
   }
-
-  // 桌機
-  try { window.open(webUrl, "_blank")?.focus?.(); }
-  catch (_) { try { window.location.href = webUrl; } catch {} }
-}
 
   // 核心：開啟或建立（若被刪/丟垃圾桶 → 重建）
   async function openOrCreateDriveFolderForCurrentTask() {
@@ -4807,25 +4826,29 @@ function openDriveFolderMobileFirst(folderId, webLink, preWin) {
       row.appendChild(btn);
     }
     btn.style.display = isReadonly ? "none" : ""; // 完成視圖（唯讀）時隱藏
-btn.onclick = async () => {
-  try {
-    __gd_userGesture = true;
-    try { syncEditsIntoTask?.(task); } catch (_) {}
+    btn.onclick = async () => {
+      try {
+        __gd_userGesture = true;
+        try {
+          syncEditsIntoTask?.(task);
+        } catch (_) {}
 
-    // ❌ 不再在 iOS Safari 建 preWin（這是造成不詢問或不穩的主因）
-    __gd_prewin = null; 
-    // 若之前有 postOpen 機制，這裡也不要 set，避免走預備分頁邏輯
-    try { postOpen?.clear?.(); } catch (_) {}
+        // ❌ 不再在 iOS Safari 建 preWin（這是造成不詢問或不穩的主因）
+        __gd_prewin = null;
+        // 若之前有 postOpen 機制，這裡也不要 set，避免走預備分頁邏輯
+        try {
+          postOpen?.clear?.();
+        } catch (_) {}
 
-    // 直接走主流程，第二個參數給 null
-    await openOrCreateDriveFolderForTask(task, null);
-    updateDriveButtonState(task);
-  } catch (e) {
-    alert("Google Drive 動作失敗：" + (e?.message || e));
-  } finally {
-    __gd_userGesture = false;
-  }
-};
+        // 直接走主流程，第二個參數給 null
+        await openOrCreateDriveFolderForTask(task, null);
+        updateDriveButtonState(task);
+      } catch (e) {
+        alert("Google Drive 動作失敗：" + (e?.message || e));
+      } finally {
+        __gd_userGesture = false;
+      }
+    };
   }
 
   // === MyTask 唯一性標記（與 MyMemo 一樣的邏輯）===
