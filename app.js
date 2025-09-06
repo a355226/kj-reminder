@@ -85,6 +85,7 @@
   // 這兩行原本是 const
   let auth = firebase.auth();
   let db = firebase.database();
+  
 
   // 新增：保存/重綁 onAuthStateChanged
   let offAuth = null;
@@ -101,22 +102,24 @@
           authTimer = null;
         }
 
-        // 你原本 onAuthStateChanged 裡的內容，原封不動貼進來 ↓↓↓
-        // （這段我不重貼，直接把你原本的 finally: hideAutoLoginOverlay... 都放進來）
-
         roomPath = hydrateRoomPath();
         document.documentElement.classList.remove("show-login", "show-app");
+
         if (user && roomPath) {
           document.documentElement.classList.add("show-app");
           const lp = document.getElementById("loginPage");
           const app = document.querySelector(".container");
           if (lp) lp.style.display = "";
           if (app) app.style.display = "";
+
           loadTasksFromFirebase();
-          updateSectionOptions();
-          maybeShowWelcome(); // ★ 新增這行
+          updateSectionOptions?.();
+          maybeShowWelcome?.();
         } else {
+          // 未登入 → 顯示登入頁並清乾淨狀態
           document.documentElement.classList.add("show-login");
+          detachDbListeners?.();
+          resetAppState?.();
         }
       } catch (e) {
         console.error("onAuthStateChanged 錯誤：", e);
@@ -124,9 +127,9 @@
         document.documentElement.classList.remove("show-app");
         document.documentElement.classList.add("show-login");
       } finally {
-        hideAutoLoginOverlay();
-        stopAutoLoginWatchdog();
-        setLoginBusy(false);
+        hideAutoLoginOverlay?.();
+        stopAutoLoginWatchdog?.();
+        setLoginBusy?.(false);
         loggingIn = false;
       }
     });
@@ -168,6 +171,57 @@
       }
     });
   }
+
+  (function () {
+    try {
+      var d = document, root = d.documentElement;
+  
+      // 1) 動態注入：開機時隱藏 App 與登入頁
+      if (!d.getElementById('boot-guard-style')) {
+        var s = d.createElement('style');
+        s.id = 'boot-guard-style';
+        s.textContent =
+          'html.booting .container{display:none!important}' +
+          'html.booting #loginPage{display:none!important}';
+        d.head.appendChild(s);
+      }
+      root.classList.add('booting'); // 先蓋住畫面
+  
+      // 2) 快切寬限（可選）：若前頁設了 fast_switch=1 就拉長到 800ms
+      var fast = sessionStorage.getItem('fast_switch') === '1';
+      sessionStorage.removeItem('fast_switch');
+      var graceMs = fast ? 800 : 400;
+  
+      var released = false;
+      function releaseOnce() {
+        if (released) return;
+        released = true;
+        root.classList.remove('booting'); // 掀布，讓你原本的邏輯決定顯示哪一頁
+      }
+  
+      // 3) 等 Firebase Auth 就緒後，綁一次性觀察者；第一個事件就放行
+      function whenAuthReady(cb) {
+        if (window.firebase && firebase.auth) return cb(firebase.auth());
+        var t = setInterval(function () {
+          if (window.firebase && firebase.auth) {
+            clearInterval(t);
+            cb(firebase.auth());
+          }
+        }, 30);
+        setTimeout(function () { clearInterval(t); }, 5000); // 安全上限
+      }
+  
+      var fallback = setTimeout(releaseOnce, graceMs); // 還原太慢 → 顯示登入頁
+  
+      whenAuthReady(function (auth) {
+        var off = auth.onAuthStateChanged(function () {
+          try { off && off(); } catch (_) {}
+          clearTimeout(fallback);
+          releaseOnce(); // 一拿到使用者（或確定沒使用者）就揭布
+        });
+      });
+    } catch (_) {}
+  })();
 
   // PWA 啟動時，稍等一下讓存儲與網路就緒，並選擇安全的持久性
   async function pwaAuthWarmup() {
@@ -263,74 +317,20 @@
   const AUTH_TIMEOUT_MS = 6000;
   let authBusy = false;
   let authTimer = null;
+  let graceTimer = null;
 
   async function ensureSignedIn() {
-    if (authBusy) return;
-    authBusy = true;
-    setLoginBusy(true);
-
     roomPath = hydrateRoomPath();
-    if (!roomPath) {
-      authBusy = false;
-      setLoginBusy(false);
-      document.documentElement.classList.remove("show-app");
-      document.documentElement.classList.add("show-login");
-      return;
-    }
 
-    // 先暖機（PWA 冷啟較穩）
-    if (isStandalone) {
-      try {
-        await pwaAuthWarmup();
-      } catch (_) {}
-    } else {
-      try {
-        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-      } catch (_) {}
-    }
-    await waitOnline();
-
-    // ✅ 已經是登入狀態 → 直接進 app，完全不要啟動 overlay/watchdog
-    if (auth.currentUser) {
-      stopAutoLoginWatchdog();
-      hideAutoLoginOverlay();
+    if (auth.currentUser && roomPath) {
       document.documentElement.classList.add("show-app");
       document.documentElement.classList.remove("show-login");
-      // 進來後載資料（安全：多叫一次也只會覆蓋監聽）
       loadTasksFromFirebase();
       updateSectionOptions?.();
-      authBusy = false;
-      setLoginBusy(false);
-      maybeShowWelcome(); // ★ 新增這行
-      return;
-    }
-
-    // 走到這裡才表示「真的要做一次登入」
-    showAutoLoginOverlay();
-    startAutoLoginWatchdog();
-
-    try {
-      // 用 Promise.race 給 sign-in 自己一個超時，避免卡死
-      await Promise.race([
-        auth.signInAnonymously(),
-        new Promise((_, rej) =>
-          setTimeout(() => rej(new Error("sign-in timeout")), 7000)
-        ),
-      ]);
-
-      // ⚠️ 有些環境 resolve 會比 onAuthStateChanged 還快，先關 watchdog/overlay 以免 6~8 秒後又被救援誤觸發
-      stopAutoLoginWatchdog();
-      hideAutoLoginOverlay();
-      // UI 切換仍交給 onAuthStateChanged；就算它晚一點到也沒關係，overlay 已經關了
-    } catch (e) {
-      stopAutoLoginWatchdog();
-      hideAutoLoginOverlay();
-      alert("自動登入失敗：" + (e?.message || e));
+      maybeShowWelcome?.();
+    } else {
       document.documentElement.classList.remove("show-app");
       document.documentElement.classList.add("show-login");
-    } finally {
-      authBusy = false;
-      setLoginBusy(false);
     }
   }
 
@@ -1142,33 +1142,8 @@
   })();
 
   function hydrateRoomPath() {
-    let saved = null;
-
-    // 先讀 sessionStorage（同分頁切換最常用）
-    try {
-      saved =
-        sessionStorage.getItem("todo_room_info") ||
-        sessionStorage.getItem("todo_room_info_session");
-    } catch (_) {}
-
-    // 沒有再讀 localStorage（勾了自動登入的情況）
-    if (!saved) {
-      try {
-        saved =
-          localStorage.getItem("todo_room_info") ||
-          localStorage.getItem("todo_room_info_session");
-      } catch (_) {}
-    }
-
-    if (!saved) return null;
-
-    try {
-      const { username, password } = JSON.parse(saved);
-      if (!username || !password) return null;
-      return `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-    } catch (_) {
-      return null;
-    }
+    const u = auth?.currentUser || null;
+    return u && u.uid ? `rooms/${u.uid}` : null; // 直接用使用者 UID
   }
 
   function getViewerBody() {
@@ -2589,50 +2564,41 @@
   document
     .getElementById("login-btn")
     .addEventListener("click", async function () {
-      if (loggingIn) return; // 防止重複點
-      const username = document.getElementById("login-username").value.trim();
+      if (loggingIn) return;
+      const email = document.getElementById("login-username").value.trim(); // 當作 Email
       const password = document.getElementById("login-password").value.trim();
       const autoLogin = document.getElementById("auto-login").checked;
-
-      // 本次工作階段一定保存，讓不勾自動登入也能在本分頁 & 其他站內頁面使用
-      sessionStorage.setItem(
-        "todo_room_info_session",
-        JSON.stringify({ username, password })
-      );
-
-      roomPath = `rooms/${sanitizeKey(username)}-${sanitizeKey(password)}`;
-
-      // 只有勾選自動登入時，才長期保存到 localStorage
-      if (autoLogin) {
-        localStorage.setItem(
-          "todo_room_info",
-          JSON.stringify({ username, password })
-        );
-      } else {
-        localStorage.removeItem("todo_room_info");
-      }
 
       loggingIn = true;
       setLoginBusy(true);
 
       try {
-        // 先登出舊的匿名使用者（加在這裡！）
-        if (auth.currentUser) {
-          await auth.signOut();
+        // 勾自動登入 → LOCAL；否則 SESSION（這樣關分頁就登出）
+        await auth.setPersistence(
+          autoLogin
+            ? firebase.auth.Auth.Persistence.LOCAL
+            : firebase.auth.Auth.Persistence.SESSION
+        );
+
+        // 先嘗試登入；沒有帳號就自動註冊一個再登入
+        try {
+          await auth.signInWithEmailAndPassword(email, password);
+        } catch (e) {
+          if (e && e.code === "auth/user-not-found") {
+            await auth.createUserWithEmailAndPassword(email, password);
+          } else {
+            throw e;
+          }
         }
-        // 設一個 8 秒的保護時間，避免卡死
-        const loginPromise = auth.signInAnonymously();
-        await Promise.race([
-          loginPromise,
-          new Promise((_, rej) =>
-            setTimeout(() => rej(new Error("登入逾時，請重試")), 8000)
-          ),
-        ]);
-        // 不在這裡切畫面，等 onAuthStateChanged 自動切
+
+        // 可選：把舊版「username-password 房」資料搬到 uid 房（若需要）
+        tryMigrateFromLegacyRoom?.(email, password);
+
+        // 不用這裡切畫面，交給 onAuthStateChanged
       } catch (e) {
         loggingIn = false;
         setLoginBusy(false);
-        alert("登入失敗：" + (e && e.message ? e.message : e));
+        alert("登入失敗：" + (e?.message || e));
       }
     });
 
@@ -2643,8 +2609,8 @@
   // ✅ 最簡單的「一定會自動登入」版本
 
   // === 自動登入（統一走 ensureSignedIn） ===
-  document.addEventListener("DOMContentLoaded", ensureSignedIn);
-  window.addEventListener("pageshow", ensureSignedIn);
+  //document.addEventListener("DOMContentLoaded", ensureSignedIn);
+  //window.addEventListener("pageshow", ensureSignedIn);
   // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
   function loadTasksFromFirebase() {
     if (!roomPath || !auth.currentUser) return;
@@ -5468,7 +5434,150 @@
       } catch (_) {}
     }
   }
+  //-----------------------------------------------註冊
+  (function () {
+    function tip(msg) {
+      alert(msg);
+    }
 
+    // === 1) Auth Gate：只有 Firebase 有 user 才能看到主畫面 ===
+    function enforceAuthUI(user) {
+      const html = document.documentElement;
+      if (user) {
+        html.classList.add("show-app");
+        html.classList.remove("show-login");
+      } else {
+        html.classList.add("show-login");
+        html.classList.remove("show-app");
+      }
+    }
+    firebase.auth().onAuthStateChanged(enforceAuthUI);
+
+    // === 2) 新登入流程（帳號 -> email -> Firebase 登入） ===
+    async function signInWithUsernameAndPassword(username, password) {
+      const key = keyifyUsername(username);
+      if (!key) throw new Error("請輸入帳號");
+
+      const emailSnap = await firebase
+        .database()
+        .ref("loginEmails/" + key)
+        .get();
+      if (!emailSnap.exists()) throw new Error("帳號不存在");
+
+      const email = emailSnap.val();
+      await firebase.auth().signInWithEmailAndPassword(email, password);
+      return firebase.auth().currentUser.uid;
+    }
+
+    // === 3) 砍掉舊的 #login-btn 監聽，改綁新流程 ===
+    function wireSafeLogin() {
+      const oldBtn = document.getElementById("login-btn");
+      if (!oldBtn) return;
+
+      // 用 clone 移除所有既有監聽（包含 app.js 內綁的）
+      const newBtn = oldBtn.cloneNode(true);
+      newBtn.setAttribute("type", "button");
+      oldBtn.parentNode.replaceChild(newBtn, oldBtn);
+
+      const handler = async function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        ev.stopImmediatePropagation();
+
+        const u = (
+          document.getElementById("login-username")?.value || ""
+        ).trim();
+        const p = document.getElementById("login-password")?.value || "";
+        if (!u) return tip("請輸入帳號");
+        if (!p) return tip("請輸入密碼");
+
+        try {
+          const uid = await signInWithUsernameAndPassword(u, p);
+          // 統一路徑：rooms/{uid}（避免過去 user-pass 路徑）
+          window.roomPath = "rooms/" + uid;
+          // 這裡不手動切畫面，讓 onAuthStateChanged 決定
+        } catch (e) {
+          console.error("LOGIN ERROR:", e);
+          tip(e.message || "登入失敗，請確認帳號密碼");
+        }
+      };
+
+      newBtn.addEventListener("click", handler);
+
+      // Enter 快速登入
+      ["login-username", "login-password"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el)
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") newBtn.click();
+          });
+      });
+    }
+
+    // === 4) 啟動：確保任何「自動登入/直接切畫面」都被 Auth Gate 拉回 ===
+    window.addEventListener("load", function () {
+      // 若有自動登入 checkbox，避免誤觸發舊邏輯
+      try {
+        document.getElementById("auto-login")?.removeAttribute("checked");
+      } catch (_) {}
+      wireSafeLogin();
+
+      // 立刻依目前 auth 狀態做一次 UI 校正（防止其他腳本搶先切畫面）
+      enforceAuthUI(firebase.auth().currentUser || null);
+    });
+  })();
+
+  // 建立使用者的 rooms/{uid}（若不存在）
+  async function ensureUserHome(uid, username) {
+    const db = firebase.database();
+    const roomRef = db.ref("rooms/" + uid);
+    const userRef = db.ref("users/" + uid);
+
+    const snap = await roomRef.get();
+    if (!snap.exists()) {
+      const now = Date.now();
+      // 你想預放的結構（可自行調整）
+      await roomRef.set({
+        sections: {
+          inbox: { title: "未分類", order: 0 },
+        },
+        createdAt: now,
+      });
+    }
+    // 不是必須，但順手記一下最後登入時間
+    await userRef.update({
+      lastLoginAt: Date.now(),
+      username: username || undefined,
+    });
+  }
+
+  // 啟動：統一用 onAuthStateChanged（處理手動登入/自動登入/重整）
+  firebase.auth().onAuthStateChanged(async (user) => {
+    const html = document.documentElement;
+    if (user) {
+      const uid = user.uid;
+      window.roomPath = "rooms/" + uid;
+
+      // 取得登入用帳號（如果你有 username 映射）
+      let username = "";
+      try {
+        const un = await firebase
+          .database()
+          .ref("usernamesByUid/" + uid)
+          .get();
+        if (un.exists()) username = un.val();
+      } catch (_) {}
+
+      await ensureUserHome(uid, username);
+
+      html.classList.remove("show-login");
+      html.classList.add("show-app");
+      window.onAuthReady?.({ uid, username });
+    } else {
+      html.classList.remove("show-app");
+      html.classList.add("show-login");
+    }
+  });
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
     openModal,
