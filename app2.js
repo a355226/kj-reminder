@@ -2174,7 +2174,7 @@
         syncEditsIntoMemo?.(m);
       } catch (_) {}
       await openOrCreateDriveFolderForCurrentMemo(__gd_prewin);
- // ← 直接走 token+fetch 流派（和 MyTask 一樣）
+      // ← 直接走 token+fetch 流派（和 MyTask 一樣）
     } catch (e) {
       const msg = e?.result?.error?.message || e?.message || String(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
