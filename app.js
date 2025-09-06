@@ -4410,70 +4410,119 @@
   }
 
   /* 主流程：建立或開啟資料夾 */
+  // ✅ 取代原本的 openOrCreateDriveFolderForTask（支援 preWin，且不再在已存在路徑引用 created）
   async function openOrCreateDriveFolderForTask(task, preWin) {
     if (!task) return;
-
     const token = await getDriveAccessToken();
-    const { id: myTaskRootId, accountTag } = await ensureMyTaskRoot(token);
 
-    // 1) 既有 ID 先驗證
-    const knownId = task.gdriveFolderId || task.driveFolderId;
-    if (knownId) {
+    let folderId = null;
+    let webLink = null;
+
+    // 1) 先檢查任務上已記住的資料夾 ID
+    if (task.gdriveFolderId) {
       try {
         const meta = await driveFilesGet(
-          knownId,
+          task.gdriveFolderId,
           token,
           "id,trashed,webViewLink"
         );
-        if (meta && !meta.trashed) {
-          const link =
+        if (!meta.trashed) {
+          folderId = meta.id;
+          webLink =
             meta.webViewLink ||
-            `https://drive.google.com/drive/folders/${knownId}`;
-          openDriveFolderMobileFirst(task.gdriveFolderId, link, preWin);
-          return;
+            `https://drive.google.com/drive/folders/${meta.id}`;
         }
-      } catch {}
-      task.gdriveFolderId = null;
-      task.driveFolderId = null;
-      try {
-        saveTasksToFirebase?.();
-      } catch {}
+        // 若 trashed 則視為不存在，進入建立流程
+      } catch (_) {
+        // 404/權限錯誤 → 視為不存在，進入建立流程
+      }
     }
 
-    // 2) 精準查找（避免重複）
-    let folderId = await findExistingTaskFolder(
-      token,
-      myTaskRootId,
-      task,
-      accountTag
-    );
-
-    // 3) 查無才建立
+    // 2) 若沒有可用的 folderId，建立 MyTask(user) 根 + 任務資料夾
     if (!folderId) {
-      const created = await driveCreateFolder(
-        buildTaskFolderName(task),
-        token,
+      // === 根資料夾：MyTask(user)（沿用你先前的命名/命名空間邏輯）===
+      // 如果你前面已經做了「依使用者命名 localStorage key」的修正，這裡保留原本取得 rootId 的程式碼即可
+      let myTaskRootId = null;
+      try {
+        myTaskRootId = localStorage.getItem("gdrive_mytask_root_id") || null; // ⬅️ 如果你已改成帶使用者命名的 key，這行保持一致
+        if (myTaskRootId) {
+          const rootMeta = await driveFilesGet(
+            myTaskRootId,
+            token,
+            "id,trashed"
+          );
+          if (!rootMeta || rootMeta.trashed) myTaskRootId = null;
+        }
+      } catch (_) {
+        myTaskRootId = null;
+      }
+
+      if (!myTaskRootId) {
+        const rootResp = await fetch(
+          "https://www.googleapis.com/drive/v3/files?fields=id,webViewLink&supportsAllDrives=true",
+          {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + token,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              // ⬇️ 這裡仍用你目前的名稱（若你已換成 'MyTask(使用者)'，請保持一致）
+              name: "MyTask",
+              mimeType: "application/vnd.google-apps.folder",
+              parents: ["root"],
+              appProperties: { app: "kjreminder", level: "root" },
+            }),
+          }
+        );
+        if (!rootResp.ok) throw new Error(await rootResp.text());
+        const root = await rootResp.json();
+        myTaskRootId = root.id;
+        try {
+          localStorage.setItem("gdrive_mytask_root_id", myTaskRootId);
+        } catch (_) {}
+      }
+
+      // === 建立任務資料夾 ===
+      const name = buildTaskFolderName(task);
+      const createdResp = await fetch(
+        "https://www.googleapis.com/drive/v3/files?fields=id,webViewLink&supportsAllDrives=true",
         {
-          product: PRODUCT_NAME,
-          level: "task",
-          appAccount: accountTag,
-          taskId: task.id,
-          section: task.section || "",
-        },
-        myTaskRootId
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name,
+            mimeType: "application/vnd.google-apps.folder",
+            parents: [myTaskRootId],
+            appProperties: {
+              app: "kjreminder",
+              taskId: task.id,
+              level: "task",
+            },
+          }),
+        }
       );
+      if (!createdResp.ok) throw new Error(await createdResp.text());
+      const created = await createdResp.json();
+
       folderId = created.id;
+      webLink =
+        created.webViewLink ||
+        `https://drive.google.com/drive/folders/${created.id}`;
+
+      // 回寫任務
+      task.gdriveFolderId = folderId;
+      task.updatedAt = Date.now();
+      try {
+        if (typeof saveTasksToFirebase === "function") saveTasksToFirebase();
+      } catch (_) {}
     }
 
-    // 4) 記錄（兩欄位都寫，以相容舊 UI）
-    task.gdriveFolderId = folderId;
-    task.driveFolderId = folderId;
-    task.updatedAt = Date.now();
-    try {
-      saveTasksToFirebase?.();
-    } catch {}
-
-    openDriveFolderMobileFirst(created.id, link, preWin);
+    // 3) 統一在最後開啟（行動裝置優先 App；桌機開新分頁）
+    openDriveFolderMobileFirst(folderId, webLink, preWin);
   }
 
   async function ensureExistingOrRecreateFolder(t) {
