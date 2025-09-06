@@ -1909,7 +1909,7 @@
           if (m) {
             const id = await ensureExistingOrRecreateFolder(m);
             updateDriveButtonState(m);
-            openDriveFolderWeb(id, __gd_prewin);
+            openDriveFolderMobileFirst(id, null, __gd_prewin);
           }
         } finally {
           postOpen.clear();
@@ -2173,7 +2173,8 @@
       try {
         syncEditsIntoMemo?.(m);
       } catch (_) {}
-      await openOrCreateDriveFolderForCurrentMemo(); // ← 直接走 token+fetch 流派（和 MyTask 一樣）
+      await openOrCreateDriveFolderForCurrentMemo(__gd_prewin);
+ // ← 直接走 token+fetch 流派（和 MyTask 一樣）
     } catch (e) {
       const msg = e?.result?.error?.message || e?.message || String(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
@@ -2210,7 +2211,7 @@
               if (m) {
                 const id = await ensureExistingOrRecreateFolder(m);
                 updateDriveButtonState(m);
-                openDriveFolderWeb(id, __gd_prewin);
+                openDriveFolderMobileFirst(id, null, __gd_prewin);
               }
             } finally {
               postOpen.clear();
@@ -2341,7 +2342,7 @@
   }
 
   /* ✅ 新增：行動裝置優先開 Google Drive App，桌機走網頁 */
-  function openDriveFolderMobileFirst(folderId, webLink) {
+  function openDriveFolderMobileFirst(folderId, webLink, preWin) {
     const webUrl =
       webLink || `https://drive.google.com/drive/folders/${folderId}`;
     const ua = (navigator.userAgent || "").toLowerCase();
@@ -2351,52 +2352,68 @@
       ((navigator.userAgent || "").includes("Macintosh") &&
         navigator.maxTouchPoints > 1);
 
+    const iosSchemeUrl = `googledrive://${webUrl}`;
+    const androidIntentUrl =
+      `intent://drive.google.com/drive/folders/${folderId}` +
+      `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+
+    const usePreWin = (url) => {
+      try {
+        if (preWin && !preWin.closed) {
+          preWin.location.href = url;
+          setTimeout(() => {
+            try {
+              preWin.close();
+            } catch (_) {}
+          }, 1500);
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    };
+
     if (isAndroid) {
-      // Android 用 intent 直達 Drive App
-      const intentUrl =
-        `intent://drive.google.com/drive/folders/${folderId}` +
-        `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
-      try {
-        window.location.href = intentUrl;
-      } catch (_) {}
+      if (!usePreWin(androidIntentUrl)) window.location.href = androidIntentUrl;
       return;
     }
-
     if (isIOS) {
-      // iOS 用自訂 scheme 叫醒 Drive，失敗再回退到網頁
-      const iosUrl = `googledrive://${webUrl}`;
-      try {
-        window.location.href = iosUrl;
-      } catch (_) {}
-      setTimeout(() => {
+      // PWA 直接換到 scheme，避免殘留空白分頁
+      const isPWA = !!(
+        window.matchMedia?.("(display-mode: standalone)")?.matches ||
+        navigator.standalone
+      );
+      if (isPWA) {
         try {
-          window.location.href = webUrl;
+          window.location.href = iosSchemeUrl;
         } catch (_) {}
-      }, 1200);
+        return;
+      }
+      if (!usePreWin(iosSchemeUrl)) window.location.href = iosSchemeUrl;
       return;
     }
 
-    // 桌機：開網頁版
+    // 桌機：開新分頁
     try {
-      const w = window.open(webUrl, "_blank");
-      w?.focus?.();
+      window.open(webUrl, "_blank")?.focus?.();
     } catch (_) {
-      try {
-        window.location.href = webUrl;
-      } catch (_) {}
+      window.location.href = webUrl;
     }
   }
 
   // 核心：開啟或建立（若被刪/丟垃圾桶 → 重建）
   // 用「token + fetch」流派，和 MyTask 完全同款；不再用 ensureFolderPath / files.list
-  async function openOrCreateDriveFolderForCurrentMemo() {
+  // ✅ 與 MyTask 同步：統一用 folderId / webLink，最後只開一次，並支援 preWin
+  async function openOrCreateDriveFolderForCurrentMemo(preWin) {
     const m = getCurrentDetailMemo();
     if (!m) return;
 
     const token = await getDriveAccessToken();
     const { id: myMemoRootId, accountTag } = await ensureMyMemoRoot(token);
 
-    // 已有 id → 驗證並直開
+    let folderId = null;
+    let webLink = null;
+
+    // 1) 有舊 ID → 驗證可用就直接開
     const knownId = m.gdriveFolderId || m.driveFolderId;
     if (knownId) {
       try {
@@ -2406,26 +2423,27 @@
           "id,trashed,webViewLink"
         );
         if (meta && !meta.trashed) {
-          const link =
+          folderId = meta.id;
+          webLink =
             meta.webViewLink ||
-            `https://drive.google.com/drive/folders/${knownId}`;
-          openDriveFolderMobileFirst(knownId, link);
-          return;
+            `https://drive.google.com/drive/folders/${meta.id}`;
         }
-      } catch {
-        /* fallthrough to search/create */
+      } catch (_) {
+        // 404/權限 → 當作不存在
       }
     }
 
-    // 沒有/失效 → 先「精準查找」是否已存在
-    let folderId = await findExistingMemoFolder(
-      token,
-      myMemoRootId,
-      m,
-      accountTag
-    );
+    // 2) 沒有/失效 → 精準找（appProperties）
+    if (!folderId) {
+      folderId = await findExistingMemoFolder(
+        token,
+        myMemoRootId,
+        m,
+        accountTag
+      );
+    }
 
-    // 查無 → 建立在 root 底下
+    // 3) 仍沒有 → 建立
     if (!folderId) {
       const name = buildMemoFolderName(m);
       const created = await driveCreateFolder(
@@ -2441,18 +2459,20 @@
         myMemoRootId
       );
       folderId = created.id;
+      webLink =
+        created.webViewLink ||
+        `https://drive.google.com/drive/folders/${created.id}`;
     }
 
-    // 記錄（兩欄位都寫，避免 UI 判斷落空）
+    // 4) 回寫（兩個欄位都寫，維持舊版相容）
     m.gdriveFolderId = folderId;
     m.driveFolderId = folderId;
     try {
       window.saveMemos?.();
-    } catch {}
+    } catch (_) {}
 
-    // 開啟
-    const link = `https://drive.google.com/drive/folders/${folderId}`;
-    openDriveFolderMobileFirst(folderId, link);
+    // 5) 最後只開一次（手機優先 App；桌機新分頁）
+    openDriveFolderMobileFirst(folderId, webLink, preWin ?? __gd_prewin);
   }
 
   // 讓詳情畫面出現一顆 GDrive 按鈕（只在非唯讀時顯示）
