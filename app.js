@@ -2795,6 +2795,9 @@
 
     closeModal("logoutModal");
     closeModal("moreModal"); // 關掉「⋯」選單
+    try {
+      localStorage.removeItem("gdrive_mytask_root_id");
+    } catch {}
   }
 
   //快取
@@ -4879,7 +4882,6 @@
     return resp?.result?.files?.[0]?.id || null;
   }
 
-  // 找任何舊 root（名字是 "MyTask"）
   async function findAnyLegacyRootId() {
     const resp = await gapi.client.drive.files.list({
       q: [
@@ -4889,11 +4891,14 @@
         "trashed = false",
       ].join(" and "),
       fields: "files(id,name,appProperties)",
-      pageSize: 1,
+      pageSize: 10,
       includeItemsFromAllDrives: true,
       supportsAllDrives: true,
     });
-    return resp?.result?.files?.[0]?.id || null;
+    const files = resp?.result?.files || [];
+    const legacy =
+      files.find((f) => !(f.appProperties || {}).appAccount) || files[0];
+    return legacy?.id || null;
   }
 
   // 舊 root 升級改名 + 補 appProperties
@@ -4923,48 +4928,75 @@
     return legacyId;
   }
 
-  // 確保 MyTask(<帳號>) 根（包含升級舊 "MyTask" 與 key 遷移）
   async function ensureMyTaskRoot(token) {
     const accountTag = sanitizeForName(getAppAccountLabel());
     const LS_KEY_NEW = `gdrive_mytask_root_id_${accountTag}`;
-    const LS_KEY_OLD = `gdrive_mytask_root_id`; // 舊版未帶帳號的 key
+    const LS_KEY_OLD = `gdrive_mytask_root_id`; // 舊版 generic key（只在驗證通過或可升級時才用）
 
-    // 1) 先讀新 key → 不行再讀舊 key
-    let id =
-      localStorage.getItem(LS_KEY_NEW) ||
-      localStorage.getItem(LS_KEY_OLD) ||
-      null;
-    if (id) {
+    async function validateOwnership(id) {
+      if (!id) return null;
       try {
         const meta = await driveFilesGet(
           id,
           token,
           "id,trashed,name,appProperties"
         );
-        if (!meta || meta.trashed) id = null;
-        // 名稱仍是 "MyTask" → 直接升級
-        if (meta && meta.name === "MyTask") {
-          try {
-            id = await upgradeLegacyRoot(token, id, accountTag);
-          } catch {}
+        if (!meta || meta.trashed) return null;
+        const ap = meta.appProperties || {};
+        const owner = ap.appAccount || null;
+        const prod = ap.product;
+        const app = ap.app;
+
+        // 已升級且屬於當前帳號
+        if (
+          owner === accountTag &&
+          prod === PRODUCT_NAME &&
+          app === PRODUCT_APP
+        ) {
+          return { id: meta.id, status: "owned" };
         }
+        // 仍是舊 root：名字是 "MyTask" 且沒有 owner → 允許升級
+        if (meta.name === "MyTask" && !owner) {
+          return { id: meta.id, status: "legacy" };
+        }
+        // 不屬於當前帳號 → 忽略
+        return null;
       } catch {
-        id = null;
+        return null;
       }
     }
 
-    // 2) Drive 精準查找 MyTask(<帳號>)
-    if (!id) id = await findExistingRootByAccount(accountTag);
+    let id = null;
 
-    // 3) 找任何舊的 "MyTask" → 升級
-    if (!id) {
-      try {
-        const legacyId = await findAnyLegacyRootId();
-        if (legacyId) id = await upgradeLegacyRoot(token, legacyId, accountTag);
-      } catch {}
+    // 1) 先看「當前帳號」的快取，且必須驗證為 owned
+    const candNew = await validateOwnership(localStorage.getItem(LS_KEY_NEW));
+    if (candNew && candNew.status === "owned") {
+      id = candNew.id;
     }
 
-    // 4) 都沒有 → 建立新的 root
+    // 2) 沒找到 → 看舊 generic key，但僅在驗證為 owned 或 legacy 才接受
+    if (!id) {
+      const candOld = await validateOwnership(localStorage.getItem(LS_KEY_OLD));
+      if (candOld) {
+        if (candOld.status === "legacy") {
+          // 舊 root 直接升級改名 + 補 appProperties
+          id = await upgradeLegacyRoot(token, candOld.id, accountTag);
+        } else if (candOld.status === "owned") {
+          id = candOld.id;
+        }
+      }
+    }
+
+    // 3) 仍沒有 → Drive 精準查 MyTask(當前帳號)
+    if (!id) id = await findExistingRootByAccount(accountTag);
+
+    // 4) 還是沒有 → 找任何「未升級」的 MyTask（名字剛好是 MyTask），升級之
+    if (!id) {
+      const legacyId = await findAnyLegacyRootId();
+      if (legacyId) id = await upgradeLegacyRoot(token, legacyId, accountTag);
+    }
+
+    // 5) 都沒有 → 建立新的 MyTask(帳號)
     if (!id) {
       const created = await driveCreateFolder(
         buildRootFolderName(accountTag),
@@ -4975,10 +5007,17 @@
       id = created.id;
     }
 
+    // 6) 僅寫「分帳號」的快取；同時清掉舊 generic key（避免之後再誤用）
     try {
       localStorage.setItem(LS_KEY_NEW, id);
-      localStorage.setItem(LS_KEY_OLD, id); // 回寫舊 key 以相容舊程式
+      if (
+        localStorage.getItem(LS_KEY_OLD) &&
+        localStorage.getItem(LS_KEY_OLD) !== id
+      ) {
+        localStorage.removeItem(LS_KEY_OLD);
+      }
     } catch {}
+
     return { id, accountTag };
   }
 
