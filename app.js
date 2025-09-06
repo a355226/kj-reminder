@@ -4410,7 +4410,7 @@
   }
 
   /* 主流程：建立或開啟資料夾 */
-  async function openOrCreateDriveFolderForTask(task) {
+  async function openOrCreateDriveFolderForTask(task, preWin) {
     if (!task) return;
 
     const token = await getDriveAccessToken();
@@ -4429,7 +4429,7 @@
           const link =
             meta.webViewLink ||
             `https://drive.google.com/drive/folders/${knownId}`;
-          openDriveFolderMobileFirst(knownId, link);
+          openDriveFolderMobileFirst(task.gdriveFolderId, link, preWin);
           return;
         }
       } catch {}
@@ -4473,10 +4473,7 @@
       saveTasksToFirebase?.();
     } catch {}
 
-    openDriveFolderMobileFirst(
-      folderId,
-      `https://drive.google.com/drive/folders/${folderId}`
-    );
+    openDriveFolderMobileFirst(created.id, link, preWin);
   }
 
   async function ensureExistingOrRecreateFolder(t) {
@@ -4706,7 +4703,8 @@
   }
 
   /* ✅ 新增：行動裝置優先開 Google Drive App，桌機走網頁 */
-  function openDriveFolderMobileFirst(folderId, webLink) {
+  // ⬅️ 取代原本的版本（多了 preWin）
+  function openDriveFolderMobileFirst(folderId, webLink, preWin) {
     const webUrl =
       webLink || `https://drive.google.com/drive/folders/${folderId}`;
     const ua = (navigator.userAgent || "").toLowerCase();
@@ -4716,32 +4714,57 @@
       ((navigator.userAgent || "").includes("Macintosh") &&
         navigator.maxTouchPoints > 1);
 
-    if (isAndroid) {
-      // Android 用 intent 直達 Drive App
-      const intentUrl =
-        `intent://drive.google.com/drive/folders/${folderId}` +
-        `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+    const usePreWin = (url) => {
       try {
-        window.location.href = intentUrl;
+        if (preWin && !preWin.closed) {
+          preWin.location.href = url;
+          setTimeout(() => {
+            try {
+              preWin.close();
+            } catch (_) {}
+          }, 1500);
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    };
+
+    if (isAndroid) {
+      // Android 直接喚醒 App（不改變本頁）
+      try {
+        window.location.href =
+          `intent://drive.google.com/drive/folders/${folderId}` +
+          `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
       } catch (_) {}
       return;
     }
 
     if (isIOS) {
-      // iOS 用自訂 scheme 叫醒 Drive，失敗再回退到網頁
       const iosUrl = `googledrive://${webUrl}`;
+
+      if (isIOSPWA) {
+        // ✅ iOS PWA：只喚醒 App，不做網頁後備，避免把 PWA 本頁導走
+        try {
+          window.location.href = iosUrl;
+        } catch (_) {}
+        return;
+      }
+
+      // iOS Safari（非 PWA）：喚醒 App；1.2s 後若需要再用「預備分頁」開網頁，不污染本頁
       try {
         window.location.href = iosUrl;
       } catch (_) {}
       setTimeout(() => {
-        try {
-          window.location.href = webUrl;
-        } catch (_) {}
+        if (!usePreWin(webUrl)) {
+          try {
+            window.open(webUrl, "_blank");
+          } catch (_) {}
+        }
       }, 1200);
       return;
     }
 
-    // 桌機：開網頁版
+    // 桌機：新分頁開網頁
     try {
       const w = window.open(webUrl, "_blank");
       w?.focus?.();
@@ -4793,11 +4816,24 @@
     btn.style.display = isReadonly ? "none" : ""; // 完成視圖（唯讀）時隱藏
     btn.onclick = async () => {
       try {
-        __gd_userGesture = true; // 你原本的旗標，保留
+        __gd_userGesture = true;
         try {
           syncEditsIntoTask?.(task);
         } catch (_) {}
-        await openOrCreateDriveFolderForTask(task);
+
+        // iOS Safari（非 PWA）先開「預備分頁」，避免之後的 window.open 被擋、也避免把本頁導走
+        let preWin = null;
+        const isiOSSafari =
+          /iPad|iPhone|iPod/.test(navigator.userAgent || "") && !isIOSPWA;
+        if (isiOSSafari) {
+          try {
+            preWin = window.open("", "_blank");
+          } catch (_) {
+            preWin = null;
+          }
+        }
+
+        await openOrCreateDriveFolderForTask(task, preWin); // ⬅️ 多傳 preWin
       } catch (e) {
         alert("Google Drive 動作失敗：" + (e?.message || e));
       } finally {
