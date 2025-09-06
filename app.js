@@ -4729,21 +4729,11 @@ if (!canPrompt) return false; // 沒使用者手勢就不彈窗
 /* ✅ 與 MyMemo 對齊的版本：iOS Safari 用 preWin 導向 scheme，PWA 才用本頁導向 */
 function openDriveFolderMobileFirst(folderId, webLink, preWin) {
   const webUrl = webLink || `https://drive.google.com/drive/folders/${folderId}`;
-
   const ua = (navigator.userAgent || "").toLowerCase();
   const isAndroid = /android/.test(ua);
   const isIOS =
     /iphone|ipad|ipod/.test(ua) ||
     ((navigator.userAgent || "").includes("Macintosh") && navigator.maxTouchPoints > 1);
-
-  const ensurePreWin = () => {
-    let w = null;
-    try { w = preWin && !preWin.closed ? preWin : window.open("", "_blank"); } catch {}
-    return w;
-  };
-  const safeClose = (w, ms = 2000) => {
-    setTimeout(() => { try { w && !w.closed && w.close(); } catch {} }, ms);
-  };
 
   if (isAndroid) {
     try {
@@ -4755,33 +4745,25 @@ function openDriveFolderMobileFirst(folderId, webLink, preWin) {
   }
 
   if (isIOS) {
+    const iosUrl = `googledrive://${webUrl}`;
+
     if (isIOSPWA) {
-      // PWA：本頁直接 scheme（你原本就穩）
-      try { window.location.href = `googledrive://folder/${folderId}`; } catch {}
+      // PWA：維持本頁直接跳（你原本就穩）
+      try { window.location.href = iosUrl; } catch {}
       return;
     }
 
-    // iOS Safari：全部放在「預備分頁」中執行（保留 user-gesture），用「scheme 優先」以促發系統彈窗
-    const w = ensurePreWin();
-    if (!w) { // 預備分頁被擋，最後 fallback：本頁直接 scheme
-      try { window.location.href = `googledrive://folder/${folderId}`; } catch {}
-      return;
-    }
+    // ✅ iOS Safari（非 PWA）：用【目前頁面】導向 scheme → 會出現「是否開啟 App？」的系統詢問
+    try { window.location.href = iosUrl; } catch {}
 
-    // ① 先試（多數情況可觸發「是否開啟 App？」）
-    try { w.location.href = `googledrive://folder/${folderId}`; } catch {}
-
-    // ② 少數機型/版本吃這種寫法
-    setTimeout(() => { try { w.location.href = `googledrive://drive.google.com/drive/folders/${folderId}`; } catch {} }, 220);
-
-    // ③ 最後才給 Universal Link（避免一開始就無提示直開）
-    setTimeout(() => { try { w.location.href = webUrl; } catch {} }, 500);
-
-    safeClose(w, 2200);
+    // ⛑ 後備：若沒裝 App 或被攔截，延遲開網頁版（避免一開始就走 https 導致直接開 App 而「不詢問」）
+    setTimeout(() => {
+      try { window.open(webUrl, "_blank"); } catch {}
+    }, 1200);
     return;
   }
 
-  // 桌機：新分頁開網頁
+  // 桌機
   try { window.open(webUrl, "_blank")?.focus?.(); }
   catch (_) { try { window.location.href = webUrl; } catch {} }
 }
@@ -4828,27 +4810,20 @@ function openDriveFolderMobileFirst(folderId, webLink, preWin) {
 btn.onclick = async () => {
   try {
     __gd_userGesture = true;
-    try { syncEditsIntoTask?.(task); } catch {}
+    try { syncEditsIntoTask?.(task); } catch (_) {}
 
-    // iOS Safari（非 PWA）：先開預備分頁並標記 postOpen（15 秒）
-    const isiOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent || "") && !isIOSPWA;
-    if (isiOSSafari) {
-      try { __gd_prewin = window.open("", "_blank"); } catch { __gd_prewin = null; }
-      postOpen?.set?.(); // 若你有前面那組 postOpen 物件
-    } else {
-      __gd_prewin = null;
-      postOpen?.clear?.();
-    }
+    // ❌ 不再在 iOS Safari 建 preWin（這是造成不詢問或不穩的主因）
+    __gd_prewin = null; 
+    // 若之前有 postOpen 機制，這裡也不要 set，避免走預備分頁邏輯
+    try { postOpen?.clear?.(); } catch (_) {}
 
-    // 走「精準查/驗證/建立」那條（會把 preWin 下傳到 openDriveFolderMobileFirst）
-    await openOrCreateDriveFolderForTask(task, __gd_prewin);
+    // 直接走主流程，第二個參數給 null
+    await openOrCreateDriveFolderForTask(task, null);
     updateDriveButtonState(task);
   } catch (e) {
     alert("Google Drive 動作失敗：" + (e?.message || e));
   } finally {
     __gd_userGesture = false;
-    postOpen?.clear?.();
-    __gd_prewin = null;
   }
 };
   }
