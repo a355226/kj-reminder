@@ -4707,76 +4707,56 @@
 
   /* ✅ 新增：行動裝置優先開 Google Drive App，桌機走網頁 */
   // ⬅️ 取代原本的版本（多了 preWin）
-  function openDriveFolderMobileFirst(folderId, webLink, preWin) {
-    const webUrl =
-      webLink || `https://drive.google.com/drive/folders/${folderId}`;
-    const ua = (navigator.userAgent || "").toLowerCase();
-    const isAndroid = /android/.test(ua);
-    const isIOS =
-      /iphone|ipad|ipod/.test(ua) ||
-      ((navigator.userAgent || "").includes("Macintosh") &&
-        navigator.maxTouchPoints > 1);
+/* ✅ 與 MyMemo 對齊的版本：iOS Safari 用 preWin 導向 scheme，PWA 才用本頁導向 */
+function openDriveFolderMobileFirst(folderId, webLink, preWin) {
+  const webUrl = webLink || `https://drive.google.com/drive/folders/${folderId}`;
+  const ua = (navigator.userAgent || "").toLowerCase();
+  const isAndroid = /android/.test(ua);
+  const isIOS =
+    /iphone|ipad|ipod/.test(ua) ||
+    ((navigator.userAgent || "").includes("Macintosh") && navigator.maxTouchPoints > 1);
 
-    const usePreWin = (url) => {
-      try {
-        if (preWin && !preWin.closed) {
-          preWin.location.href = url;
-          setTimeout(() => {
-            try {
-              preWin.close();
-            } catch (_) {}
-          }, 1500);
-          return true;
-        }
-      } catch (_) {}
-      return false;
-    };
+  const iosSchemeUrl = `googledrive://${webUrl}`;
+  const androidIntentUrl =
+    `intent://drive.google.com/drive/folders/${folderId}` +
+    `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
 
-    if (isAndroid) {
-      // Android 直接喚醒 App（不改變本頁）
-      try {
-        window.location.href =
-          `intent://drive.google.com/drive/folders/${folderId}` +
-          `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
-      } catch (_) {}
-      return;
-    }
-
-    if (isIOS) {
-      const iosUrl = `googledrive://${webUrl}`;
-
-      if (isIOSPWA) {
-        // ✅ iOS PWA：只喚醒 App，不做網頁後備，避免把 PWA 本頁導走
-        try {
-          window.location.href = iosUrl;
-        } catch (_) {}
-        return;
-      }
-
-      // iOS Safari（非 PWA）：喚醒 App；1.2s 後若需要再用「預備分頁」開網頁，不污染本頁
-      try {
-        window.location.href = iosUrl;
-      } catch (_) {}
-      setTimeout(() => {
-        if (!usePreWin(webUrl)) {
-          try {
-            window.open(webUrl, "_blank");
-          } catch (_) {}
-        }
-      }, 1200);
-      return;
-    }
-
-    // 桌機：新分頁開網頁
+  const usePreWin = (url) => {
     try {
-      const w = window.open(webUrl, "_blank");
-      w?.focus?.();
-    } catch (_) {
-      try {
-        window.location.href = webUrl;
-      } catch (_) {}
-    }
+      if (preWin && !preWin.closed) {
+        preWin.location.href = url;
+        setTimeout(() => {
+          try { preWin.close(); } catch (_) {}
+        }, 1500);
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  };
+
+  if (isAndroid) {
+    // Android：直接喚醒 App（不改變本頁）
+    try { window.location.href = androidIntentUrl; } catch (_) {}
+    return;
   }
+
+  if (isIOS) {
+    if (isIOSPWA) {
+      // iOS PWA：直接用本頁導向 scheme，避免留下空白分頁
+      try { window.location.href = iosSchemeUrl; } catch (_) {}
+      return;
+    }
+    // iOS Safari（非 PWA）：用「預備分頁」去導向 scheme，確保系統彈框
+    if (!usePreWin(iosSchemeUrl)) {
+      try { window.location.href = iosSchemeUrl; } catch (_) {}
+    }
+    return;
+  }
+
+  // 桌機：開網頁版（新分頁）
+  try { window.open(webUrl, "_blank")?.focus?.(); }
+  catch (_) { try { window.location.href = webUrl; } catch (_) {} }
+}
 
   // 核心：開啟或建立（若被刪/丟垃圾桶 → 重建）
   async function openOrCreateDriveFolderForCurrentTask() {
