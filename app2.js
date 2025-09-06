@@ -32,8 +32,8 @@
   let memoMonthFilterRemoved = "all";
   let pendingCategoryMode = "active"; // 'active' | 'removed'
   let __gd_userGesture = false;
-  
-    //快取
+
+  //快取
   const v = Date.now(); // 每次刷新都帶入唯一值，避開快取
   document
     .querySelectorAll('link[rel="icon"], link[rel="manifest"]')
@@ -1754,10 +1754,8 @@
   /* 權限：僅限本 App 建立/讀取 + 讀取檔名 */
   const GD_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
   ].join(" ");
-
-  /* 根資料夾改為 MyMemo */
-  const ROOT_APP_FOLDER = "MyMemo";
 
   /* --- 內部狀態 --- */
   let __gapiReady = false;
@@ -1939,7 +1937,11 @@
   function updateDriveButtonState(memoObj) {
     const btn = document.getElementById("gdriveBtn");
     if (!btn) return;
-    btn.classList.toggle("has-folder", !!(memoObj && memoObj.driveFolderId));
+    const hasId = !!(
+      memoObj &&
+      (memoObj.driveFolderId || memoObj.gdriveFolderId)
+    );
+    btn.classList.toggle("has-folder", hasId);
   }
 
   /* ---- Drive：資料夾工具 ---- */
@@ -2075,41 +2077,73 @@
 
   /* 若已有 ID，驗證存在；不存在則重建路徑 */
   async function ensureExistingOrRecreateFolder(m) {
-    if (m.driveFolderId) {
+    const token = await getDriveAccessToken();
+
+    if (m.gdriveFolderId) {
       try {
-        const r = await gapi.client.drive.files.get({
-          fileId: m.driveFolderId,
-          fields: "id, trashed",
-          supportsAllDrives: true,
-        });
-        if (r?.result?.id && !r.result.trashed) return m.driveFolderId;
+        const meta = await driveFilesGet(
+          m.gdriveFolderId,
+          token,
+          "id,trashed,webViewLink"
+        );
+        if (!meta.trashed) return m.gdriveFolderId;
       } catch (_) {
-        // 404/無權限 → 重建
+        // 視為不存在，走重建
       }
-      m.driveFolderId = null;
+      m.gdriveFolderId = null;
       try {
         window.saveMemos?.();
       } catch (_) {}
     }
-    const segs = [
-      ROOT_APP_FOLDER,
-      m.section || "未分類",
-      (m.title || "未命名").slice(0, 100),
-    ];
-    const newId = await ensureFolderPath(segs);
-    m.driveFolderId = newId;
+
+    // 確保 MyMemo 根（同 #3 的片段；抽成共用亦可）
+    let myMemoRootId = localStorage.getItem("gdrive_mymemo_root_id") || null;
+    if (myMemoRootId) {
+      try {
+        const rootMeta = await driveFilesGet(myMemoRootId, token, "id,trashed");
+        if (!rootMeta || rootMeta.trashed) myMemoRootId = null;
+      } catch (_) {
+        myMemoRootId = null;
+      }
+    }
+    if (!myMemoRootId) {
+      const root = await driveCreateFolder("MyMemo", token, {
+        app: "kjreminder",
+        level: "root",
+      });
+      myMemoRootId = root.id;
+      try {
+        localStorage.setItem("gdrive_mymemo_root_id", myMemoRootId);
+      } catch (_) {}
+    }
+
+    const name = buildMemoFolderName(m);
+    const created = await driveCreateFolder(
+      name,
+      token,
+      {
+        app: "kjreminder",
+        memoId: m.id,
+        level: "memo",
+        section: m.section || "",
+      },
+      myMemoRootId // ← 一樣指定 parent 到 MyMemo 根
+    );
+
+    m.gdriveFolderId = created.id;
+    m.driveFolderId = created.id; // ← 同步給 UI/舊流程使用
     try {
       window.saveMemos?.();
     } catch (_) {}
-    updateDriveButtonState(m);
-    return newId;
+    return created.id;
   }
 
   /* 僅開啟（若沒記錄就轉主流程建立） */
   function openCurrentMemoDriveFolder() {
     const m = getCurrentDetailMemo();
     if (!m) return;
-    if (m.driveFolderId) openDriveFolderWeb(m.driveFolderId);
+    const fid = m.driveFolderId || m.gdriveFolderId; // ← 兩個都支援
+    if (fid) openDriveFolderWeb(fid);
     else openOrCreateDriveFolderForCurrentMemo();
   }
 
@@ -2142,56 +2176,18 @@
     const m = getCurrentDetailMemo();
     if (!m) return;
 
-    // 在「已移除」檢視：只允許開啟既有，不新建
-    if (window.memoView === "removed") {
-      if (m.driveFolderId) {
-        openDriveFolderWeb(m.driveFolderId);
-      } else {
-        alert("此備忘在「已移除」檢視，僅能開啟既有資料夾。");
-      }
-      return;
-    }
-    __gd_userGesture = true;
     try {
-      const firstTime = localStorage.getItem("gdrive_consent_done") !== "1";
-      if (firstTime) {
-        // 首次授權一律立旗標，讓 ensureDriveAuth 完成後自動補跑開啟
-        postOpen.set();
-        if (!isIOSPWA) {
-          // 非 iOS PWA 才開預備分頁（提升喚起成功率）
-          try {
-            __gd_prewin = window.open("", "_blank");
-          } catch (_) {
-            __gd_prewin = null;
-          }
-        } else {
-          // iOS PWA 不開預備分頁，避免殘留空白頁
-          __gd_prewin = null;
-        }
-      } else {
-        // 非首次：不需要旗標與預備分頁
-        postOpen.clear();
-        __gd_prewin = null;
-      }
-
-      await ensureDriveAuth();
-      if (firstTime) return; // 交給 ensureDriveAuth 的補跑邏輯處理
-
-      const folderId = await ensureExistingOrRecreateFolder(m);
-      updateDriveButtonState(m);
-
-      openDriveFolderWeb(folderId, __gd_prewin);
-
-      postOpen.clear();
-      __gd_prewin = null;
+      __gd_userGesture = true; // 保留
+      try {
+        syncEditsIntoMemo?.(m);
+      } catch (_) {}
+      await openOrCreateDriveFolderForCurrentMemo(); // ← 直接走 token+fetch 流派（和 MyTask 一樣）
     } catch (e) {
-      postOpen.clear();
-      __gd_prewin = null;
-      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+      const msg = e?.result?.error?.message || e?.message || String(e);
       alert("Google 雲端硬碟動作失敗：" + msg);
       console.error("Drive error:", e);
     } finally {
-      __gd_userGesture = false; // ← 加這行：清旗標
+      __gd_userGesture = false;
     }
   }
 
@@ -2271,6 +2267,242 @@
     },
     false
   );
+
+  // === Google Drive (最小：drive.file) ===
+  const GOOGLE_OAUTH_CLIENT_ID =
+    "735593435771-otisn8depskof8vmvp6sp5sl9n3t5e25.apps.googleusercontent.com"; // ← 換成你的
+  let __driveAccessToken = null;
+
+  async function getDriveAccessToken() {
+    if (!window.google?.accounts?.oauth2) {
+      throw new Error("Google 登入模組尚未載入");
+    }
+    return new Promise((resolve, reject) => {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_OAUTH_CLIENT_ID,
+        scope: "https://www.googleapis.com/auth/drive.file",
+        prompt: "", // 曾同意就不跳
+        callback: (resp) => {
+          if (resp?.access_token) {
+            __driveAccessToken = resp.access_token;
+            resolve(__driveAccessToken);
+          } else reject(new Error("無法取得存取權"));
+        },
+      });
+      client.requestAccessToken();
+    });
+  }
+
+  // 只對「已知 id」讀取必要欄位（不列清單）
+  async function driveFilesGet(
+    fileId,
+    token,
+    fields = "id,trashed,webViewLink"
+  ) {
+    const r = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+        fileId
+      )}?fields=${encodeURIComponent(fields)}&supportsAllDrives=true`,
+      { headers: { Authorization: "Bearer " + token } }
+    );
+    if (r.status === 404) throw new Error("not_found");
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+
+  // 建立資料夾（名稱自訂；可帶 appProperties）
+  // 建立資料夾（名稱自訂；可帶 appProperties；✅ 支援 parentId）
+  async function driveCreateFolder(
+    name,
+    token,
+    appProps = {},
+    parentId = "root"
+  ) {
+    const meta = {
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      appProperties: Object.assign({ app: "kjreminder" }, appProps),
+      parents: parentId ? [parentId] : ["root"], // ← 關鍵：指定要建立在哪一層
+    };
+    const r = await fetch(
+      "https://www.googleapis.com/drive/v3/files?fields=id,webViewLink&supportsAllDrives=true",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(meta),
+      }
+    );
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+
+  // 任務資料夾命名（你可以按喜好調）
+  function buildMemoFolderName(memo) {
+    const parts = [];
+    if (memo.section) parts.push(`[${memo.section}]`);
+    if (memo.title) parts.push(memo.title);
+    if (memo.date) parts.push(memo.date);
+    return parts.filter(Boolean).join(" ");
+  }
+
+  /* ✅ 新增：行動裝置優先開 Google Drive App，桌機走網頁 */
+  function openDriveFolderMobileFirst(folderId, webLink) {
+    const webUrl =
+      webLink || `https://drive.google.com/drive/folders/${folderId}`;
+    const ua = (navigator.userAgent || "").toLowerCase();
+    const isAndroid = /android/.test(ua);
+    const isIOS =
+      /iphone|ipad|ipod/.test(ua) ||
+      ((navigator.userAgent || "").includes("Macintosh") &&
+        navigator.maxTouchPoints > 1);
+
+    if (isAndroid) {
+      // Android 用 intent 直達 Drive App
+      const intentUrl =
+        `intent://drive.google.com/drive/folders/${folderId}` +
+        `#Intent;scheme=https;package=com.google.android.apps.docs;end`;
+      try {
+        window.location.href = intentUrl;
+      } catch (_) {}
+      return;
+    }
+
+    if (isIOS) {
+      // iOS 用自訂 scheme 叫醒 Drive，失敗再回退到網頁
+      const iosUrl = `googledrive://${webUrl}`;
+      try {
+        window.location.href = iosUrl;
+      } catch (_) {}
+      setTimeout(() => {
+        try {
+          window.location.href = webUrl;
+        } catch (_) {}
+      }, 1200);
+      return;
+    }
+
+    // 桌機：開網頁版
+    try {
+      const w = window.open(webUrl, "_blank");
+      w?.focus?.();
+    } catch (_) {
+      try {
+        window.location.href = webUrl;
+      } catch (_) {}
+    }
+  }
+
+  // 核心：開啟或建立（若被刪/丟垃圾桶 → 重建）
+  // 用「token + fetch」流派，和 MyTask 完全同款；不再用 ensureFolderPath / files.list
+  async function openOrCreateDriveFolderForCurrentMemo() {
+    const m = getCurrentDetailMemo();
+    if (!m) return;
+
+    // 1) 拿 access token（沿用你檔案裡已有的 getDriveAccessToken）
+    const token = await getDriveAccessToken();
+
+    // 2) 確保「MyMemo」根資料夾（localStorage 快取 + 用 files.get 驗證存在）
+    let myMemoRootId = null;
+    try {
+      myMemoRootId = localStorage.getItem("gdrive_mymemo_root_id") || null;
+      if (myMemoRootId) {
+        const meta = await driveFilesGet(myMemoRootId, token, "id,trashed");
+        if (!meta || meta.trashed) myMemoRootId = null;
+      }
+    } catch (_) {
+      myMemoRootId = null;
+    }
+
+    if (!myMemoRootId) {
+      const root = await driveCreateFolder("MyMemo", token, {
+        app: "kjreminder",
+        level: "root",
+      });
+      myMemoRootId = root.id;
+      try {
+        localStorage.setItem("gdrive_mymemo_root_id", myMemoRootId);
+      } catch (_) {}
+    }
+
+    // 3) 若此 memo 已有資料夾 id → 只用 files.get 驗證；存在就直接開啟
+    if (m.gdriveFolderId) {
+      try {
+        const meta = await driveFilesGet(
+          m.gdriveFolderId,
+          token,
+          "id,trashed,webViewLink"
+        );
+        if (!meta.trashed) {
+          const link =
+            meta.webViewLink ||
+            `https://drive.google.com/drive/folders/${m.gdriveFolderId}`;
+          openDriveFolderMobileFirst(m.gdriveFolderId, link);
+          return;
+        }
+        // 被丟垃圾桶→視為不存在，下面重建
+      } catch (_) {
+        // 404 / 無權限→視為不存在，下面重建
+      }
+    }
+
+    // 4) 建立「此備忘」的資料夾到 MyMemo 根底下（不用任何 files.list）
+    // 4) 建立「此備忘」的資料夾到 MyMemo 根底下（不用任何 files.list）
+    const name = buildMemoFolderName(m);
+    const created = await driveCreateFolder(
+      name,
+      token,
+      {
+        app: "kjreminder",
+        memoId: m.id,
+        level: "memo",
+        section: m.section || "",
+      },
+      myMemoRootId // ← 關鍵：指定 parent
+    );
+
+    // 5) 記住 id 並存雲（兩個欄位都寫，避免 UI 讀不到）
+    m.gdriveFolderId = created.id;
+    m.driveFolderId = created.id; // ← 你的 updateDriveButtonState 讀這個
+    try {
+      window.saveMemos?.();
+    } catch (_) {}
+
+    // 6) 開啟（和 MyTask 一樣：行動裝置優先叫 App）
+    const link =
+      created.webViewLink ||
+      `https://drive.google.com/drive/folders/${created.id}`;
+    openDriveFolderMobileFirst(created.id, link);
+  }
+
+  // 讓詳情畫面出現一顆 GDrive 按鈕（只在非唯讀時顯示）
+  // 讓詳情畫面出現一顆 GDrive 按鈕（只在非唯讀時顯示）—樣式/擺放對齊 2.
+  function ensureDriveButtonsInlineUI(memoObj) {
+    ensureDriveGlowCss(); // 可重用
+    const row = document.querySelector("#detailForm .inline-row");
+    if (!row) return;
+
+    let btn = row.querySelector("#gdriveBtn");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.id = "gdriveBtn";
+      btn.type = "button";
+      btn.title = "建立/開啟此備忘的雲端資料夾";
+      btn.setAttribute("aria-label", "Google 雲端硬碟");
+      btn.style.cssText =
+        "width:30px;height:30px;aspect-ratio:1/1;padding:0;" +
+        "border:1px solid #ddd;border-radius:6px;" +
+        "background:#f9f9f9 url('https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/drive.png') no-repeat center/18px 18px;" +
+        "display:inline-flex;align-items:center;justify-content:center;" +
+        "appearance:none;-webkit-appearance:none;line-height:0;box-sizing:border-box;cursor:pointer;";
+      btn.className = "btn-gdrive";
+      row.appendChild(btn);
+    }
+
+    updateDriveButtonState(memoObj);
+  }
 
   Object.assign(window, {
     onDriveButtonClickMemo,
