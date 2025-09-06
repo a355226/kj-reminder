@@ -4270,7 +4270,11 @@
   function updateDriveButtonState(taskObj) {
     const btn = document.getElementById("gdriveBtn");
     if (!btn) return;
-    btn.classList.toggle("has-folder", !!(taskObj && taskObj.driveFolderId));
+    const hasId = !!(
+      taskObj &&
+      (taskObj.driveFolderId || taskObj.gdriveFolderId)
+    );
+    btn.classList.toggle("has-folder", hasId);
   }
 
   function escapeForQuery(s) {
@@ -4403,36 +4407,73 @@
   }
 
   /* 主流程：建立或開啟資料夾 */
-  async function openOrCreateDriveFolderForCurrentTask() {
-    try {
-      const t = getCurrentDetailTask();
-      if (!t) return;
+  async function openOrCreateDriveFolderForTask(task) {
+    if (!task) return;
 
-      await ensureDriveAuth();
+    const token = await getDriveAccessToken();
+    const { id: myTaskRootId, accountTag } = await ensureMyTaskRoot(token);
 
-      const segs = [
-        "MyTask",
-        t.section || "未分類",
-        (t.title || "未命名").slice(0, 100), // 名稱太長就截斷一下
-      ];
-      const folderId = await ensureFolderPath(segs);
-
-      // 記住資料夾 ID（之後就能顯示 🔍，下次直接開）
-      t.driveFolderId = folderId;
-      saveTasksToFirebase?.();
-
-      // UI：顯示 🔍
+    // 1) 既有 ID 先驗證
+    const knownId = task.gdriveFolderId || task.driveFolderId;
+    if (knownId) {
       try {
-        const btn = document.getElementById("gdriveOpenBtn");
-        if (btn) btn.style.display = "";
-      } catch (_) {}
-
-      openDriveFolderWeb(folderId);
-    } catch (e) {
-      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
-      alert("開啟 Google 雲端硬碟失敗：" + msg);
-      console.error("Drive error:", e);
+        const meta = await driveFilesGet(
+          knownId,
+          token,
+          "id,trashed,webViewLink"
+        );
+        if (meta && !meta.trashed) {
+          const link =
+            meta.webViewLink ||
+            `https://drive.google.com/drive/folders/${knownId}`;
+          openDriveFolderMobileFirst(knownId, link);
+          return;
+        }
+      } catch {}
+      task.gdriveFolderId = null;
+      task.driveFolderId = null;
+      try {
+        saveTasksToFirebase?.();
+      } catch {}
     }
+
+    // 2) 精準查找（避免重複）
+    let folderId = await findExistingTaskFolder(
+      token,
+      myTaskRootId,
+      task,
+      accountTag
+    );
+
+    // 3) 查無才建立
+    if (!folderId) {
+      const created = await driveCreateFolder(
+        buildTaskFolderName(task),
+        token,
+        {
+          product: PRODUCT_NAME,
+          level: "task",
+          appAccount: accountTag,
+          taskId: task.id,
+          section: task.section || "",
+        },
+        myTaskRootId
+      );
+      folderId = created.id;
+    }
+
+    // 4) 記錄（兩欄位都寫，以相容舊 UI）
+    task.gdriveFolderId = folderId;
+    task.driveFolderId = folderId;
+    task.updatedAt = Date.now();
+    try {
+      saveTasksToFirebase?.();
+    } catch {}
+
+    openDriveFolderMobileFirst(
+      folderId,
+      `https://drive.google.com/drive/folders/${folderId}`
+    );
   }
 
   async function ensureExistingOrRecreateFolder(t) {
@@ -4625,11 +4666,17 @@
   }
 
   // 建立資料夾（名稱自訂；可帶 appProperties）
-  async function driveCreateFolder(name, token, appProps = {}) {
+  async function driveCreateFolder(
+    name,
+    token,
+    appProps = {},
+    parentId = "root"
+  ) {
     const meta = {
       name,
       mimeType: "application/vnd.google-apps.folder",
       appProperties: Object.assign({ app: "kjreminder" }, appProps),
+      parents: parentId ? [parentId] : ["root"],
     };
     const r = await fetch(
       "https://www.googleapis.com/drive/v3/files?fields=id,webViewLink&supportsAllDrives=true",
@@ -4703,103 +4750,17 @@
   }
 
   // 核心：開啟或建立（若被刪/丟垃圾桶 → 重建）
-  async function openOrCreateDriveFolderForTask(task) {
-    if (!task) return;
-    const token = await getDriveAccessToken();
-
-    if (task.gdriveFolderId) {
-      try {
-        const meta = await driveFilesGet(
-          task.gdriveFolderId,
-          token,
-          "id,trashed,webViewLink"
-        );
-        if (!meta.trashed) {
-          const link =
-            meta.webViewLink ||
-            `https://drive.google.com/drive/folders/${task.gdriveFolderId}`;
-          // ⬇️ 改這行：行動裝置優先開 App
-          openDriveFolderMobileFirst(task.gdriveFolderId, link);
-          return;
-        }
-        // 被丟垃圾桶 → 視為不存在，往下重建
-      } catch (e) {
-        // 404 / 其他錯誤 → 視為不存在，往下重建
-      }
-    }
-
-    // ======= 唯一改動：先確保 MyTask 根資料夾，然後把任務資料夾建在裡面 =======
-    let myTaskRootId = null;
+  async function openOrCreateDriveFolderForCurrentTask() {
     try {
-      myTaskRootId = localStorage.getItem("gdrive_mytask_root_id") || null;
-      if (myTaskRootId) {
-        // 驗證是否仍存在且未被丟到垃圾桶
-        const rootMeta = await driveFilesGet(myTaskRootId, token, "id,trashed");
-        if (!rootMeta || rootMeta.trashed) myTaskRootId = null;
-      }
-    } catch (_) {
-      myTaskRootId = null;
+      const t = getCurrentDetailTask();
+      if (!t) return;
+      await ensureDriveAuth();
+      await openOrCreateDriveFolderForTask(t);
+    } catch (e) {
+      const msg = e?.result?.error?.message || e?.message || JSON.stringify(e);
+      alert("開啟 Google 雲端硬碟失敗：" + msg);
+      console.error("Drive error:", e);
     }
-
-    if (!myTaskRootId) {
-      // 建立 MyTask 根資料夾（在使用者的雲端硬碟根目錄下）
-      const rootResp = await fetch(
-        "https://www.googleapis.com/drive/v3/files?fields=id,webViewLink&supportsAllDrives=true",
-        {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: "MyTask",
-            mimeType: "application/vnd.google-apps.folder",
-            parents: ["root"],
-            appProperties: { app: "kjreminder", level: "root" },
-          }),
-        }
-      );
-      if (!rootResp.ok) throw new Error(await rootResp.text());
-      const root = await rootResp.json();
-      myTaskRootId = root.id;
-      try {
-        localStorage.setItem("gdrive_mytask_root_id", myTaskRootId);
-      } catch (_) {}
-    }
-
-    // 第一次或不存在 → 建立「任務資料夾」到 MyTask 下面
-    const name = buildTaskFolderName(task);
-    const createdResp = await fetch(
-      "https://www.googleapis.com/drive/v3/files?fields=id,webViewLink&supportsAllDrives=true",
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          mimeType: "application/vnd.google-apps.folder",
-          parents: [myTaskRootId],
-          appProperties: { app: "kjreminder", taskId: task.id, level: "task" },
-        }),
-      }
-    );
-    if (!createdResp.ok) throw new Error(await createdResp.text());
-    const created = await createdResp.json();
-    // ======= 唯一改動結束 =======
-
-    task.gdriveFolderId = created.id;
-    task.updatedAt = Date.now();
-    try {
-      if (typeof saveTasksToFirebase === "function") saveTasksToFirebase();
-    } catch (_) {}
-
-    // 開啟（行動裝置優先開 App）
-    const link =
-      created.webViewLink ||
-      `https://drive.google.com/drive/folders/${created.id}`;
-    openDriveFolderMobileFirst(created.id, link);
   }
 
   // 讓詳情畫面出現一顆 GDrive 按鈕（只在非唯讀時顯示）
@@ -4842,7 +4803,212 @@
     };
   }
 
-  //---------------------------------------------------這段都是額外加的，通過驗證用
+  // === MyTask 唯一性標記（與 MyMemo 一樣的邏輯）===
+  const PRODUCT_APP = "kjreminder";
+  const PRODUCT_NAME = "MyTask";
+
+  // 取得帳號標籤（盡量抓到你的使用者識別）
+  function getAppAccountLabel() {
+    // 1) 從 roomPath：rooms/{username}-{password}
+    if (typeof roomPath === "string" && roomPath.startsWith("rooms/")) {
+      const m = roomPath.match(/^rooms\/([^-\s]+)-/);
+      if (m && m[1]) return m[1];
+    }
+    // 2) 本機儲存
+    try {
+      const saved =
+        sessionStorage.getItem("todo_room_info") ||
+        localStorage.getItem("todo_room_info") ||
+        sessionStorage.getItem("todo_room_info_session") ||
+        localStorage.getItem("todo_room_info_session");
+      if (saved) {
+        const obj = JSON.parse(saved);
+        if (obj?.username) return obj.username;
+      }
+    } catch {}
+    // 3) Firebase email（若有）
+    try {
+      const email =
+        typeof auth !== "undefined" && auth?.currentUser?.email
+          ? auth.currentUser.email
+          : null;
+      if (email) return email;
+    } catch {}
+    // 4) 其它備援
+    return (
+      window.taskOwnerTag ||
+      window.currentUserEmail ||
+      window.user?.email ||
+      localStorage.getItem("app_login_email") ||
+      "user"
+    );
+  }
+
+  function sanitizeForName(s) {
+    return (
+      String(s)
+        .replace(/[\\/:*?"<>|[\]\n\r]/g, "")
+        .trim()
+        .slice(0, 40) || "user"
+    );
+  }
+  function buildRootFolderName(accountTag) {
+    return `MyTask(${sanitizeForName(accountTag)})`;
+  }
+
+  // 找已升級的 MyTask(<帳號>) root
+  async function findExistingRootByAccount(accountTag) {
+    const name = buildRootFolderName(accountTag);
+    const resp = await gapi.client.drive.files.list({
+      q: [
+        `name = '${escapeForQuery(name)}'`,
+        `mimeType = 'application/vnd.google-apps.folder'`,
+        `'root' in parents`,
+        "trashed = false",
+        `appProperties has { key='app' and value='${PRODUCT_APP}' }`,
+        `appProperties has { key='product' and value='${PRODUCT_NAME}' }`,
+        `appProperties has { key='appAccount' and value='${escapeForQuery(
+          accountTag
+        )}' }`,
+      ].join(" and "),
+      fields: "files(id,name)",
+      pageSize: 1,
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+    return resp?.result?.files?.[0]?.id || null;
+  }
+
+  // 找任何舊 root（名字是 "MyTask"）
+  async function findAnyLegacyRootId() {
+    const resp = await gapi.client.drive.files.list({
+      q: [
+        `name = 'MyTask'`,
+        `mimeType = 'application/vnd.google-apps.folder'`,
+        `'root' in parents`,
+        "trashed = false",
+      ].join(" and "),
+      fields: "files(id,name,appProperties)",
+      pageSize: 1,
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+    return resp?.result?.files?.[0]?.id || null;
+  }
+
+  // 舊 root 升級改名 + 補 appProperties
+  async function upgradeLegacyRoot(token, legacyId, accountTag) {
+    const up = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+        legacyId
+      )}?fields=id,name&supportsAllDrives=true`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: buildRootFolderName(accountTag),
+          appProperties: {
+            app: PRODUCT_APP,
+            product: PRODUCT_NAME,
+            level: "root",
+            appAccount: accountTag,
+          },
+        }),
+      }
+    );
+    if (!up.ok) throw new Error(await up.text());
+    return legacyId;
+  }
+
+  // 確保 MyTask(<帳號>) 根（包含升級舊 "MyTask" 與 key 遷移）
+  async function ensureMyTaskRoot(token) {
+    const accountTag = sanitizeForName(getAppAccountLabel());
+    const LS_KEY_NEW = `gdrive_mytask_root_id_${accountTag}`;
+    const LS_KEY_OLD = `gdrive_mytask_root_id`; // 舊版未帶帳號的 key
+
+    // 1) 先讀新 key → 不行再讀舊 key
+    let id =
+      localStorage.getItem(LS_KEY_NEW) ||
+      localStorage.getItem(LS_KEY_OLD) ||
+      null;
+    if (id) {
+      try {
+        const meta = await driveFilesGet(
+          id,
+          token,
+          "id,trashed,name,appProperties"
+        );
+        if (!meta || meta.trashed) id = null;
+        // 名稱仍是 "MyTask" → 直接升級
+        if (meta && meta.name === "MyTask") {
+          try {
+            id = await upgradeLegacyRoot(token, id, accountTag);
+          } catch {}
+        }
+      } catch {
+        id = null;
+      }
+    }
+
+    // 2) Drive 精準查找 MyTask(<帳號>)
+    if (!id) id = await findExistingRootByAccount(accountTag);
+
+    // 3) 找任何舊的 "MyTask" → 升級
+    if (!id) {
+      try {
+        const legacyId = await findAnyLegacyRootId();
+        if (legacyId) id = await upgradeLegacyRoot(token, legacyId, accountTag);
+      } catch {}
+    }
+
+    // 4) 都沒有 → 建立新的 root
+    if (!id) {
+      const created = await driveCreateFolder(
+        buildRootFolderName(accountTag),
+        token,
+        { product: PRODUCT_NAME, level: "root", appAccount: accountTag },
+        "root"
+      );
+      id = created.id;
+    }
+
+    try {
+      localStorage.setItem(LS_KEY_NEW, id);
+      localStorage.setItem(LS_KEY_OLD, id); // 回寫舊 key 以相容舊程式
+    } catch {}
+    return { id, accountTag };
+  }
+
+  // 在 root 內找既有「這個任務」的資料夾（避免重複建立）
+  async function findExistingTaskFolder(token, rootId, task, accountTag) {
+    const q = [
+      `mimeType = 'application/vnd.google-apps.folder'`,
+      `'${rootId}' in parents`,
+      "trashed = false",
+      `appProperties has { key='app' and value='${PRODUCT_APP}' }`,
+      `appProperties has { key='product' and value='${PRODUCT_NAME}' }`,
+      `appProperties has { key='level' and value='task' }`,
+      `appProperties has { key='appAccount' and value='${escapeForQuery(
+        accountTag
+      )}' }`,
+      `appProperties has { key='taskId' and value='${escapeForQuery(
+        task.id
+      )}' }`,
+    ].join(" and ");
+    const resp = await gapi.client.drive.files.list({
+      q,
+      fields: "files(id,name)",
+      pageSize: 1,
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+    return resp?.result?.files?.[0]?.id || null;
+  }
+
+  //---------------------------------------------------
 
   //日曆功能
 
