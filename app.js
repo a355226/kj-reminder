@@ -4156,8 +4156,25 @@
   let __tokenClient = null;
   // ✅ 第一次授權後要自動補跑一次的旗標
   // ✅ 第一次授權後要自動補跑一次的旗標 & 預備視窗
-  const GD_POST_OPEN_KEY = "gdrive_post_open";
-  let __gd_prewin = null; // 只在「第一次授權」時短暫使用
+// ✅ 取代原本的 GD_POST_OPEN_KEY 與 __gd_prewin
+const GD_POST_OPEN_KEY = "gdrive_post_open_task";
+let __gd_prewin = null;
+const POST_OPEN_TTL = 15000; // 15 秒內視為新鮮
+
+const postOpen = {
+  set() {
+    try { sessionStorage.setItem(GD_POST_OPEN_KEY, String(Date.now())); } catch {}
+  },
+  isFresh() {
+    try {
+      const t = +sessionStorage.getItem(GD_POST_OPEN_KEY) || 0;
+      return t && (Date.now() - t) < POST_OPEN_TTL;
+    } catch { return false; }
+  },
+  clear() {
+    try { sessionStorage.removeItem(GD_POST_OPEN_KEY); } catch {}
+  }
+}; // 只在「第一次授權」時短暫使用
   // 全域：一次判斷 iOS PWA（避免第一次 click 時 ReferenceError）
   const isIOSPWA = (() => {
     try {
@@ -4226,7 +4243,8 @@
     const tok = gapi?.client?.getToken?.();
     if (tok?.access_token && Date.now() + skew < exp) return true;
 
-    if (!__gd_userGesture) return false; // 沒使用者手勢就不彈窗
+  const canPrompt = __gd_userGesture || postOpen.isFresh();
+if (!canPrompt) return false; // 沒使用者手勢就不彈窗
 
     const alreadyConsented =
       localStorage.getItem("gdrive_consent_done") === "1";
@@ -4603,22 +4621,23 @@
         }
 
         // ✅ 若第一次授權剛完成且回到 App，就自動補跑一次
-        if (localStorage.getItem(GD_POST_OPEN_KEY) === "1") {
-          (async () => {
-            try {
-              await ensureDriveAuth(); // 確保 token 在手
-              const t = getCurrentDetailTask();
-              if (t) {
-                const id = await ensureExistingOrRecreateFolder(t);
-                updateDriveButtonState(t);
-                openDriveFolderWeb(id);
-              }
-            } finally {
-              __gd_userGesture = false;
-              localStorage.removeItem(GD_POST_OPEN_KEY);
-            }
-          })().catch(() => {});
-        }
+     if (postOpen.isFresh()) {
+  (async () => {
+    try {
+      await ensureDriveAuth(); // 有效 token
+      const t = getCurrentDetailTask();
+      if (t) {
+        // 這裡走「精準找/驗證/建立」→ 再開啟（會帶 __gd_prewin）
+        let fid = await ensureExistingOrRecreateFolder(t);
+        updateDriveButtonState(t);
+        openDriveFolderMobileFirst(fid, null, __gd_prewin);
+      }
+    } finally {
+      postOpen.clear();
+      __gd_prewin = null;
+    }
+  })().catch(() => {});
+}
       },
       { once: true }
     );
@@ -4798,31 +4817,32 @@ function openDriveFolderMobileFirst(folderId, webLink, preWin) {
     }
     btn.style.display = isReadonly ? "none" : ""; // 完成視圖（唯讀）時隱藏
     btn.onclick = async () => {
-      try {
-        __gd_userGesture = true;
-        try {
-          syncEditsIntoTask?.(task);
-        } catch (_) {}
+  try {
+    __gd_userGesture = true;
+    try { syncEditsIntoTask?.(task); } catch (_) {}
 
-        // iOS Safari（非 PWA）先開「預備分頁」，避免之後的 window.open 被擋、也避免把本頁導走
-        let preWin = null;
-        const isiOSSafari =
-          /iPad|iPhone|iPod/.test(navigator.userAgent || "") && !isIOSPWA;
-        if (isiOSSafari) {
-          try {
-            preWin = window.open("", "_blank");
-          } catch (_) {
-            preWin = null;
-          }
-        }
+    // ✅ iOS Safari（非 PWA）先開「預備分頁」並標記 postOpen：把切換 App 綁在點擊手勢上
+    const isiOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent || "") && !isIOSPWA;
+    if (isiOSSafari) {
+      try { __gd_prewin = window.open("", "_blank"); } catch (_) { __gd_prewin = null; }
+      postOpen.set();
+    } else {
+      __gd_prewin = null;
+      postOpen.clear();
+    }
 
-        await openOrCreateDriveFolderForTask(task, preWin); // ⬅️ 多傳 preWin
-      } catch (e) {
-        alert("Google Drive 動作失敗：" + (e?.message || e));
-      } finally {
-        __gd_userGesture = false;
-      }
-    };
+    // 🔑 走主流程（會把 __gd_prewin 往下傳到 openDriveFolderMobileFirst）
+    await openOrCreateDriveFolderForTask(task, __gd_prewin);
+    updateDriveButtonState(task);
+  } catch (e) {
+    alert("Google Drive 動作失敗：" + (e?.message || e));
+  } finally {
+    __gd_userGesture = false;
+    // 用完就清
+    postOpen.clear();
+    __gd_prewin = null;
+  }
+};
   }
 
   // === MyTask 唯一性標記（與 MyMemo 一樣的邏輯）===
