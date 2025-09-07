@@ -1500,14 +1500,6 @@
   }
 
   function openDetail(id) {
-    const dm = document.getElementById("detailModal");
-    if (dm) {
-      dm.style.pointerEvents = "none";
-      requestAnimationFrame(() => {
-        dm.style.pointerEvents = "";
-      });
-    }
-
     if (isEditing) return; // ← 編輯分類時不開詳情
     selectedTaskId = id;
     const task = tasks.find((t) => t.id === id);
@@ -1521,6 +1513,29 @@
     document.getElementById("detailNote").value = task.note;
 
     document.getElementById("detailModal").style.display = "flex";
+    // ← 防 Android ghost click：剛開 350ms 內吞掉任何點擊/指標事件
+    (function guardFirstClicks() {
+      const modal = document.getElementById("detailModal");
+      if (!modal) return;
+      const killer = (e) => {
+        e.stopImmediatePropagation();
+        e.stopPropagation();
+        e.preventDefault();
+      };
+      const types = [
+        "pointerdown",
+        "pointerup",
+        "mousedown",
+        "mouseup",
+        "click",
+      ];
+      types.forEach((t) => modal.addEventListener(t, killer, true));
+      setTimeout(
+        () => types.forEach((t) => modal.removeEventListener(t, killer, true)),
+        350
+      );
+    })();
+
     setDetailReadonly(false);
     document.getElementById("detailImportant").checked = !!task.important;
     // 進行中：顯示最後儲存；若沒儲存過就顯示建立時間
