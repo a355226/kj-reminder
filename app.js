@@ -1500,7 +1500,14 @@
   }
 
   function openDetail(id) {
-    window.__squelchClicks?.(420); // ← 這行就夠了
+    const dm = document.getElementById("detailModal");
+    if (dm) {
+      dm.style.pointerEvents = "none";
+      requestAnimationFrame(() => {
+        dm.style.pointerEvents = "";
+      });
+    }
+
     if (isEditing) return; // ← 編輯分類時不開詳情
     selectedTaskId = id;
     const task = tasks.find((t) => t.id === id);
@@ -5584,26 +5591,6 @@
     }
   });
   //---------------點擊穿透解決
-
-  // 防 Android 點擊穿透（ghost click）：在短時間內吞掉 click
-  (function () {
-    let __squelchUntil = 0;
-    function squelch(ms = 420) {
-      __squelchUntil = performance.now() + ms;
-    }
-    // 用捕獲階段先攔住 click，再交給其他監聽
-    document.addEventListener(
-      "click",
-      function (e) {
-        if (performance.now() < __squelchUntil) {
-          e.stopPropagation();
-          e.preventDefault();
-        }
-      },
-      true
-    );
-    window.__squelchClicks = squelch;
-  })();
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
