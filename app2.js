@@ -1012,6 +1012,16 @@
     }
 
     document.getElementById("detailModal").style.display = "flex";
+  // ← 防 Android ghost click：剛開 350ms 內吞掉任何點擊/指標事件
+  (function guardFirstClicks() {
+    const modal = document.getElementById("detailModal");
+    if (!modal) return;
+    const killer = (e) => { e.stopImmediatePropagation(); e.stopPropagation(); e.preventDefault(); };
+    const types = ["pointerdown","pointerup","mousedown","mouseup","click"];
+    types.forEach(t => modal.addEventListener(t, killer, true));
+    setTimeout(() => types.forEach(t => modal.removeEventListener(t, killer, true)), 350);
+  })();
+
     try {
       ensureDriveButtonsInlineUI(m);
     } catch (_) {}
