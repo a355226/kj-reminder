@@ -1578,6 +1578,7 @@
     }
     // ⬇⬇⬇ 新增這行：詳情一開就即時同步
     bindDetailLiveSync(task);
+    setGDriveGlowForTask(task);
   }
 
   function syncEditsIntoTask(task) {
@@ -2499,6 +2500,7 @@
     setDetailReadonly(true);
     document.getElementById("detailModal").style.display = "flex";
     ensureDriveButtonsInlineUI(t);
+    setGDriveGlowForTask(t);
   }
 
   function deleteCompleted() {
@@ -2825,6 +2827,14 @@
         ? "&quot;"
         : "&#39;"
     );
+  }
+  function setGDriveGlowForTask(task) {
+    const btn = document.getElementById("gdriveBtn");
+    if (!btn) return;
+    const hasFolder = !!(task && (task.gdriveFolderId || task.driveFolderId));
+    // 先清掉舊狀態，再依「這一筆任務」決定是否點亮
+    btn.classList.remove("has-folder");
+    if (hasFolder) btn.classList.add("has-folder");
   }
 
   // 在「已完成」畫面，為每個有任務的分類加右上角 ✕ 按鈕
@@ -4498,6 +4508,10 @@
     // 4) 記錄（兩欄位都寫，以相容舊 UI）
     task.gdriveFolderId = folderId;
     task.driveFolderId = folderId;
+    try {
+      saveTasksToFirebase?.();
+    } catch (e) {}
+    setGDriveGlowForTask(task);
     task.updatedAt = Date.now();
     try {
       saveTasksToFirebase?.();
@@ -4809,6 +4823,7 @@
 
   // 讓詳情畫面出現一顆 GDrive 按鈕（只在非唯讀時顯示）
   function ensureDriveButtonsInlineUI(task) {
+    ensureDriveGlowCss();
     const dateEl = document.getElementById("detailDate");
     const modal = document.getElementById("detailModal");
     if (!dateEl || !modal) return;
@@ -4829,6 +4844,7 @@
         "width:30px;height:30px;padding:0;border:1px solid #ddd;" +
         "background:#f9f9f9 url('https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/drive.png')" +
         " no-repeat center/18px 18px;border-radius:6px;cursor:pointer;margin-left:6px;";
+      btn.className = "btn-gdrive";
       row.appendChild(btn);
     }
     btn.style.display = isReadonly ? "none" : ""; // 完成視圖（唯讀）時隱藏
