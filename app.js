@@ -85,7 +85,6 @@
   // 這兩行原本是 const
   let auth = firebase.auth();
   let db = firebase.database();
-  
 
   // 新增：保存/重綁 onAuthStateChanged
   let offAuth = null;
@@ -174,31 +173,32 @@
 
   (function () {
     try {
-      var d = document, root = d.documentElement;
-  
+      var d = document,
+        root = d.documentElement;
+
       // 1) 動態注入：開機時隱藏 App 與登入頁
-      if (!d.getElementById('boot-guard-style')) {
-        var s = d.createElement('style');
-        s.id = 'boot-guard-style';
+      if (!d.getElementById("boot-guard-style")) {
+        var s = d.createElement("style");
+        s.id = "boot-guard-style";
         s.textContent =
-          'html.booting .container{display:none!important}' +
-          'html.booting #loginPage{display:none!important}';
+          "html.booting .container{display:none!important}" +
+          "html.booting #loginPage{display:none!important}";
         d.head.appendChild(s);
       }
-      root.classList.add('booting'); // 先蓋住畫面
-  
+      root.classList.add("booting"); // 先蓋住畫面
+
       // 2) 快切寬限（可選）：若前頁設了 fast_switch=1 就拉長到 800ms
-      var fast = sessionStorage.getItem('fast_switch') === '1';
-      sessionStorage.removeItem('fast_switch');
+      var fast = sessionStorage.getItem("fast_switch") === "1";
+      sessionStorage.removeItem("fast_switch");
       var graceMs = fast ? 800 : 400;
-  
+
       var released = false;
       function releaseOnce() {
         if (released) return;
         released = true;
-        root.classList.remove('booting'); // 掀布，讓你原本的邏輯決定顯示哪一頁
+        root.classList.remove("booting"); // 掀布，讓你原本的邏輯決定顯示哪一頁
       }
-  
+
       // 3) 等 Firebase Auth 就緒後，綁一次性觀察者；第一個事件就放行
       function whenAuthReady(cb) {
         if (window.firebase && firebase.auth) return cb(firebase.auth());
@@ -208,14 +208,18 @@
             cb(firebase.auth());
           }
         }, 30);
-        setTimeout(function () { clearInterval(t); }, 5000); // 安全上限
+        setTimeout(function () {
+          clearInterval(t);
+        }, 5000); // 安全上限
       }
-  
+
       var fallback = setTimeout(releaseOnce, graceMs); // 還原太慢 → 顯示登入頁
-  
+
       whenAuthReady(function (auth) {
         var off = auth.onAuthStateChanged(function () {
-          try { off && off(); } catch (_) {}
+          try {
+            off && off();
+          } catch (_) {}
           clearTimeout(fallback);
           releaseOnce(); // 一拿到使用者（或確定沒使用者）就揭布
         });
@@ -1496,6 +1500,7 @@
   }
 
   function openDetail(id) {
+    window.__squelchClicks?.(420); // ← 這行就夠了
     if (isEditing) return; // ← 編輯分類時不開詳情
     selectedTaskId = id;
     const task = tasks.find((t) => t.id === id);
@@ -5578,6 +5583,28 @@
       html.classList.add("show-login");
     }
   });
+  //---------------點擊穿透解決
+
+  // 防 Android 點擊穿透（ghost click）：在短時間內吞掉 click
+  (function () {
+    let __squelchUntil = 0;
+    function squelch(ms = 420) {
+      __squelchUntil = performance.now() + ms;
+    }
+    // 用捕獲階段先攔住 click，再交給其他監聽
+    document.addEventListener(
+      "click",
+      function (e) {
+        if (performance.now() < __squelchUntil) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      },
+      true
+    );
+    window.__squelchClicks = squelch;
+  })();
+
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
     openModal,
