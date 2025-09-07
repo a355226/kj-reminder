@@ -4275,26 +4275,38 @@
     return true;
   }
 
+  // 讓發光樣式存在（只會注入一次）
   function ensureDriveGlowCss() {
     if (document.getElementById("driveGlowCss")) return;
-    const css = `
-      .btn-gdrive { margin-left:.35rem;padding:.4rem .6rem;border:1px solid #ddd;background:#f9f9f9;border-radius:6px;cursor:pointer; }
-      .btn-gdrive.has-folder { background:#FFD54F; border-color:#FFC107; box-shadow:0 0 .6rem rgba(255,193,7,.6); animation:drive-glow 1.2s ease-in-out infinite alternate; }
-      @keyframes drive-glow { from { box-shadow:0 0 .35rem rgba(255,193,7,.45);} to { box-shadow:0 0 1rem rgba(255,193,7,.95);} }
-    `;
-    const st = document.createElement("style");
-    st.id = "driveGlowCss";
-    st.textContent = css;
-    document.head.appendChild(st);
+    const s = document.createElement("style");
+    s.id = "driveGlowCss";
+    s.textContent = `
+    #gdriveBtn.has-folder{
+      box-shadow: 0 0 0 2px rgba(66,133,244,.25), 0 0 8px rgba(66,133,244,.35);
+      animation: drivePulse 1.6s ease-in-out infinite;
+    }
+    @keyframes drivePulse {
+      0%{ filter:none }
+      50%{ filter:drop-shadow(0 0 6px rgba(66,133,244,.55)) }
+      100%{ filter:none }
+    }
+  `;
+    document.head.appendChild(s);
   }
-  function updateDriveButtonState(taskObj) {
-    const btn = document.getElementById("gdriveBtn");
-    if (!btn) return;
-    const hasId = !!(
-      taskObj &&
-      (taskObj.driveFolderId || taskObj.gdriveFolderId)
-    );
-    btn.classList.toggle("has-folder", hasId);
+
+  // 依任務是否已有雲端資料夾，切換按鈕的發光狀態
+  function updateDriveButtonState(task) {
+    try {
+      const btn = document.getElementById("gdriveBtn");
+      if (!btn) return;
+
+      // 支援舊/新欄位兩種名稱
+      const hasId = !!(task && (task.gdriveFolderId || task.driveFolderId));
+      btn.classList.toggle("has-folder", hasId);
+      btn.title = hasId
+        ? "已綁定雲端資料夾（點我開啟）"
+        : "建立/開啟此任務的雲端資料夾";
+    } catch (_) {}
   }
 
   function escapeForQuery(s) {
@@ -4579,10 +4591,11 @@
         localStorage.removeItem(GD_POST_OPEN_KEY);
         __gd_prewin = null;
       }
+      ensureDriveGlowCss();
 
       await ensureDriveAuth();
       const folderId = await ensureExistingOrRecreateFolder(t);
-      updateDriveButtonState(t);
+      updateDriveButtonState(task);
 
       openDriveFolderWeb(folderId, __gd_prewin);
 
