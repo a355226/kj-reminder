@@ -33,6 +33,14 @@
   let pendingCategoryMode = "active"; // 'active' | 'removed'
   let __gd_userGesture = false;
 
+  // === 分類鎖定（加密）狀態 ===
+  let locksRef = null;
+  let categoryLocks = {}; // { [baseName]: { hash: 'sha256hex', fail: number } }
+  const MAX_LOCK_FAILS = 5;
+  let unlockedCategories = new Set(); // 本次工作階段已解鎖的分類（baseName）
+  let pendingLockBase = null; // 正在操作的base類別名（無「(已移除)」）
+  let pendingLockAction = null; // 'set' | 'remove' | 'view'
+
   (function () {
     try {
       var d = document,
@@ -294,6 +302,8 @@
     selectedMemoId = null;
     roomPath = "";
 
+    unlockedCategories = new Set();
+
     // 3) **把所有可能的自動登入 key 都清掉（含 session/local、_session 變種）**
     try {
       const KEYS = [
@@ -341,6 +351,14 @@
     memosRef = db.ref(`${roomPath}/memos`);
     categoriesRef = db.ref(`${roomPath}/memoCategories`);
 
+    locksRef = db.ref(`${roomPath}/memoCategoryLocks`);
+    locksRef.on("value", (snap) => {
+      categoryLocks = snap.val() || {};
+      // 鎖定狀態可能影響畫面（鎖圖示／可否開啟詳情）
+      renderSections();
+      renderAll();
+    });
+
     memosRef.on("value", (snap) => {
       const data = snap.val() || {};
       memos = Object.values(data);
@@ -368,6 +386,18 @@
     try {
       memosRef && memosRef.off();
       categoriesRef && categoriesRef.off();
+
+      locksRef = db.ref(`${roomPath}/memoCategoryLocks`);
+      locksRef.on("value", (snap) => {
+        categoryLocks = snap.val() || {};
+        // 鎖定狀態可能影響畫面（鎖圖示／可否開啟詳情）
+        renderSections();
+        renderAll();
+      });
+
+      try {
+        locksRef && locksRef.off();
+      } catch (_) {}
     } catch (_) {}
   }
   function saveMemos() {
@@ -377,6 +407,30 @@
   }
   function saveCategories() {
     db.ref(`${roomPath}/memoCategories`).set(categories);
+  }
+
+  function saveCategoryLocks() {
+    db.ref(`${roomPath}/memoCategoryLocks`).set(categoryLocks || {});
+  }
+
+  async function sha256Hex(s) {
+    const enc = new TextEncoder();
+    const buf = await crypto.subtle.digest("SHA-256", enc.encode(s));
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  function baseCategoryName(name = "") {
+    return stripRemovedSuffix(name || "");
+  }
+  function isCategoryLocked(name) {
+    const base = baseCategoryName(name);
+    const lock = categoryLocks?.[base];
+    return !!(lock && lock.hash);
+  }
+  function isCategoryUnlocked(name) {
+    const base = baseCategoryName(name);
+    return unlockedCategories.has(base);
   }
 
   /* ===== UI：今日徽章 ===== */
@@ -433,6 +487,57 @@
     }
 
     // 畫出各分類的區塊
+    // === 共用：在標題列（X 左邊）插入鎖圖示 ===
+    function addLockIconToSection(sec, baseName) {
+      if (!isCategoryLocked(baseName)) return;
+
+      const bar = sec.querySelector(".section-title");
+      if (!bar) return;
+
+      // 先清掉舊的，避免重複插入
+      bar.querySelector(".lock-btn")?.remove();
+
+      const unlocked = isCategoryUnlocked(baseName);
+      const lockBtn = document.createElement("button");
+      lockBtn.className = "lock-btn";
+      lockBtn.textContent = unlocked ? "🔓" : "🔐";
+      lockBtn.title = unlocked
+        ? "已解鎖（點擊可上鎖）"
+        : "已鎖定（點擊輸入密碼解鎖）";
+
+      // 位置：active → right:0rem；removed → right:2rem
+      const rightOffset =
+        typeof memoView !== "undefined" && memoView === "removed"
+          ? "2rem"
+          : "0";
+
+      bar.style.position = "relative";
+      lockBtn.style.cssText =
+        `position:absolute;top:0;right:${rightOffset};padding:.2rem .5rem;` +
+        `border:1px solid #e5e7eb;background:#f8fafc;border-radius:12px;` +
+        `box-shadow:0 1px 0 rgba(0,0,0,.02);cursor:pointer;`;
+
+      lockBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (isCategoryUnlocked(baseName)) {
+          // 點🔓→清除本機解鎖狀態
+          unlockedCategories.delete(baseName);
+          renderSections();
+          renderAll();
+        } else {
+          // 點🔐→要求解鎖
+          openLockModal({ base: baseName, mode: "view" });
+        }
+      });
+
+      const del = bar.querySelector(".delete-btn");
+      if (del && del.parentNode) {
+        del.parentNode.insertBefore(lockBtn, del); // 放在 X 左邊（視覺由 right 控制）
+      } else {
+        bar.appendChild(lockBtn);
+      }
+    }
+
     names.forEach((name) => {
       if (memoView === "removed") {
         const displayName = getRemovedSectionLabel(name); // 顯示用(可能帶後綴)
@@ -449,6 +554,7 @@
         sec.querySelector(".delete-btn").onclick = () =>
           confirmDeleteCategory(name, "removed");
         wrap.appendChild(sec);
+        addLockIconToSection(sec, baseCategoryName(name));
       } else {
         // active 視圖維持原樣
         const sec = document.createElement("div");
@@ -456,6 +562,8 @@
         sec.id = name;
         sec.innerHTML = `<div class="section-title">${name}</div>`;
         wrap.appendChild(sec);
+
+        addLockIconToSection(sec, baseCategoryName(name));
       }
     });
 
@@ -660,19 +768,48 @@
       const bar = sec.querySelector(".section-title");
       const name = sec.id;
 
-      // 重畫標題列：☰ 名稱 ✎（X 交給 CSS 放右上角）
-      bar.innerHTML = `
-                <span class="drag-handle">☰</span>
-                <span class="section-name">${name}</span>
-                <button class="rename-btn" title="重命名">✎</button>
-                <button class="delete-btn" title="刪除此分類">✕</button>
-              `;
+      // 🔐 依分類是否已上鎖決定圖示
+      const locked =
+        typeof isCategoryLocked === "function" ? isCategoryLocked(name) : false;
 
+      // 重畫標題列：☰ 名稱 ✎ 🔓/🔐（X 交給 CSS 放右上角）
+      bar.style.display = "flex";
+      bar.style.alignItems = "center";
+
+      bar.innerHTML = `
+        <span class="drag-handle">☰</span>
+        <span class="section-name" style="margin-left:.25rem">${name}</span>
+        <button class="rename-btn" title="重命名"
+                style="margin-left:.5rem;padding:.2rem .4rem;border:1px solid #e5e7eb;background:#fff;border-radius:10px;box-shadow:0 1px 0 rgba(0,0,0,.02);cursor:pointer;">
+          ✎
+        </button>
+        <span style="flex:1 1 auto"></span>
+        <button class="lock-btn" title="${locked ? "取消鎖定" : "設定密碼"}"
+                style="margin-right:2rem;padding:.2rem .5rem;border:1px solid #e5e7eb;background:#f8fafc;border-radius:12px;box-shadow:0 1px 0 rgba(0,0,0,.02);cursor:pointer;">
+          ${locked ? "🔐" : "🔓"}
+        </button>
+        <button class="delete-btn" title="刪除此分類">✕</button>
+      `;
+
+      // ✎ 重命名
       bar.querySelector(".rename-btn").onclick = () => {
         pendingRenameId = sec.id;
         document.getElementById("renameInput").value = sec.id;
         openModal("renameModal");
       };
+
+      // 🔓/🔐 設定或取消鎖定
+      bar.querySelector(".lock-btn").onclick = () => {
+        if (locked) {
+          // 已上鎖 → 取消鎖定（需輸入密碼）
+          openLockModal({ base: name, mode: "remove" });
+        } else {
+          // 未上鎖 → 設定密碼
+          openLockModal({ base: name, mode: "set" });
+        }
+      };
+
+      // ✕ 刪除分類
       bar.querySelector(".delete-btn").onclick = () =>
         confirmDeleteCategory(sec.id);
     });
@@ -695,24 +832,19 @@
     isEditing = false;
     document.getElementById("app")?.classList.remove("editing");
 
-    // 還原標題列成只有名稱
-    document.querySelectorAll(".section").forEach((sec) => {
-      sec.classList.remove("edit-mode");
-      const bar = sec.querySelector(".section-title");
-      bar.textContent = sec.id;
-    });
-
-    // 關閉底部 ✅ 鈕
+    // 關閉底部 ✅
     const exitBtn = document.getElementById("exitEditBtn");
     if (exitBtn) exitBtn.style.display = "none";
 
-    // 保險：銷毀並重建拖拉
+    // 清理拖拉
     if (sectionSortable && sectionSortable.destroy) {
       sectionSortable.destroy();
       sectionSortable = null;
     }
-    initSectionSortable();
-    destroyMemoSortables(); // 關閉備忘條拖拉
+    destroyMemoSortables();
+
+    // 重新用一般檢視重繪（把🔐/🔓也一起畫回來）
+    renderSections();
     renderAll();
 
     // 更新下拉
@@ -730,33 +862,34 @@
       return;
     }
 
-    const id = pendingCategoryId;
+    const base = pendingCategoryId; // 一律用「原始分類名」
     const mode = pendingCategoryMode || "active";
 
     if (mode === "removed") {
-      // 把這個分類在「已移除」中的所有備忘都清掉
-      const base = stripRemovedSuffix(id);
+      // ✅ 「已移除」視圖：永久刪掉這個 base 的「已移除備忘」，不動 categories
       memos = (memos || []).filter(
         (m) => !(m.removedAt && stripRemovedSuffix(m.section) === base)
       );
-      saveMemos();
 
+      saveMemos();
       renderSections();
       renderAll();
 
       pendingCategoryId = null;
       pendingCategoryMode = "active";
       closeModal("confirmCategoryModal");
-      return;
+      return; // 🔴 一定要 return，避免落到 active 分支
     }
 
-    // === 修正點（active 分支）===
-    // 1) 準備備用分類（盡量用現有第一個非本分類的；沒有就用「其它」，也順手建立）
+    // ✅ 「當前」視圖：刪分類 + 將此分類中「尚未移除」的備忘一起永久刪除
+    //    （這些備忘不進「已移除」，直接消失）
+    memos = (memos || []).filter(
+      (m) => !(!m.removedAt && stripRemovedSuffix(m.section) === base)
+    );
 
-    // 3) 從「當前」的分類清單移除該分類
-    categories = categories.filter((c) => c !== id);
+    // 從分類清單移除該分類（保留該分類在「已移除」中的備忘 → 會顯示為 base(已移除)）
+    categories = (categories || []).filter((c) => c !== base);
 
-    // 4) 存檔與重畫
     saveMemos();
     saveCategories();
     renderSections();
@@ -973,6 +1106,13 @@
     const m = memos.find((x) => x.id === id);
     if (!m) return;
 
+    const base = baseCategoryName(m.section || "");
+    if (isCategoryLocked(base) && !isCategoryUnlocked(base)) {
+      // 先要求輸入密碼解鎖（「已移除」也共用同一把鎖）
+      openLockModal({ base, mode: "view" });
+      return;
+    }
+
     document.getElementById("detailSection").value = m.section;
     document.getElementById("detailTitle").value = m.title;
     document.getElementById("detailContent").value = m.content || "";
@@ -1012,15 +1152,28 @@
     }
 
     document.getElementById("detailModal").style.display = "flex";
-  // ← 防 Android ghost click：剛開 350ms 內吞掉任何點擊/指標事件
-  (function guardFirstClicks() {
-    const modal = document.getElementById("detailModal");
-    if (!modal) return;
-    const killer = (e) => { e.stopImmediatePropagation(); e.stopPropagation(); e.preventDefault(); };
-    const types = ["pointerdown","pointerup","mousedown","mouseup","click"];
-    types.forEach(t => modal.addEventListener(t, killer, true));
-    setTimeout(() => types.forEach(t => modal.removeEventListener(t, killer, true)), 350);
-  })();
+    // ← 防 Android ghost click：剛開 350ms 內吞掉任何點擊/指標事件
+    (function guardFirstClicks() {
+      const modal = document.getElementById("detailModal");
+      if (!modal) return;
+      const killer = (e) => {
+        e.stopImmediatePropagation();
+        e.stopPropagation();
+        e.preventDefault();
+      };
+      const types = [
+        "pointerdown",
+        "pointerup",
+        "mousedown",
+        "mouseup",
+        "click",
+      ];
+      types.forEach((t) => modal.addEventListener(t, killer, true));
+      setTimeout(
+        () => types.forEach((t) => modal.removeEventListener(t, killer, true)),
+        350
+      );
+    })();
 
     try {
       ensureDriveButtonsInlineUI(m);
@@ -1052,6 +1205,143 @@
           : "確定要移到「已移除」？";
     }
     openModal("confirmModal");
+  }
+
+  function openLockModal({ base, mode }) {
+    pendingLockBase = baseCategoryName(base);
+    pendingLockAction = mode; // 'set' | 'remove' | 'view'
+
+    const titleEl = document.getElementById("lockModalTitle");
+    const descEl = document.getElementById("lockModalDesc");
+    const input = document.getElementById("lockPasswordInput");
+    const hint = document.getElementById("lockErrorHint");
+
+    hint.style.display = "none";
+    hint.textContent = "";
+    input.value = "";
+    input.type = "password";
+    input.setAttribute("inputmode", "numeric");
+    input.setAttribute("pattern", "\\d{6}");
+    input.setAttribute("maxlength", "6");
+
+    if (mode === "set") {
+      titleEl.textContent = `分類：【${pendingLockBase}】`;
+      descEl.innerHTML =
+        '請輸入<b><span style="color:red"><6 位數字></span></b>作為此分類的密碼。<br>(請妥善保存，<b>不提供忘記密碼功能</b>。)';
+    } else if (mode === "remove") {
+      titleEl.textContent = `取消鎖定：${pendingLockBase}`;
+      descEl.textContent = "請輸入 6 位數字密碼以取消鎖定。";
+    } else {
+      titleEl.textContent = `解鎖分類：${pendingLockBase}`;
+      descEl.textContent = `請輸入 6 位數字密碼以解鎖。`;
+    }
+
+    document.getElementById("lockModalConfirmBtn").onclick = onConfirmLockModal;
+    openModal("lockModal");
+    setTimeout(() => input.focus(), 0);
+  }
+
+  async function onConfirmLockModal() {
+    const pwd = (
+      document.getElementById("lockPasswordInput").value || ""
+    ).trim();
+    const hint = document.getElementById("lockErrorHint");
+
+    if (!/^\d{6}$/.test(pwd)) {
+      hint.style.display = "block";
+      hint.textContent = "請輸入 6 位數字密碼";
+      return;
+    }
+
+    const base = pendingLockBase;
+    const act = pendingLockAction;
+
+    try {
+      if (act === "set") {
+        const hash = await sha256Hex(`MyMemo:${base}:${pwd}`);
+        categoryLocks[base] = { hash, fail: 0 };
+        saveCategoryLocks();
+        closeModal("lockModal");
+        renderSections();
+        renderAll();
+      } else if (act === "remove") {
+        const lock = categoryLocks?.[base];
+        const hash = await sha256Hex(`MyMemo:${base}:${pwd}`);
+        if (lock && lock.hash === hash) {
+          delete categoryLocks[base];
+          unlockedCategories.delete(base);
+          saveCategoryLocks();
+          closeModal("lockModal");
+          renderSections();
+          renderAll();
+        } else {
+          await handleWrongPassword(base, "active");
+        }
+      } else if (act === "view") {
+        const lock = categoryLocks?.[base];
+        const hash = await sha256Hex(`MyMemo:${base}:${pwd}`);
+        if (lock && lock.hash === hash) {
+          unlockedCategories.add(base);
+          // 成功後清零錯誤次數
+          try {
+            categoryLocks[base].fail = 0;
+            saveCategoryLocks();
+          } catch (_) {}
+          closeModal("lockModal");
+          renderSections();
+          renderAll();
+        } else {
+          const ctx = memoView === "removed" ? "removed" : "active";
+          await handleWrongPassword(base, ctx);
+        }
+      }
+    } catch (e) {
+      hint.style.display = "block";
+      hint.textContent = "發生錯誤，請稍後再試";
+    }
+  }
+
+  async function handleWrongPassword(base, context /* 'active'|'removed' */) {
+    const hint = document.getElementById("lockErrorHint");
+    const cur = (categoryLocks?.[base]?.fail || 0) + 1;
+
+    if (!categoryLocks[base]) categoryLocks[base] = { hash: null, fail: 0 };
+    categoryLocks[base].fail = cur;
+    saveCategoryLocks();
+
+    const left = MAX_LOCK_FAILS - cur;
+    if (cur >= MAX_LOCK_FAILS) {
+      try {
+        autoDeleteCategory(base, context);
+      } finally {
+        closeModal("lockModal");
+      }
+      alert(`密碼錯誤已達 ${MAX_LOCK_FAILS} 次，已自動刪除分類「${base}」。`);
+    } else {
+      hint.style.display = "block";
+      hint.innerHTML = `密碼錯誤，剩餘 <b>${left}</b> 次將自動刪除此分類。`;
+    }
+  }
+
+  function autoDeleteCategory(base, context) {
+    // context = 嘗試解鎖的所在檢視
+    if (context === "removed") {
+      // 永久刪除此 base 在「已移除」中的所有備忘
+      memos = (memos || []).filter(
+        (m) => !(m.removedAt && stripRemovedSuffix(m.section) === base)
+      );
+      saveMemos();
+    } else {
+      // 從「當前」移除該分類
+      categories = (categories || []).filter((c) => c !== base);
+      saveCategories();
+    }
+    // 清除鎖與當前解鎖狀態
+    delete categoryLocks[base];
+    unlockedCategories.delete(base);
+    saveCategoryLocks();
+    renderSections();
+    renderAll();
   }
 
   function deleteMemo() {
@@ -1758,18 +2048,41 @@
       sec.classList.add("edit-mode");
       const bar = sec.querySelector(".section-title");
       const name = sec.id;
+
+      const locked =
+        typeof isCategoryLocked === "function" ? isCategoryLocked(name) : false;
+      bar.style.display = "flex";
+      bar.style.alignItems = "center";
+
       bar.innerHTML = `
-      <span class="drag-handle">☰</span>
-      <span class="section-name">${name}</span>
-      <button class="rename-btn" title="重命名">✎</button>
-      <button class="delete-btn" title="刪除此分類">✕</button>
-    `;
+          <span class="drag-handle">☰</span>
+          <span class="section-name" style="margin-left:.25rem">${name}</span>
+          <button class="rename-btn" title="重命名"
+                  style="margin-left:.5rem;padding:.2rem .4rem;border:1px solid #e5e7eb;background:#fff;border-radius:10px;box-shadow:0 1px 0 rgba(0,0,0,.02);cursor:pointer;">
+            ✎
+          </button>
+          <span style="flex:1 1 auto"></span>
+          <button class="lock-btn" title="${locked ? "取消鎖定" : "設定密碼"}"
+                  style="margin-right:2rem;padding:.2rem .5rem;border:1px solid #e5e7eb;background:#f8fafc;border-radius:12px;box-shadow:0 1px 0 rgba(0,0,0,.02);cursor:pointer;">
+            ${locked ? "🔐" : "🔓"}
+          </button>
+          <button class="delete-btn" title="刪除此分類">✕</button>
+        `;
 
       bar.querySelector(".rename-btn").onclick = () => {
         pendingRenameId = sec.id;
         document.getElementById("renameInput").value = sec.id;
         openModal("renameModal");
       };
+
+      bar.querySelector(".lock-btn").onclick = () => {
+        if (locked) {
+          openLockModal({ base: name, mode: "remove" });
+        } else {
+          openLockModal({ base: name, mode: "set" });
+        }
+      };
+
       bar.querySelector(".delete-btn").onclick = () =>
         confirmDeleteCategory(sec.id);
     });
