@@ -513,7 +513,7 @@
 
       bar.style.position = "relative";
       lockBtn.style.cssText =
-        `position:absolute;top:0;right:${rightOffset};padding:.2rem .5rem;` +
+        `position:absolute;top:-.2rem;right:${rightOffset};padding:.2rem .5rem;` +
         `border:1px solid #e5e7eb;background:#f8fafc;border-radius:12px;` +
         `box-shadow:0 1px 0 rgba(0,0,0,.02);cursor:pointer;`;
 
