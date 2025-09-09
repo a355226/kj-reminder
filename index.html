@@ -1398,6 +1398,30 @@ button.palette-btn:active {
   .title-link:focus-visible{ outline:2px solid #176dff; outline-offset:2px; }
 
   .title-link img{ display:block; transform: translateY(2px); }
+
+  /* 使用指南按鈕（淡科技感） */
+.guide-btn{
+  display:block;
+  width:100%;
+  padding:.6rem .8rem;
+  border-radius:8px;
+  text-align:center;
+  font-weight:700;
+  text-decoration:none;
+  background: linear-gradient(90deg,#eaf3ff,#f2fbff);
+  border:1px solid #cfe2ff;
+  color:#176dff;
+  box-shadow: 0 8px 20px rgba(23,109,255,.12), inset 0 0 0 1px rgba(255,255,255,.65);
+  transition: background-color .18s ease, box-shadow .18s ease, transform .02s ease;
+}
+.guide-btn:hover{
+  background: linear-gradient(90deg,#e6f0ff,#ebfaff);
+  box-shadow: 0 10px 24px rgba(23,109,255,.16);
+  text-decoration:none;
+}
+.guide-btn:active{ transform: translateY(1px); }
+.guide-btn:focus-visible{ outline:2px solid #176dff; outline-offset:2px; }
+
 </style>
 
 
@@ -1672,6 +1696,10 @@ button.palette-btn:active {
 <h3>更換底色</h3>
 <button id="openPaletteBtn" class="palette-btn">🎨 調色盤</button>
 <hr style="margin:1rem 0;border:none;border-top:1px solid #eee;">
+<a class="guide-btn"
+   href="https://kjapps.com/tips"
+   target="_blank" rel="noopener noreferrer"
+   aria-label="開啟使用指南（新分頁）">🧭 使用指南</a>
 <button class="logout-btn" style="font-weight:bold;" onclick="openLogoutModal()">登出</button>
 
   </div>
