@@ -923,7 +923,15 @@
           cell.textContent = d;
           const iso = `${y}-${pad2(m + 1)}-${pad2(d)}`;
           if (selected.has(iso)) cell.classList.add("selected");
-          if (iso === todayISO) cell.style.fontWeight = "700"; // ← 今日一律粗體
+         // ▼ 今日樣式（最小改動，直接 inline，能蓋過藍/紅/selected）
+if (iso === todayISO) {
+  cell.style.fontWeight = "700";
+  cell.style.background = 
+    "radial-gradient(120% 100% at 20% 10%, rgba(255,255,255,.9) 0, rgba(255,255,255,0) 60%)," +
+    "linear-gradient(180deg, #eaf4ff, #d9ecff)";
+  cell.style.border = "1px solid #9dc2ff";
+  cell.style.boxShadow = "inset 0 0 0 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.05)";
+}
           cell.onclick = () => {
             if (selected.has(iso)) {
               selected.delete(iso);
