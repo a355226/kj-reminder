@@ -649,13 +649,20 @@
     }
 
     // === 攔截原生 <input type="date">，改開自家單選月曆 ===
+// 取代原本的 __patchDateInputToCustomPicker
 function __patchDateInputToCustomPicker(id) {
   const el = document.getElementById(id);
   if (!el || el.__patched) return;
   el.__patched = true;
 
-  // 降低行動裝置原生彈窗機率
+  // 🔒 徹底關掉原生 date UI（iOS/Safari 最頑固）
+  try { el.setAttribute('data-real-type', el.type || 'date'); el.type = 'text'; } catch (_) {}
   el.setAttribute('readonly', 'readonly');
+  el.setAttribute('inputmode', 'none');
+  el.setAttribute('autocomplete', 'off');
+  el.setAttribute('aria-haspopup', 'dialog');
+  el.setAttribute('role', 'button');
+  el.style.cursor = 'pointer';
 
   const open = (e) => {
     e.preventDefault();
@@ -666,17 +673,22 @@ function __patchDateInputToCustomPicker(id) {
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     }, el.value);
+    // 任何情況都馬上 blur，避免鍵盤或原生面板再起來
+    try { el.blur(); } catch (_) {}
   };
 
-  // 早一點攔截，避免原生彈出
-  el.addEventListener('mousedown', open, true);
-  el.addEventListener('touchstart', open, { passive: false, capture: true });
-
-  // 鍵盤也能開
+  // 盡可能早地攔截所有會觸發原生挑日的事件
+  ['pointerdown','mousedown','touchstart','click','focus'].forEach(evt => {
+    el.addEventListener(evt, open, { capture: true, passive: false });
+  });
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') open(e);
-  });
+  }, { capture: true });
+
+  // 保險：就算被 focus 也立刻 blur
+  el.addEventListener('focus', (e) => { try { e.target.blur(); } catch (_) {} }, true);
 }
+
 
 
     function ensureCreateInlineUI() {
