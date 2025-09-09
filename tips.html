@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>MyTask/ MyMemo 使用指南</title>
+  <meta name="description" content="MyTask / MyMemo 使用技巧、手勢操作、功能總覽與常見問題" />
+  <style>
+    /* --------- 淺色主題 --------- */
+    :root{
+      --bg: #f6f8fb;
+      --bg-accent-1: rgba(37, 99, 235, .06);
+      --bg-accent-2: rgba(16, 185, 129, .06);
+      --card: #ffffff;
+      --card-border: #e6ebf2;
+      --fg: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+      --accent-2:#10b981;
+      --pill-bg: #f1f5ff;
+      --shadow: 0 10px 26px rgba(15,23,42,.08);
+      --radius: 16px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      color:var(--fg);
+      background:
+        radial-gradient(1200px 800px at 20% -10%, var(--bg-accent-1), transparent 60%),
+        radial-gradient(900px 700px at 110% 20%, var(--bg-accent-2), transparent 60%),
+        linear-gradient(180deg, #fbfcff, var(--bg) 60%, #eef3fb);
+      font: 16px/1.6 ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px clamp(16px, 5vw, 28px) 88px;
+    }
+
+    header{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px; margin: 6px 0 18px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:12px;
+    }
+    .logo{
+      width:40px;height:40px;border-radius:12px;
+      background: linear-gradient(135deg, var(--accent), #7bb3ff);
+      box-shadow: 0 6px 18px rgba(37,99,235,.25), inset 0 0 6px rgba(255,255,255,.6);
+    }
+    h1{
+      margin:0;
+      font-size: clamp(20px, 2.6vw, 32px);
+      letter-spacing:.4px;
+      display:flex; align-items:baseline; gap:8px;
+    }
+    h1 small{font-size:.6em; color:var(--muted); font-weight:500}
+
+    .hero{
+      margin: 8px 0 24px;
+      padding: 18px 18px;
+      border-radius: var(--radius);
+      border: 1px solid var(--card-border);
+      background: linear-gradient(180deg, #ffffff, #f7faff);
+      box-shadow: var(--shadow);
+    }
+    .hero p{margin:8px 0 0;color:var(--muted)}
+
+    /* --------- 卡片群組 --------- */
+    .grid{
+      display:grid; gap:16px;
+      grid-template-columns: repeat(12, 1fr);
+    }
+    .card{
+      grid-column: span 12;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 18px 18px 16px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(4px);
+    }
+    @media (min-width: 760px){
+      .card.half{grid-column: span 6}
+    }
+    .card h2{
+      margin:0 0 10px;
+      font-size: clamp(18px, 2vw, 22px);
+      letter-spacing:.3px;
+      display:flex; align-items:center; gap:10px;
+    }
+    .card h2 .dot{
+      width:10px;height:10px;border-radius:50%;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent));
+      box-shadow: 0 0 10px rgba(16,185,129,.45);
+    }
+
+    /* --------- 列表 --------- */
+    ul,ol{margin:10px 0 0 1.25em; padding:0}
+    li{margin:.45em 0}
+    .hint{color:var(--muted); font-size:.95em}
+    .note{
+      margin-top:8px; padding:10px 12px; border-radius:12px;
+      background: rgba(16,185,129,.08); border:1px dashed rgba(16,185,129,.35);
+    }
+
+    /* --------- 標籤式樣 --------- */
+    .pills{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
+    .pill{
+      border:1px solid var(--card-border);
+      background: var(--pill-bg);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: .9em; color: var(--fg);
+    }
+
+    /* --------- 圖示與連結 --------- */
+    .inline-icon{
+      height:20px; width:20px; vertical-align:-4px; margin:0 4px;
+      filter: drop-shadow(0 2px 4px rgba(15,23,42,.15));
+    }
+    a{color:var(--accent); text-decoration:none}
+    a:hover{text-decoration:underline}
+
+    .sub{
+      font-weight:600; color:var(--muted);
+      letter-spacing:.2px; margin:6px 0 4px;
+    }
+
+    footer{
+      margin-top: 26px; color: var(--muted); text-align:center;
+    }
+    .sig{margin-top:8px; color:var(--fg)}
+    .divider{
+      height:1px; background: linear-gradient(90deg, transparent, rgba(15,23,42,.12), transparent);
+      margin: 18px 0;
+    }
+    .kbd{
+      padding: 1px 7px; border-radius:6px; border:1px solid var(--card-border);
+      background: #f8fbff; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .9em;
+    }
+
+header {
+  text-align: center; /* 讓裡面的文字與元素置中 */
+}
+
+header .brand {
+  display: inline-block; /* 保證文字可以在父層置中 */
+}
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+<header>
+  <div class="brand" style="margin:0 auto;">
+    <h1>🧭 使用指南</h1>
+  </div>
+</header>
+
+
+    <section class="hero" role="region" aria-label="使用技巧">
+      <strong>使用技巧 ✨</strong>
+      <p class="hint">強烈建議以 <span class="pill">桌面APP</span> 方式執行，以達到最佳使用體驗。</p>
+      <div class="grid" style="margin-top:6px">
+        <div class="card half">
+          <h2><span class="dot"></span>安裝到主畫面（iOS）</h2>
+          <ol>
+            <li>使用 <span class="pill">Safari</span> 開啟網頁</li>
+            <li>點擊 <span class="kbd">分享</span> → <span class="kbd">加入主畫面</span></li>
+          </ol>
+          <!-- 已移除句子：完成後即可像 App 一樣開啟，並可與電腦版同步使用。 -->
+        </div>
+        <div class="card half">
+          <h2><span class="dot"></span>安裝到主畫面（Android）</h2>
+          <ol>
+            <li>使用 <span class="pill">Chrome</span> 開啟網頁</li>
+            <li>點擊 <span class="kbd">更多</span> → <span class="kbd">加到主畫面</span></li>
+          </ol>
+          <!-- 已移除句子：新增後即可以 App 方式執行，體驗更順暢！ -->
+        </div>
+      </div>
+    </section>
+
+    <div class="grid" role="region" aria-label="主要內容">
+      <!-- 手勢 -->
+      <article class="card">
+        <h2><span class="dot"></span>手勢</h2>
+        <ol>
+          <li>於分類空白處 <strong>[長按]</strong>，即可快速 <strong>[新增]</strong>該分類[任務/備忘]。</li>
+          <li>於任務 <strong>[右滑]</strong> 快速完成、<strong>[左滑]</strong> 移除。</li>
+        </ol>
+      </article>
+
+      <!-- 功能 -->
+      <article class="card">
+        <h2><span class="dot"></span>功能</h2>
+        <ol>
+          <li>點選上方標題，可自動切換 <span class="pill">MyTask</span> 與 <span class="pill">MyMemo</span>。</li>
+          <li>
+            點選資訊內
+            <img class="inline-icon" src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/drive.png" alt="Google Drive 圖示" />
+            可於[Google Drive]自動建立對應資料夾。
+          </li>
+          <li>
+            點選資訊內
+            <img class="inline-icon" src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/googleca.png" alt="Google 日曆圖示" />
+            可快速新增任務至[Google 日曆]。
+          </li>
+          <li>點選右上角日期，開啟 <span class="pill">月曆模式</span>。</li>
+          <li>於 MyMemo 模式，可以點選 <span class="pill">編輯分類</span> 進行 <span class="pill">🔐 分類加密</span>。</li>
+        </ol>
+      </article>
+
+      <!-- 常見問題 -->
+      <article class="card">
+        <h2><span class="dot"></span>常見問題</h2>
+        <ol>
+          <li>有任務 <strong>[🔔 通知]</strong> 需求，建議配合 <strong>[Google 日曆]</strong> 功能使用。</li>
+          <li>若無法變更 <strong>[雲端硬碟]</strong> 帳號，可於瀏覽器任一 <strong>[Google 頁面]</strong>，將當前使用帳號登出，即可重新選擇。</li>
+        </ol>
+      </article>
+
+      <!-- 說明/版權 -->
+      <article class="card">
+        <h2><span class="dot"></span>💬 關於此工具</h2>
+        <p>此應用為非商業使用之免費工具，由一個忙碌的文科生製作，希望能幫助到大家！</p>
+        <div class="divider" role="presentation"></div>
+        <div class="sub">聯絡方式</div>
+        <p>如有任何問題或建議，歡迎來信：<a href="mailto:a355226@hotmail.com">a355226@hotmail.com</a></p>
+        <p class="sig">— KJ</p>
+        <p class="hint" style="margin-top:10px">* iOS 桌面 APP 使用者，請於螢幕左側向右滑關閉此頁面。</p>
+      </article>
+    </div>
+
+    <footer>
+      <div style="margin-top:6px;opacity:.85">© <span id="y"></span> KJapps</div>
+    </footer>
+  </div>
+
+  <script>
+    // 動態年份 + PWA 標籤微互動
+    document.getElementById('y').textContent = new Date().getFullYear();
+    (function(){
+      const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+      if(isStandalone){
+        document.querySelectorAll('.pill').forEach(p=>{
+          p.style.boxShadow = '0 0 0 1px rgba(37,99,235,.12) inset, 0 6px 14px rgba(37,99,235,.12)';
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
