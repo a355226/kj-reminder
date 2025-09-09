@@ -874,7 +874,6 @@
       const selected = new Set(
         curr && curr.type === "custom" ? curr.dates || [] : []
       );
-      const todayISO = ymd(today0()); // ← 新增：今天（YYYY-MM-DD）
       const now = today0();
       let y = now.getFullYear(),
         m = now.getMonth();
@@ -915,6 +914,7 @@
         let lead = jsDowTo1234567(new Date(y, m, 1).getDay()) - 1;
         if (lead < 0) lead += 7;
         const days = mDays(y, m);
+        const todayISO = ymd(today0()); // ← 新增
         for (let i = 0; i < lead; i++)
           grid.appendChild(document.createElement("div"));
         for (let d = 1; d <= days; d++) {
