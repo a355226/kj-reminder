@@ -914,7 +914,6 @@
         let lead = jsDowTo1234567(new Date(y, m, 1).getDay()) - 1;
         if (lead < 0) lead += 7;
         const days = mDays(y, m);
-        const todayISO = ymd(today0()); // ← 新增
         for (let i = 0; i < lead; i++)
           grid.appendChild(document.createElement("div"));
         for (let d = 1; d <= days; d++) {
@@ -923,24 +922,7 @@
           cell.textContent = d;
           const iso = `${y}-${pad2(m + 1)}-${pad2(d)}`;
           if (selected.has(iso)) cell.classList.add("selected");
-         // ▼ 今日樣式（最小改動，直接 inline，能蓋過藍/紅/selected）
-// ▼ 今日樣式（用 !important，蓋過所有既有規則）
-if (iso === todayISO) {
-  cell.style.setProperty('font-weight', '700', 'important');
-  cell.style.setProperty(
-    'background',
-    'radial-gradient(120% 100% at 20% 10%, rgba(255,255,255,.9) 0, rgba(255,255,255,0) 60%),' +
-    'linear-gradient(180deg, #eaf4ff, #d9ecff)',
-    'important'
-  );
-  cell.style.setProperty('border', '1px solid #9dc2ff', 'important');
-  cell.style.setProperty(
-    'box-shadow',
-    'inset 0 0 0 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.05)',
-    'important'
-  );
-}
-          cell.onclick = () => {
+            cell.onclick = () => {
             if (selected.has(iso)) {
               selected.delete(iso);
               cell.classList.remove("selected");
