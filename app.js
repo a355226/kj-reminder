@@ -874,6 +874,7 @@
       const selected = new Set(
         curr && curr.type === "custom" ? curr.dates || [] : []
       );
+      const todayISO = ymd(today0()); // ← 新增：今天（YYYY-MM-DD）
       const now = today0();
       let y = now.getFullYear(),
         m = now.getMonth();
@@ -922,6 +923,7 @@
           cell.textContent = d;
           const iso = `${y}-${pad2(m + 1)}-${pad2(d)}`;
           if (selected.has(iso)) cell.classList.add("selected");
+          if (iso === todayISO) cell.style.fontWeight = "700"; // ← 今日一律粗體
           cell.onclick = () => {
             if (selected.has(iso)) {
               selected.delete(iso);
