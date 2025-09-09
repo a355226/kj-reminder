@@ -644,52 +644,7 @@
 
       // 原本的「日期 vs 排程互斥」維持
       wireDateVsRecurrenceInterlock(TARGET_DETAIL);
-      __patchDateInputToCustomPicker('detailDate');
-
     }
-
-    // === 攔截原生 <input type="date">，改開自家單選月曆 ===
-// 取代原本的 __patchDateInputToCustomPicker
-function __patchDateInputToCustomPicker(id) {
-  const el = document.getElementById(id);
-  if (!el || el.__patched) return;
-  el.__patched = true;
-
-  // 🔒 徹底關掉原生 date UI（iOS/Safari 最頑固）
-  try { el.setAttribute('data-real-type', el.type || 'date'); el.type = 'text'; } catch (_) {}
-  el.setAttribute('readonly', 'readonly');
-  el.setAttribute('inputmode', 'none');
-  el.setAttribute('autocomplete', 'off');
-  el.setAttribute('aria-haspopup', 'dialog');
-  el.setAttribute('role', 'button');
-  el.style.cursor = 'pointer';
-
-  const open = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    openCustomSingle((pickedISO) => {
-      if (!pickedISO) return;
-      el.value = pickedISO;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }, el.value);
-    // 任何情況都馬上 blur，避免鍵盤或原生面板再起來
-    try { el.blur(); } catch (_) {}
-  };
-
-  // 盡可能早地攔截所有會觸發原生挑日的事件
-  ['pointerdown','mousedown','touchstart','click','focus'].forEach(evt => {
-    el.addEventListener(evt, open, { capture: true, passive: false });
-  });
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') open(e);
-  }, { capture: true });
-
-  // 保險：就算被 focus 也立刻 blur
-  el.addEventListener('focus', (e) => { try { e.target.blur(); } catch (_) {} }, true);
-}
-
-
 
     function ensureCreateInlineUI() {
       const dateEl = document.getElementById("taskDate");
@@ -719,8 +674,6 @@ function __patchDateInputToCustomPicker(id) {
       btn.onclick = () => openRecurrenceModal(TARGET_CREATE);
       row.appendChild(btn);
       wireDateVsRecurrenceInterlock(TARGET_CREATE);
-      __patchDateInputToCustomPicker('taskDate');
-
     }
 
     // ------ modal skins ------
@@ -969,7 +922,7 @@ function __patchDateInputToCustomPicker(id) {
           cell.textContent = d;
           const iso = `${y}-${pad2(m + 1)}-${pad2(d)}`;
           if (selected.has(iso)) cell.classList.add("selected");
-            cell.onclick = () => {
+          cell.onclick = () => {
             if (selected.has(iso)) {
               selected.delete(iso);
               cell.classList.remove("selected");
@@ -1011,94 +964,6 @@ function __patchDateInputToCustomPicker(id) {
         closeModal("recCustom");
       };
     }
-
-    // === 自家月曆：單選版（用於攔截 input） ===
-function openCustomSingle(onPick, initialISO) {
-  const now = today0();
-  let y = now.getFullYear(), m = now.getMonth();
-  let selectedISO =
-    (initialISO && /^\d{4}-\d{2}-\d{2}$/.test(initialISO)) ? initialISO : ymd(now);
-
-  const M = ensureModal('recDateSingle', '選擇日期', `
-    <div class="rec-cal-head">
-      <div class="rec-nav">
-        <button id="recPrev">&lt;</button>
-        <button id="recToday">今</button>
-        <button id="recNext">&gt;</button>
-      </div>
-      <div id="recYM"></div>
-    </div>
-    <div class="rec-cal-grid" id="recCalNames"></div>
-    <div class="rec-cal-grid" id="recCalGrid"></div>
-    <div class="rec-footer">
-      <button class="btn-light" onclick="closeModal('recDateSingle')">取消</button>
-      <button class="btn-primary" id="recPickOk">確認</button>
-    </div>
-  `);
-
-  M.querySelector("#recCalNames").innerHTML =
-    ["一","二","三","四","五","六","日"]
-      .map(n => `<div class="rec-dayname">${n}</div>`).join("");
-
-  function draw() {
-    M.querySelector("#recYM").textContent = `${y} 年 ${m + 1} 月`;
-    const grid = M.querySelector("#recCalGrid");
-    grid.innerHTML = "";
-
-    let lead = jsDowTo1234567(new Date(y, m, 1).getDay()) - 1;
-    if (lead < 0) lead += 7;
-    const days = mDays(y, m);
-    const todayISO = ymd(today0());
-
-    for (let i = 0; i < lead; i++) grid.appendChild(document.createElement("div"));
-
-    for (let d = 1; d <= days; d++) {
-      const cell = document.createElement("button");
-      cell.className = "rec-date";
-      const iso = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-      cell.textContent = d;
-
-      if (iso === selectedISO) cell.classList.add("selected");
-
-      // ▼ 今日：質感淺藍底 + 深藍邊框 + 粗體（會蓋過 selected）
-      if (iso === todayISO) {
-        cell.style.fontWeight = "700";
-        cell.style.background =
-          "radial-gradient(120% 100% at 20% 10%, rgba(255,255,255,.9) 0, rgba(255,255,255,0) 60%)," +
-          "linear-gradient(180deg,#eaf3ff,#d7e9ff)";
-        cell.style.border = "1px solid #2b5bd6"; // 深藍
-        cell.style.boxShadow =
-          "inset 0 0 0 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.06)";
-      }
-
-      cell.onclick = () => {
-        selectedISO = iso;
-        // 單選：清掉其它選中
-        grid.querySelectorAll(".rec-date.selected")
-            .forEach(b => b.classList.remove("selected"));
-        cell.classList.add("selected");
-      };
-
-      grid.appendChild(cell);
-    }
-  }
-
-  M.querySelector("#recPrev").onclick = () => { if (m === 0) { m = 11; y--; } else m--; draw(); };
-  M.querySelector("#recNext").onclick = () => { if (m === 11) { m = 0; y++; } else m++; draw(); };
-  M.querySelector("#recToday").onclick = () => {
-    const n = today0(); y = n.getFullYear(); m = n.getMonth();
-    selectedISO = ymd(n); draw();
-  };
-
-  M.style.display = "flex";
-  draw();
-
-  M.querySelector("#recPickOk").onclick = () => {
-    if (typeof onPick === "function") onPick(selectedISO);
-    closeModal("recDateSingle");
-  };
-}
-
 
     // ------ self-heal + next spawn ------
     function healEmptyDates() {
