@@ -2373,6 +2373,15 @@
       ])
     );
 
+    // 以「最後更新日」排序（最新在上）
+// 已完成通常以 completedAt 為準；若沒有就退回 updatedAt，再退回 createdAt
+list.sort((a, b) => {
+  const ua = Number(a.completedAt ?? a.updatedAt ?? a.createdAt ?? 0);
+  const ub = Number(b.completedAt ?? b.updatedAt ?? b.createdAt ?? 0);
+  return ub - ua; // 由新到舊
+});
+
+
     // 重畫區塊（暫時 DOM；不動 categories 陣列）
     renderSections(sectionsForDone);
 
