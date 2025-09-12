@@ -971,40 +971,37 @@
       return memoMatchesSearch(m);
     });
 
-    // ★ 排序
-    if (isRemoved) {
-      // 已移除：同分類內依「最後更新日」(removedAt > updatedAt > createdAt) 由新到舊
-      filtered.sort((a, b) => {
-        const secA = stripRemovedSuffix(a.section || "");
-        const secB = stripRemovedSuffix(b.section || "");
-        const sc = secA.localeCompare(secB);
-        if (sc !== 0) return sc;
+// ★ 排序
+if (isRemoved) {
+  // 已移除：同分類內依「最後更新日」(removedAt > updatedAt > createdAt) 由新到舊
+  filtered.sort((a, b) => {
+    const secA = stripRemovedSuffix(a.section || "");
+    const secB = stripRemovedSuffix(b.section || "");
+    const sc = secA.localeCompare(secB);
+    if (sc !== 0) return sc;
 
-        const ta = Number(a.removedAt ?? a.updatedAt ?? a.createdAt ?? 0);
-        const tb = Number(b.removedAt ?? b.updatedAt ?? b.createdAt ?? 0);
-        return tb - ta; // 新 → 舊
-      });
-    } else {
-      // 當前視圖維持原本「分類 + order」排序
-      filtered.sort((a, b) => {
-        const secA = a.section || "";
-        const secB = b.section || "";
-        const sc = secA.localeCompare(secB);
-        if (sc !== 0) return sc;
+    const ta = Number(a.removedAt ?? a.updatedAt ?? a.createdAt ?? 0);
+    const tb = Number(b.removedAt ?? b.updatedAt ?? b.createdAt ?? 0);
+    return tb - ta; // 新 → 舊
+  });
+} else {
+  // 當前視圖維持原本「分類 + order」排序
+  filtered.sort((a, b) => {
+    const secA = a.section || "";
+    const secB = b.section || "";
+    const sc = secA.localeCompare(secB);
+    if (sc !== 0) return sc;
 
-        const ao =
-          typeof a.order === "number"
-            ? a.order
-            : a.createdAt || a.updatedAt || 0;
-        const bo =
-          typeof b.order === "number"
-            ? b.order
-            : b.createdAt || b.updatedAt || 0;
-        if (ao !== bo) return ao - bo;
+    const ao =
+      typeof a.order === "number" ? a.order : a.createdAt || a.updatedAt || 0;
+    const bo =
+      typeof b.order === "number" ? b.order : b.createdAt || b.updatedAt || 0;
+    if (ao !== bo) return ao - bo;
 
-        return (a.updatedAt || 0) - (b.updatedAt || 0);
-      });
-    }
+    return (a.updatedAt || 0) - (b.updatedAt || 0);
+  });
+}
+
 
     // 建立 DOM（在「已移除」視圖，section 的 id 是原始分類名）
     filtered.forEach((m) => {
@@ -1058,10 +1055,10 @@
     buildMemoMonthMenu();
   }
 
-  function getMemoRefTime(m) {
-    // 最後更新日優先順序：removedAt > updatedAt > createdAt
-    return m?.removedAt ?? m?.updatedAt ?? m?.createdAt ?? null;
-  }
+function getMemoRefTime(m) {
+  // 最後更新日優先順序：removedAt > updatedAt > createdAt
+  return m?.removedAt ?? m?.updatedAt ?? m?.createdAt ?? null;
+}
 
   function toRocYMFromTs(ts) {
     if (!ts) return "無";
@@ -1124,8 +1121,7 @@
 
     const base = baseCategoryName(m.section || "");
     if (isCategoryLocked(base) && !isCategoryUnlocked(base)) {
-      // ★ 記住是要開這張
-      pendingLockOpenMemoId = id;
+      // 先要求輸入密碼解鎖（「已移除」也共用同一把鎖）
       openLockModal({ base, mode: "view" });
       return;
     }
@@ -1224,8 +1220,6 @@
     openModal("confirmModal");
   }
 
-  let pendingLockOpenMemoId = null;
-
   function openLockModal({ base, mode }) {
     pendingLockBase = baseCategoryName(base);
     pendingLockAction = mode; // 'set' | 'remove' | 'view'
@@ -1309,11 +1303,6 @@
           closeModal("lockModal");
           renderSections();
           renderAll();
-          if (pendingLockOpenMemoId) {
-            const target = pendingLockOpenMemoId;
-            pendingLockOpenMemoId = null;
-            requestAnimationFrame(() => openDetail(target));
-          }
         } else {
           const ctx = memoView === "removed" ? "removed" : "active";
           await handleWrongPassword(base, ctx);
@@ -1388,7 +1377,7 @@
     closeModal("confirmModal");
     closeModal("detailModal");
   }
-  let __justSwiped = false; // ★ 新增
+
   /* ===== Swipe（只保留左滑刪除；右滑完成禁用） ===== */
   function bindSwipeToTasks() {
     document.querySelectorAll(".task").forEach((task) => {
@@ -1412,8 +1401,6 @@
         DOMINANCE = 1.3,
         BOUND = 0.75,
         MAX_TILT = 3;
-      const TAP_SLOP = 12;
-      task.style.touchAction = "pan-y";
 
       task.addEventListener("pointerdown", onDown);
       task.addEventListener("pointermove", onMove);
@@ -1421,20 +1408,12 @@
       task.addEventListener("pointercancel", onCancel);
       task.addEventListener("lostpointercapture", onCancel);
 
-      // ★ 新增：只在剛剛是滑動時，吞掉一次 click；否則當作正常點擊→開詳情
+      // 吞 click，自己判定「點一下」
       task.addEventListener(
         "click",
         (e) => {
-          if (__justSwiped) {
-            __justSwiped = false;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            return;
-          }
-          if (!isEditing) {
-            // 不要阻止預設，讓可及性更好；但確保開詳情
-            openDetail(task.dataset.id);
-          }
+          e.preventDefault();
+          e.stopImmediatePropagation();
         },
         true
       );
@@ -1500,7 +1479,8 @@
         finish(true);
       }
       function finish(cancel) {
-        const tapLike = Math.abs(dx) < TAP_SLOP && Math.abs(dy) < TAP_SLOP;
+        const tapLike =
+          Math.abs(dx) < 4 && Math.abs(dy) < 4 && mode !== "scroll";
         const wasSwipe = mode === "swipe";
         mode = "pending";
         isDown = false;
@@ -1509,29 +1489,21 @@
         task.style.transform = "";
         resetBars();
 
-        if (!wasSwipe && tapLike) {
+        if (!wasSwipe && !cancel && tapLike) {
           openDetail(task.dataset.id);
           cleanup();
           return;
         }
 
         if (!wasSwipe || cancel) {
-          __justSwiped = false; // 沒真的滑 → 不要吞下一個 click
           cleanup();
           return;
         }
-
-        const movedX = Math.abs(dx);
-        const passed = movedX >= width * BOUND && dx < 0; // 達到刪除門檻
-        if (passed) {
+        const passed = Math.abs(dx) >= width * BOUND;
+        if (passed && dx < 0) {
           selectedMemoId = task.dataset.id;
           setTimeout(() => confirmDelete(), 10);
         }
-
-        // 只有「真的滑了不少」才吞掉下一個 click；微小抖動不吞
-        const SUPPRESS_PX = 24; // 你也可用 Math.min(32, width*0.12)
-        __justSwiped = passed || movedX > SUPPRESS_PX;
-
         cleanup();
       }
       function cleanup() {
