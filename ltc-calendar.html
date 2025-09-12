@@ -764,7 +764,7 @@
       // 合併連續/重疊的時段，同時彙整該時段的項目數量
       // 合併連續/重疊的時段，同時彙整該時段的項目數量與機構
       function buildSegments(rows) {
-        // rows: [{start,end, code, qty, org}]
+        // rows: [{start,end, code, qty, org, staff}]
         const sorted = [...rows].sort(
           (a, b) => a.start - b.start || a.end - b.end
         );
@@ -773,11 +773,14 @@
           if (!segs.length) {
             const orgs = new Map();
             if (r.org) orgs.set(r.org, 1);
+            const staffs = new Map();
+            if (r.staff) staffs.set(r.staff, 1);
             segs.push({
               start: r.start,
               end: r.end,
               items: new Map([[r.code, r.qty]]),
               orgs,
+              staffs,
             });
             continue;
           }
@@ -790,14 +793,19 @@
               (last.items.get(r.code) || 0) + (r.qty || 0)
             );
             if (r.org) last.orgs.set(r.org, (last.orgs.get(r.org) || 0) + 1);
+            if (r.staff)
+              last.staffs.set(r.staff, (last.staffs.get(r.staff) || 0) + 1);
           } else {
             const orgs = new Map();
             if (r.org) orgs.set(r.org, 1);
+            const staffs = new Map();
+            if (r.staff) staffs.set(r.staff, 1);
             segs.push({
               start: r.start,
               end: r.end,
               items: new Map([[r.code, r.qty]]),
               orgs,
+              staffs,
             });
           }
         }
@@ -838,6 +846,14 @@
             ) ||
             "";
           const org = (cells[dIdx + 5] || "").trim(); // 讀取「長照機構」
+          let staff = (cells[dIdx + 6] || "").trim();
+          // Fallback：若沒抓到，嘗試找像是人名的內容（2–6 個中英文字、純字串）
+          if (!staff) {
+            const cand = cells.find((c) =>
+              /^[A-Za-z\u4E00-\u9FFF]{2,6}$/.test(c)
+            );
+            staff = cand || "";
+          }
 
           const range = parseTimeRange(String(tr).replace(/\[[^\]]*\]/g, ""));
           if (!range || !code || qty <= 0) continue;
@@ -845,11 +861,16 @@
           if (!monthBuckets.has(yymm)) monthBuckets.set(yymm, new Map());
           const dayMap = monthBuckets.get(yymm);
           if (!dayMap.has(ymd)) dayMap.set(ymd, []);
-          dayMap
-            .get(ymd)
-            .push({ start: range.start, end: range.end, code, qty, org });
+          dayMap.get(ymd).push({
+            start: range.start,
+            end: range.end,
+            code,
+            qty,
+            org,
+            staff,
+          });
           if (!monthsRows.has(yymm)) monthsRows.set(yymm, []);
-          monthsRows.get(yymm).push({ date: ymd, code, qty, org });
+          monthsRows.get(yymm).push({ date: ymd, code, qty, org, staff });
 
           rowCount++;
         }
@@ -924,7 +945,22 @@
                 entries.sort((a, b) => b[1] - a[1]);
                 const top = entries[0];
                 const dot = document.createElement("span");
-                dot.title = "機構：" + entries.map((e) => e[0]).join("、");
+                let title = "";
+                if (entries.length) {
+                  title += "機構：" + entries.map((e) => e[0]).join("、");
+                }
+                const staffs = seg.staffs
+                  ? Array.from(seg.staffs.entries())
+                  : [];
+                if (staffs.length) {
+                  staffs.sort((a, b) => b[1] - a[1]);
+                  title +=
+                    (title ? "\n" : "") +
+                    "服務人員：" +
+                    staffs.map((e) => e[0]).join("、");
+                }
+                dot.title = title || " ";
+
                 dot.style.cssText =
                   "display:inline-block;width:10px;height:10px;border-radius:50%;margin-left:6px;vertical-align:-1.05px;border:1px solid rgba(0,0,0,.12);background:" +
                   colorForOrg(top && top[0]) +
@@ -984,7 +1020,7 @@
           currentOrgFilter && currentOrgFilter !== "全部"
             ? ` · 篩選：${currentOrgFilter}`
             : "";
-        badge.textContent = `${monKey} · 有資料天數：${cntDays} 天${note}`;
+        badge.textContent = `${monKey} · 有服務天數：${cntDays} 天${note}`;
       }
 
       // UI 綁定
@@ -1228,7 +1264,7 @@
           currentOrgFilter && currentOrgFilter !== "全部"
             ? ` · 篩選：${currentOrgFilter}`
             : "";
-        return `${monKey} · 有資料天數：${days} 天${note}`;
+        return `${monKey} · 有服務天數：${days} 天${note}`;
       }
 
       /* ===== 產生「列印專用月曆」：不動你原本畫面 ===== */
