@@ -1396,11 +1396,13 @@ function getMemoRefTime(m) {
         isDown = false,
         activeId = null,
         mode = "pending";
-      const H_START = 16,
-        V_CANCEL = 10,
-        DOMINANCE = 1.3,
-        BOUND = 0.75,
-        MAX_TILT = 3;
+const H_START = 12,     // 原 16 → 12：更容易進入「水平手勢」或維持點擊
+      V_CANCEL = 14,    // 原 10 → 14：不要太快被當作垂直捲動
+      DOMINANCE = 1.15, // 原 1.3 → 1.15：較寬鬆的「水平主導」判斷
+      BOUND = 0.75,
+      MAX_TILT = 3;
+
+
 
       task.addEventListener("pointerdown", onDown);
       task.addEventListener("pointermove", onMove);
@@ -1408,15 +1410,67 @@ function getMemoRefTime(m) {
       task.addEventListener("pointercancel", onCancel);
       task.addEventListener("lostpointercapture", onCancel);
 
-      // 吞 click，自己判定「點一下」
-      task.addEventListener(
-        "click",
-        (e) => {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-        },
-        true
-      );
+// 在 bindSwipeToTasks() 的最上面（onDown/onMove/onUp 旁邊）加一個旗標
+let __justSwiped = false;
+
+// 在 finish(cancel) 裡面：
+// - 當有完成滑動（wasSwipe）→ 設 __justSwiped = true
+// - 當判定為「點一下」已自行呼叫 openDetail() → 保持 false
+// 範例（你的原邏輯基礎上補兩行）：
+function finish(cancel) {
+  const tapLike =
+    Math.abs(dx) < TAP_SLOP && Math.abs(dy) < TAP_SLOP && mode !== "scroll";
+  const wasSwipe = mode === "swipe";
+  mode = "pending";
+  isDown = false;
+  activeId = null;
+  task.style.transition = "transform .18s";
+  task.style.transform = "";
+  resetBars();
+
+  if (!wasSwipe && !cancel && tapLike) {
+    openDetail(task.dataset.id);
+    cleanup();
+    return;
+  }
+
+  if (!wasSwipe || cancel) {
+    cleanup();
+    return;
+  }
+
+  const passed = Math.abs(dx) >= width * BOUND;
+  if (passed && dx < 0) {
+    selectedMemoId = task.dataset.id;
+    setTimeout(() => confirmDelete(), 10);
+  }
+
+  // ★ 只有真的執行過滑動行為才把接下來的 click 吞掉一次
+  __justSwiped = true;
+  // 清掉 pointer 狀態
+  cleanup();
+}
+
+// 取代原本無條件吞掉的 click 捕獲器：
+task.addEventListener(
+  "click",
+  (e) => {
+    if (__justSwiped) {
+      // 剛剛是滑動造成的 click 冒泡 → 吞掉
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      __justSwiped = false; // 只吞這一次
+      return;
+    }
+    // 否則讓 click 走預設行為（並保個險：若沒被 finish() 叫到，這裡補開）
+    if (!isEditing) {
+      e.preventDefault(); // 避免與卡片內其他元素衝突
+      openDetail(task.dataset.id);
+    }
+  },
+  true // 仍用捕獲，確保先於其他 handler
+);
+
 
       function onDown(e) {
         if (e.target.closest("button,input,select,textarea")) return;
@@ -1479,8 +1533,10 @@ function getMemoRefTime(m) {
         finish(true);
       }
       function finish(cancel) {
-        const tapLike =
-          Math.abs(dx) < 4 && Math.abs(dy) < 4 && mode !== "scroll";
+const TAP_SLOP = 12; // 新增
+const tapLike =
+  Math.abs(dx) < TAP_SLOP && Math.abs(dy) < TAP_SLOP && mode !== "scroll";
+
         const wasSwipe = mode === "swipe";
         mode = "pending";
         isDown = false;
