@@ -462,12 +462,18 @@
       let currentOrgFilter = "全部";
 
       const ORG_PALETTE = [
-        "#dbeafe",
-        "#ffe4e6",
-        "#dcfce7",
-        "#fef9c3",
-        "#e9d5ff",
-      ]; // 至少 5 個淺色
+        "#FFB3B8", // 1 淺紅
+        "#FFC9A6", // 2 淺橘
+        "#FFE79A", // 3 淺黃
+        "#D7F59A", // 4 萊姆
+        "#B6E3A8", // 5 淺綠
+        "#A8E8E0", // 6 淺青綠(薄荷青)
+        "#A7E8FF", // 7 淺青(天青)
+        "#BBD5FF", // 8 淺藍
+        "#D3C6FF", // 9 淺靛/薰衣草
+        "#FFD1F0", // 10 淺洋紅/粉紫
+      ];
+
       const orgColorMap = new Map();
       function colorForOrg(name) {
         if (!name) return "#e5e7eb";
