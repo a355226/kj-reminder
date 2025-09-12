@@ -1119,12 +1119,13 @@ function getMemoRefTime(m) {
     const m = memos.find((x) => x.id === id);
     if (!m) return;
 
-    const base = baseCategoryName(m.section || "");
-    if (isCategoryLocked(base) && !isCategoryUnlocked(base)) {
-      // 先要求輸入密碼解鎖（「已移除」也共用同一把鎖）
-      openLockModal({ base, mode: "view" });
-      return;
-    }
+  const base = baseCategoryName(m.section || "");
+  if (isCategoryLocked(base) && !isCategoryUnlocked(base)) {
+    // ★ 記住是要開這張
+    pendingLockOpenMemoId = id;
+    openLockModal({ base, mode: "view" });
+    return;
+  }
 
     document.getElementById("detailSection").value = m.section;
     document.getElementById("detailTitle").value = m.title;
@@ -1219,7 +1220,18 @@ function getMemoRefTime(m) {
     }
     openModal("confirmModal");
   }
+// === 分類鎖定（加密）狀態 ===
+let locksRef = null;
+let categoryLocks = {};
+const MAX_LOCK_FAILS = 5;
+let unlockedCategories = new Set();
+let pendingLockBase = null;
+let pendingLockAction = null;
 
+// ★ 新增：當前是由哪一張備忘「發起」了解鎖
+let pendingLockOpenMemoId = null;
+
+  
   function openLockModal({ base, mode }) {
     pendingLockBase = baseCategoryName(base);
     pendingLockAction = mode; // 'set' | 'remove' | 'view'
@@ -1303,6 +1315,12 @@ function getMemoRefTime(m) {
           closeModal("lockModal");
           renderSections();
           renderAll();
+              // ★ 新增：若是點備忘觸發的解鎖，立即開啟那張備忘
+    if (pendingLockOpenMemoId) {
+      const target = pendingLockOpenMemoId;
+      pendingLockOpenMemoId = null;
+      requestAnimationFrame(() => openDetail(target));
+    }
         } else {
           const ctx = memoView === "removed" ? "removed" : "active";
           await handleWrongPassword(base, ctx);
@@ -1379,6 +1397,8 @@ function getMemoRefTime(m) {
   }
 
   /* ===== Swipe（只保留左滑刪除；右滑完成禁用） ===== */
+ 
+  let __justSwiped = false; // ★ 新增
   function bindSwipeToTasks() {
     document.querySelectorAll(".task").forEach((task) => {
       if (task.dataset.swipeBound === "1") return;
@@ -1401,6 +1421,7 @@ const H_START = 12,     // 原 16 → 12：更容易進入「水平手勢」或�
       DOMINANCE = 1.15, // 原 1.3 → 1.15：較寬鬆的「水平主導」判斷
       BOUND = 0.75,
       MAX_TILT = 3;
+      const TAP_SLOP = 12; 
 
 
 
@@ -1418,8 +1439,7 @@ let __justSwiped = false;
 // - 當判定為「點一下」已自行呼叫 openDetail() → 保持 false
 // 範例（你的原邏輯基礎上補兩行）：
 function finish(cancel) {
-  const tapLike =
-    Math.abs(dx) < TAP_SLOP && Math.abs(dy) < TAP_SLOP && mode !== "scroll";
+const tapLike = Math.abs(dx) < TAP_SLOP && Math.abs(dy) < TAP_SLOP;
   const wasSwipe = mode === "swipe";
   mode = "pending";
   isDown = false;
@@ -1452,24 +1472,19 @@ function finish(cancel) {
 }
 
 // 取代原本無條件吞掉的 click 捕獲器：
-task.addEventListener(
-  "click",
-  (e) => {
-    if (__justSwiped) {
-      // 剛剛是滑動造成的 click 冒泡 → 吞掉
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      __justSwiped = false; // 只吞這一次
-      return;
-    }
-    // 否則讓 click 走預設行為（並保個險：若沒被 finish() 叫到，這裡補開）
-    if (!isEditing) {
-      e.preventDefault(); // 避免與卡片內其他元素衝突
-      openDetail(task.dataset.id);
-    }
-  },
-  true // 仍用捕獲，確保先於其他 handler
-);
+// ★ 新增：只在剛剛是滑動時，吞掉一次 click；否則當作正常點擊→開詳情
+task.addEventListener("click", (e) => {
+  if (__justSwiped) {
+    __justSwiped = false;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
+  if (!isEditing) {
+    // 不要阻止預設，讓可及性更好；但確保開詳情
+    openDetail(task.dataset.id);
+  }
+}, true);
 
 
       function onDown(e) {
