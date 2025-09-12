@@ -1534,6 +1534,7 @@
         
         cleanup();
         
+      }
       function cleanup() {
         dx = dy = 0;
         try {
