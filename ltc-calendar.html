@@ -20,15 +20,26 @@
         --card: #ffffff; /* 白卡片 */
         --ring: rgba(31, 122, 232, 0.25);
       }
-      html,
-      body {
-        height: 100%;
+      html {
+        min-height: 100%;
+        background: linear-gradient(
+          180deg,
+          #e1eaf8 0%,
+          #cad9f9 30%,
+          #bdd0f4 45%
+        );
+        background-repeat: no-repeat;
       }
+      body {
+        background: transparent;
+      }
+
       body {
         margin: 0;
         font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
           PingFang TC, Microsoft JhengHei, Helvetica, Arial, sans-serif;
-        background: linear-gradient(180deg, var(--blue-50), #fff 45%);
+        /* 貼在原本 body 的 background 那一行「取代」即可 */
+
         color: var(--slate-600);
       }
       .wrap {
@@ -84,6 +95,26 @@
         border-radius: 12px;
         padding: 10px 12px;
         font-weight: 600;
+      }
+
+      /* 小型圓形圖示按鈕 */
+      .icon-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        background: #fff;
+        border: 1px solid #d7e6f8;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+        display: inline-grid;
+        place-items: center;
+        cursor: pointer;
+      }
+      .icon-btn:hover {
+        filter: brightness(0.98);
+      }
+      .icon-btn svg {
+        width: 18px;
+        height: 18px;
       }
 
       .bar {
@@ -292,6 +323,35 @@
           <select id="monthSelect" style="display: none"></select>
         </label>
         <span class="badge" id="metaBadge">尚未載入資料</span>
+        <!-- 右側工具鈕（靠右） -->
+        <div style="margin-left: auto; display: flex; gap: 8px">
+          <button id="filterBtn" class="icon-btn" title="篩選">
+            <!-- 漏斗 icon -->
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M3 4h18l-7 8v6l-4 2v-8L3 4z" />
+            </svg>
+          </button>
+          <button id="statsBtn" class="icon-btn" title="統計">
+            <!-- 長條圖 icon -->
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M4 20h16M7 20V10M12 20V4M17 20v-6" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div class="cal" id="calendar" aria-live="polite" aria-busy="false">
@@ -310,6 +370,7 @@
       <div class="footer" style="text-align: right">Designed by KJ</div>
     </div>
 
+    <!-- 只保留貼上對話框本體 -->
     <dialog id="pasteDlg">
       <div class="dlg">
         <div class="head"><h3>貼上來源表格（可含標題與多餘欄位）</h3></div>
@@ -323,7 +384,32 @@
           <button class="ghost" id="fillSample">填入小範例</button>
           <button class="ghost" id="clearRaw" title="清除內容">清除</button>
           <button class="ghost" id="cancelPaste">取消</button>
-          <button class="primary" id="confirmPaste">解析並產生月曆</button>
+          <button class="primary" id="confirmPaste">產生排班月曆</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 依機構篩選（已移到 pasteDlg 外） -->
+    <dialog id="filterDlg">
+      <div class="dlg">
+        <div class="head"><h3>依機構篩選</h3></div>
+        <div class="body"><div id="filterOptions"></div></div>
+        <div class="foot">
+          <button class="ghost" id="cancelFilter">取消</button>
+          <button class="primary" id="applyFilter">套用</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 單月統計（已移到 pasteDlg 外） -->
+    <dialog id="statsDlg">
+      <div class="dlg">
+        <div class="head"><h3>單月服務紀錄統計</h3></div>
+        <div class="body">
+          <div id="statsContent" style="white-space: pre-line"></div>
+        </div>
+        <div class="foot">
+          <button class="primary" id="closeStats">關閉</button>
         </div>
       </div>
     </dialog>
@@ -338,6 +424,43 @@
       };
 
       // === 機構色盤與工具（放在小工具後面） ===
+
+      // === 價格對照表（僅統計表內有的項目） ===
+      const PRICE_MAP = {
+        BA01: 260,
+        BA02: 195,
+        BA03: 35,
+        BA04: 130,
+        "BA05-1": 310,
+        BA07: 325,
+        BA08: 500,
+        BA09: 2200,
+        BA09a: 2500,
+        BA10: 155,
+        BA11: 195,
+        BA12: 130,
+        BA13: 195,
+        BA14: 685,
+        "BA15-1": 195,
+        "BA15-2": 195,
+        "BA16-1": 130,
+        "BA16-2": 130,
+        BA17a: 75,
+        BA17b: 65,
+        BA17c: 50,
+        BA17d1: 50,
+        BA17d2: 50,
+        BA17e: 50,
+        BA18: 200,
+        BA20: 175,
+        BA22: 130,
+        BA23: 200,
+        BA24: 220,
+      };
+
+      // 目前的機構篩選（"全部" 或某機構名）
+      let currentOrgFilter = "全部";
+
       const ORG_PALETTE = [
         "#dbeafe",
         "#ffe4e6",
@@ -426,6 +549,8 @@
       // 解析貼上內容 ➜ 結構化 { 'YYYY-MM': { 'YYYY-MM-DD': [rows...] } }
       function parsePastedText(raw) {
         const monthBuckets = new Map(); // key: YYYY-MM -> Map(dateStr -> rows)
+        const monthsRows = new Map(); // YYYY-MM -> [{date, code, qty, org}]
+
         let rowCount = 0;
         const lines = String(raw).replace(/\r\n?/g, "\n").split("\n");
 
@@ -465,6 +590,8 @@
           dayMap
             .get(ymd)
             .push({ start: range.start, end: range.end, code, qty, org });
+          if (!monthsRows.has(yymm)) monthsRows.set(yymm, []);
+          monthsRows.get(yymm).push({ date: ymd, code, qty, org });
 
           rowCount++;
         }
@@ -480,7 +607,7 @@
           result.set(mon, segMap);
         }
 
-        return { months: result, rowCount };
+        return { months: result, rowCount, monthsRows };
       }
 
       // 建立指定月份的月曆（Mon-first）
@@ -514,13 +641,17 @@
           dateEl.textContent = String(day);
           cell.appendChild(dateEl);
 
-          const segs = dayMap.get(ymd);
-          if (segs && segs.length) {
+          const segs = dayMap.get(ymd) || [];
+          const vis =
+            currentOrgFilter === "全部"
+              ? segs
+              : segs.filter((s) => s.orgs && s.orgs.has(currentOrgFilter));
+          if (vis.length) {
             cell.classList.add("has-data");
             const mark = document.createElement("div");
             mark.className = "mark";
             cell.appendChild(mark);
-            for (const seg of segs) {
+            for (const seg of vis) {
               const segEl = document.createElement("div");
               segEl.className = "seg";
               const time = `${toHhmm(seg.start)}–${toHhmm(seg.end)}`;
@@ -571,7 +702,11 @@
           return;
         }
         const cntDays = data.months.get(monKey)?.size || 0;
-        badge.textContent = `${monKey} · 有資料天數：${cntDays} 天`;
+        const note =
+          currentOrgFilter && currentOrgFilter !== "全部"
+            ? ` · 篩選：${currentOrgFilter}`
+            : "";
+        badge.textContent = `${monKey} · 有資料天數：${cntDays} 天${note}`;
       }
 
       // UI 綁定
@@ -580,6 +715,106 @@
       const dlg = document.getElementById("pasteDlg");
       const rawInput = document.getElementById("rawInput");
       const monthSelect = document.getElementById("monthSelect");
+      // ==== 篩選 / 統計 UI ====
+      const filterBtn = document.getElementById("filterBtn");
+      const statsBtn = document.getElementById("statsBtn");
+      const filterDlg = document.getElementById("filterDlg");
+      const filterBox = document.getElementById("filterOptions");
+      const applyFilter = document.getElementById("applyFilter");
+      const cancelFilter = document.getElementById("cancelFilter");
+      const statsDlg = document.getElementById("statsDlg");
+      const statsContent = document.getElementById("statsContent");
+      const closeStats = document.getElementById("closeStats");
+
+      // 取得某月份的所有機構（來自原始列）
+      function uniqOrgsForMonth(monKey) {
+        const rows = parsedData.monthsRows?.get(monKey) || [];
+        const s = new Set();
+        for (const r of rows) if (r.org) s.add(r.org);
+        return Array.from(s).sort();
+      }
+
+      // 開啟篩選面板
+      function openFilterUI() {
+        const orgs = uniqOrgsForMonth(currentMonthKey);
+        const opts = ["全部", ...orgs];
+        filterBox.innerHTML = opts
+          .map(
+            (o) => `
+    <label style="display:block;margin:6px 0">
+      <input type="radio" name="orgFilter" value="${o}" ${
+              currentOrgFilter === o ? "checked" : ""
+            }>
+      ${o}
+    </label>
+  `
+          )
+          .join("");
+        filterDlg.showModal();
+      }
+
+      applyFilter.addEventListener("click", () => {
+        const v =
+          document.querySelector('input[name="orgFilter"]:checked')?.value ||
+          "全部";
+        currentOrgFilter = v;
+        filterDlg.close();
+        if (currentMonthKey) {
+          renderCalendar(currentMonthKey, parsedData);
+          updateMetaBadge(currentMonthKey, parsedData);
+        }
+      });
+      cancelFilter.addEventListener("click", () => filterDlg.close());
+      filterBtn.addEventListener("click", openFilterUI);
+
+      // 開啟統計（以目前月份為範圍）
+      function openStatsUI() {
+        if (!currentMonthKey) {
+          alert("請先貼上資料");
+          return;
+        }
+        const rows = parsedData.monthsRows?.get(currentMonthKey) || [];
+        const byOrg = new Map(); // org -> Map(code -> {qty, amount})
+
+        for (const r of rows) {
+          const price = PRICE_MAP[r.code];
+          if (!price) continue; // 不在對照表略過
+          const org = r.org || "（未填機構）";
+          if (!byOrg.has(org)) byOrg.set(org, new Map());
+          const m = byOrg.get(org);
+          const newQty = (m.get(r.code)?.qty || 0) + (r.qty || 0);
+          m.set(r.code, { qty: newQty, amount: newQty * price });
+        }
+
+        if (!byOrg.size) {
+          statsContent.textContent = "（本月無可計價項目）";
+          statsDlg.showModal();
+          return;
+        }
+
+        let out = "";
+        for (const org of [...byOrg.keys()].sort()) {
+          const m = byOrg.get(org);
+          let total = 0;
+          const lines = [];
+          for (const code of [...m.keys()].sort()) {
+            const { qty, amount } = m.get(code);
+            total += amount;
+            lines.push(`${code}*${qty}，${amount.toLocaleString("zh-TW")}`);
+          }
+          out += `${org}：\n${lines.join("\n")}\n合計：${total.toLocaleString(
+            "zh-TW"
+          )}\n------------------------\n`;
+        }
+        statsContent.textContent = out.replace(
+          /\n------------------------\n$/,
+          ""
+        );
+        statsDlg.showModal();
+      }
+      statsBtn.addEventListener("click", openStatsUI);
+      closeStats.addEventListener("click", () => statsDlg.close());
+
       // 新增這兩行
       const clearRawBtn = document.getElementById("clearRaw");
       if (clearRawBtn)
@@ -624,6 +859,7 @@
 
         parsedData = data;
         // 如果有多個月份，提供下拉選擇
+        currentOrgFilter = "全部"; // 重新貼資料就重置篩選
         const months = [...parsedData.months.keys()].sort();
         monthSelect.innerHTML = months
           .map((m) => `<option value="${m}">${m}</option>`)
