@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>服務紀錄 ➜ 月曆彙整</title>
+    <style>
+      :root {
+        --blue-50: #eef7ff; /* 淺藍背景 */
+        --blue-100: #d8efff; /* 區塊底 */
+        --blue-400: #59a7ff; /* 主色(按鈕/標題) */
+        --blue-600: #1f7ae8; /* 深藍 */
+        --green-500: #22c55e; /* 點綴 */
+        --green-700: #15803d; /* 深綠 */
+        --slate-600: #475569; /* 文字 */
+        --muted: #90a4b0; /* 次要文字 */
+        --card: #ffffff; /* 白卡片 */
+        --ring: rgba(31, 122, 232, 0.25);
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          PingFang TC, Microsoft JhengHei, Helvetica, Arial, sans-serif;
+        background: linear-gradient(180deg, var(--blue-50), #fff 45%);
+        color: var(--slate-600);
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
+      .hero {
+        background: linear-gradient(135deg, var(--blue-100), #fff);
+        border: 1px solid #e6eef6;
+        border-radius: 20px;
+        padding: 18px 20px;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 8px 24px rgba(31, 122, 232, 0.06);
+      }
+      .hero h1 {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.2;
+        color: #1153a8;
+      }
+      .hero p {
+        margin: 4px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .cta {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      button.primary {
+        background: linear-gradient(180deg, var(--blue-400), var(--blue-600));
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        box-shadow: 0 6px 14px rgba(31, 122, 232, 0.25);
+      }
+      button.primary:hover {
+        filter: brightness(0.98);
+      }
+      button.ghost {
+        background: #fff;
+        color: var(--blue-600);
+        border: 1px solid #cfe6ff;
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-weight: 600;
+      }
+
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 18px 0 8px;
+        flex-wrap: wrap;
+      }
+      .badge {
+        background: #ecfdf5;
+        color: var(--green-700);
+        border: 1px solid #bbf7d0;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      select {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid #d7e6f8;
+        background: #fff;
+      }
+
+      .cal {
+        background: var(--card);
+        border: 1px solid #e4edf7;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.04);
+      }
+      .dow {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        background: var(--blue-100);
+        color: #0b5394;
+        font-weight: 700;
+        border-bottom: 1px solid #d9e9ff;
+      }
+      .dow div {
+        padding: 10px 8px;
+        text-align: center;
+        font-size: 12px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+      }
+      .cell {
+        min-height: 120px;
+        border-right: 1px solid #eef4fb;
+        border-bottom: 1px solid #eef4fb;
+        padding: 8px;
+        position: relative;
+        background: #ffffff;
+      }
+      .cell:nth-child(7n) {
+        border-right: none;
+      }
+      .date {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        font-size: 12px;
+        color: #274c77;
+        font-weight: 700;
+      }
+      .cell.has-data {
+        background: linear-gradient(180deg, #ffffff, #f5fbff);
+      }
+      .mark {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--green-500);
+        opacity: 0.85;
+      }
+
+      .seg {
+        margin-top: 20px;
+        font-size: 12px;
+        line-height: 1.45;
+        background: #f0f9ff;
+        border: 1px solid #d7ecff;
+        padding: 6px 8px;
+        border-radius: 10px;
+      }
+      .seg .time {
+        font-weight: 800;
+        color: #0b5394;
+      }
+      .seg .items {
+        margin-top: 4px;
+        color: #0b3d5c;
+      }
+      .seg .items .chip {
+        display: inline-block;
+        background: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #bbf7d0;
+        border-radius: 999px;
+        padding: 2px 6px;
+        margin: 2px 4px 0 0;
+        font-weight: 700;
+      }
+
+      .footer {
+        margin: 16px 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      /* Modal */
+      dialog {
+        border: none;
+        border-radius: 16px;
+        padding: 0;
+        width: min(920px, 92vw);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+      }
+      .dlg {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        background: #fff;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid #e5effb;
+      }
+      .dlg .head {
+        background: linear-gradient(135deg, var(--blue-100), #fff);
+        padding: 14px 16px;
+        border-bottom: 1px solid #d9e9ff;
+      }
+      .dlg .head h3 {
+        margin: 0;
+        color: #0b5394;
+      }
+      .dlg .body {
+        padding: 14px;
+      }
+      .dlg .body textarea {
+        width: 100%;
+        min-height: 300px;
+        border: 1px solid #cfe0f2;
+        border-radius: 12px;
+        padding: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        background: #fbfdff;
+      }
+      .dlg .foot {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 12px 14px;
+        border-top: 1px solid #e9f0fa;
+        background: #f9fcff;
+      }
+
+      @media (max-width: 700px) {
+        .cell {
+          min-height: 110px;
+        }
+        .seg {
+          font-size: 11px;
+        }
+        .hero {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="hero">
+        <div>
+          <h1>長照服務紀錄彙整</h1>
+          <p>
+            按一下「請貼上服務紀錄」，貼上所需資料，將自動彙整成月曆排班表。
+          </p>
+        </div>
+        <div class="cta">
+          <button class="primary" id="pasteBtn">📋 請貼上服務紀錄</button>
+          <button class="ghost" id="clearBtn" title="清除目前畫面">清除</button>
+        </div>
+      </div>
+
+      <div class="bar">
+        <label
+          >📅 月份：
+          <select id="monthSelect" style="display: none"></select>
+        </label>
+        <span class="badge" id="metaBadge">尚未載入資料</span>
+      </div>
+
+      <div class="cal" id="calendar" aria-live="polite" aria-busy="false">
+        <div class="dow">
+          <div>一</div>
+          <div>二</div>
+          <div>三</div>
+          <div>四</div>
+          <div>五</div>
+          <div style="color: #a61e4d">六</div>
+          <div style="color: #a61e4d">日</div>
+        </div>
+        <div class="grid" id="grid"></div>
+      </div>
+
+      <div class="footer" style="text-align: right">Designed by KJ</div>
+    </div>
+
+    <dialog id="pasteDlg">
+      <div class="dlg">
+        <div class="head"><h3>貼上來源表格（可含標題與多餘欄位）</h3></div>
+        <div class="body">
+          <textarea
+            id="rawInput"
+            placeholder="進入該案的申報紀錄，並篩選好「當月份」紀錄，複製貼上來即可；建議可選每頁「100」筆，減少貼上次數。                                 *應複製範圍請參考「填入小範例」。"
+          ></textarea>
+        </div>
+        <div class="foot">
+          <button class="ghost" id="fillSample">填入小範例</button>
+          <button class="ghost" id="clearRaw" title="清除內容">清除</button>
+          <button class="ghost" id="cancelPaste">取消</button>
+          <button class="primary" id="confirmPaste">解析並產生月曆</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script>
+      // ===== 小工具 =====
+      const fmt2 = (n) => String(n).padStart(2, "0");
+      const toHhmm = (m) => `${fmt2(Math.floor(m / 60))}:${fmt2(m % 60)}`;
+      const parseHhmm = (s) => {
+        const [h, mm] = s.split(":").map((x) => parseInt(x, 10));
+        return h * 60 + mm;
+      };
+      function parseTimeRange(str) {
+        if (!str) return null;
+        const m = String(str).match(
+          /(\d{1,2}:\d{2})\s*[~\-]\s*(\d{1,2}:\d{2})/
+        );
+        if (!m) return null;
+        const start = parseHhmm(m[1]);
+        const end = parseHhmm(m[2]);
+        return { start, end };
+      }
+      function parseRocOrAdDate(token) {
+        const m = String(token).match(/(\d{3,4})\/(\d{1,2})\/(\d{1,2})/);
+        if (!m) return null;
+        let y = parseInt(m[1], 10);
+        const mo = parseInt(m[2], 10) - 1;
+        const d = parseInt(m[3], 10);
+        if (y < 1911) y += 1911; // 民國 ➜ 西元
+        return new Date(y, mo, d);
+      }
+      function getCodeBeforeBracket(item) {
+        if (!item) return "";
+        const i = item.indexOf("[");
+        return (i > 0 ? item.slice(0, i) : item).trim();
+      }
+
+      // 合併連續/重疊的時段，同時彙整該時段的項目數量
+      function buildSegments(rows) {
+        // rows: [{start,end, code, qty}]
+        const sorted = [...rows].sort(
+          (a, b) => a.start - b.start || a.end - b.end
+        );
+        const segs = [];
+        for (const r of sorted) {
+          if (!segs.length) {
+            segs.push({
+              start: r.start,
+              end: r.end,
+              items: new Map([[r.code, r.qty]]),
+            });
+            continue;
+          }
+          const last = segs[segs.length - 1];
+          if (r.start <= last.end) {
+            // 重疊或銜接 (含等於)
+            last.end = Math.max(last.end, r.end);
+            last.items.set(
+              r.code,
+              (last.items.get(r.code) || 0) + (r.qty || 0)
+            );
+          } else {
+            segs.push({
+              start: r.start,
+              end: r.end,
+              items: new Map([[r.code, r.qty]]),
+            });
+          }
+        }
+        return segs;
+      }
+
+      // 解析貼上內容 ➜ 結構化 { 'YYYY-MM': { 'YYYY-MM-DD': [rows...] } }
+      function parsePastedText(raw) {
+        const monthBuckets = new Map(); // key: YYYY-MM -> Map(dateStr -> rows)
+        let rowCount = 0;
+        const lines = String(raw).replace(/\r\n?/g, "\n").split("\n");
+
+        for (const line of lines) {
+          if (!line || !/(\d{3,4})\/(\d{1,2})\/(\d{1,2})/.test(line)) continue; // 必須含日期
+          const cells = line.split(/\t+/g).map((s) => s.trim());
+          // 找到日期欄位位置
+          let dIdx = cells.findIndex((c) =>
+            /(\d{3,4})\/(\d{1,2})\/(\d{1,2})/.test(c)
+          );
+          if (dIdx === -1) continue;
+          const date = parseRocOrAdDate(cells[dIdx]);
+          if (!date) continue;
+          const y = date.getFullYear(),
+            m = date.getMonth() + 1,
+            d = date.getDate();
+          const yymm = `${y}-${fmt2(m)}`;
+          const ymd = `${y}-${fmt2(m)}-${fmt2(d)}`;
+
+          const item = cells[dIdx + 1] || "";
+          const code = getCodeBeforeBracket(item);
+          const qty = parseInt(cells[dIdx + 3] || "0", 10) || 0; // 服務數量
+          const tr =
+            cells[dIdx + 4] ||
+            cells.find((c) =>
+              /\d{1,2}:\d{2}\s*[~\-]\s*\d{1,2}:\d{2}/.test(c)
+            ) ||
+            "";
+          const range = parseTimeRange(String(tr).replace(/\[[^\]]*\]/g, ""));
+          if (!range || !code || qty <= 0) continue;
+
+          if (!monthBuckets.has(yymm)) monthBuckets.set(yymm, new Map());
+          const dayMap = monthBuckets.get(yymm);
+          if (!dayMap.has(ymd)) dayMap.set(ymd, []);
+          dayMap
+            .get(ymd)
+            .push({ start: range.start, end: range.end, code, qty });
+          rowCount++;
+        }
+
+        // 將每天的 rows 轉成 segments（合併時段+彙整項目）
+        const result = new Map(); // YYYY-MM -> Map(ymd -> segments[])
+        for (const [mon, dayMap] of monthBuckets) {
+          const segMap = new Map();
+          for (const [ymd, rows] of dayMap) {
+            const segs = buildSegments(rows);
+            segMap.set(ymd, segs);
+          }
+          result.set(mon, segMap);
+        }
+
+        return { months: result, rowCount };
+      }
+
+      // 建立指定月份的月曆（Mon-first）
+      function renderCalendar(monKey, data) {
+        const grid = document.getElementById("grid");
+        grid.innerHTML = "";
+
+        const [Y, M] = monKey.split("-").map(Number);
+        const first = new Date(Y, M - 1, 1);
+        const last = new Date(Y, M, 0);
+        const daysInMonth = last.getDate();
+
+        // Monday-first 偏移：將 JS 的 0(日)~6(六) 轉為 1~7（Mon=1)，算前置空格
+        const jsDow = first.getDay(); // 0=Sun,1=Mon,...
+        const lead = jsDow === 0 ? 6 : jsDow - 1; // 0(日)→6格；1(一)→0格
+
+        // 取得該月的資料 map
+        const dayMap = data.months.get(monKey) || new Map();
+
+        // 前置空白
+        for (let i = 0; i < lead; i++)
+          grid.appendChild(document.createElement("div"));
+
+        for (let day = 1; day <= daysInMonth; day++) {
+          const ymd = `${Y}-${fmt2(M)}-${fmt2(day)}`;
+          const cell = document.createElement("div");
+          cell.className = "cell";
+
+          const dateEl = document.createElement("div");
+          dateEl.className = "date";
+          dateEl.textContent = String(day);
+          cell.appendChild(dateEl);
+
+          const segs = dayMap.get(ymd);
+          if (segs && segs.length) {
+            cell.classList.add("has-data");
+            const mark = document.createElement("div");
+            mark.className = "mark";
+            cell.appendChild(mark);
+            for (const seg of segs) {
+              const segEl = document.createElement("div");
+              segEl.className = "seg";
+              const time = `${toHhmm(seg.start)}–${toHhmm(seg.end)}`;
+              const timeEl = document.createElement("div");
+              timeEl.className = "time";
+              timeEl.textContent = time;
+              const itemsEl = document.createElement("div");
+              itemsEl.className = "items";
+              const list = [...seg.items.entries()].sort((a, b) =>
+                a[0].localeCompare(b[0])
+              );
+              for (const [code, qty] of list) {
+                const chip = document.createElement("span");
+                chip.className = "chip";
+                chip.textContent = `${code}*${qty}`;
+                itemsEl.appendChild(chip);
+              }
+              segEl.appendChild(timeEl);
+              segEl.appendChild(itemsEl);
+              cell.appendChild(segEl);
+            }
+          }
+          grid.appendChild(cell);
+        }
+      }
+
+      function updateMetaBadge(monKey, data) {
+        const badge = document.getElementById("metaBadge");
+        if (!monKey) {
+          badge.textContent = "尚未載入資料";
+          return;
+        }
+        const cntDays = data.months.get(monKey)?.size || 0;
+        badge.textContent = `${monKey} · 有資料天數：${cntDays} 天`;
+      }
+
+      // UI 綁定
+      const pasteBtn = document.getElementById("pasteBtn");
+      const clearBtn = document.getElementById("clearBtn");
+      const dlg = document.getElementById("pasteDlg");
+      const rawInput = document.getElementById("rawInput");
+      const monthSelect = document.getElementById("monthSelect");
+      // 新增這兩行
+      const clearRawBtn = document.getElementById("clearRaw");
+      if (clearRawBtn)
+        clearRawBtn.addEventListener("click", () => {
+          rawInput.value = "";
+          rawInput.focus();
+        });
+
+      let parsedData = { months: new Map(), rowCount: 0 };
+      let currentMonthKey = null;
+
+      pasteBtn.addEventListener("click", () => {
+        rawInput.value = "";
+        dlg.showModal();
+      });
+      document
+        .getElementById("cancelPaste")
+        .addEventListener("click", () => dlg.close());
+      document.getElementById("fillSample").addEventListener("click", () => {
+        rawInput.value = [
+          "\t1\t114/08/30\tBA15-1[家務協助(自用)]\t補助\t1\t12:50~13:20[30分]\t—\t—\t—\t—",
+          "\t2\t114/08/30\tBA13[陪同外出]\t補助\t1\t12:20~12:50[30分]\t—\t—\t—\t—",
+          "\t3\t114/08/29\tBA02[基本日常照顧]\t補助\t1\t10:03~10:33[30分]\t—\t—\t—\t—",
+          "\t4\t114/08/29\tBA20[陪伴服務]\t補助\t1\t10:33~11:03[30分]\t—\t—\t—\t—",
+          "\t5\t114/08/29\tBA15-1[家務協助(自用)]\t補助\t1\t11:03~11:33[30分]\t—\t—\t—\t—",
+        ].join("\n");
+      });
+
+      document.getElementById("confirmPaste").addEventListener("click", () => {
+        const raw = rawInput.value.trim();
+        if (!raw) {
+          alert("請先貼上資料");
+          return;
+        }
+        const data = parsePastedText(raw);
+        if (!data.rowCount) {
+          alert(
+            "沒有解析到有效資料，請確認貼上的欄位含有：服務日期 / 服務項目 / 服務數量 / 服務區間起訖"
+          );
+          return;
+        }
+
+        parsedData = data;
+        // 如果有多個月份，提供下拉選擇
+        const months = [...parsedData.months.keys()].sort();
+        monthSelect.innerHTML = months
+          .map((m) => `<option value="${m}">${m}</option>`)
+          .join("");
+        if (months.length > 1) {
+          monthSelect.style.display = "inline-block";
+        } else {
+          monthSelect.style.display = "none";
+        }
+
+        currentMonthKey = months[0];
+        monthSelect.value = currentMonthKey;
+
+        renderCalendar(currentMonthKey, parsedData);
+        updateMetaBadge(currentMonthKey, parsedData);
+        dlg.close();
+      });
+
+      monthSelect.addEventListener("change", (e) => {
+        currentMonthKey = e.target.value;
+        renderCalendar(currentMonthKey, parsedData);
+        updateMetaBadge(currentMonthKey, parsedData);
+      });
+
+      clearBtn.addEventListener("click", () => {
+        parsedData = { months: new Map(), rowCount: 0 };
+        currentMonthKey = null;
+        document.getElementById("grid").innerHTML = "";
+        document.getElementById("metaBadge").textContent = "尚未載入資料";
+        monthSelect.style.display = "none";
+      });
+
+      // 初始渲染空月曆：呈現本月結構（方便一開始就有格子）
+      (function initEmpty() {
+        const now = new Date();
+        const key = `${now.getFullYear()}-${fmt2(now.getMonth() + 1)}`;
+        const fake = { months: new Map([[key, new Map()]]), rowCount: 0 };
+        renderCalendar(key, fake);
+      })();
+    </script>
+  </body>
+</html>
