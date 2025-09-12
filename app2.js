@@ -1516,17 +1516,24 @@
         }
 
         if (!wasSwipe || cancel) {
+          __justSwiped = false; // 沒真的滑 → 不要吞下一個 click
           cleanup();
           return;
         }
-        const passed = Math.abs(dx) >= width * BOUND;
-        if (passed && dx < 0) {
+        
+        const movedX = Math.abs(dx);
+        const passed = movedX >= width * BOUND && dx < 0; // 達到刪除門檻
+        if (passed) {
           selectedMemoId = task.dataset.id;
           setTimeout(() => confirmDelete(), 10);
         }
-        __justSwiped = true;
+        
+        // 只有「真的滑了不少」才吞掉下一個 click；微小抖動不吞
+        const SUPPRESS_PX = 24; // 你也可用 Math.min(32, width*0.12)
+        __justSwiped = passed || movedX > SUPPRESS_PX;
+        
         cleanup();
-      }
+        
       function cleanup() {
         dx = dy = 0;
         try {
