@@ -336,6 +336,25 @@
         const [h, mm] = s.split(":").map((x) => parseInt(x, 10));
         return h * 60 + mm;
       };
+
+      // === 機構色盤與工具（放在小工具後面） ===
+      const ORG_PALETTE = [
+        "#dbeafe",
+        "#ffe4e6",
+        "#dcfce7",
+        "#fef9c3",
+        "#e9d5ff",
+      ]; // 至少 5 個淺色
+      const orgColorMap = new Map();
+      function colorForOrg(name) {
+        if (!name) return "#e5e7eb";
+        if (!orgColorMap.has(name)) {
+          const idx = orgColorMap.size % ORG_PALETTE.length;
+          orgColorMap.set(name, ORG_PALETTE[idx]);
+        }
+        return orgColorMap.get(name);
+      }
+
       function parseTimeRange(str) {
         if (!str) return null;
         const m = String(str).match(
@@ -362,34 +381,42 @@
       }
 
       // 合併連續/重疊的時段，同時彙整該時段的項目數量
+      // 合併連續/重疊的時段，同時彙整該時段的項目數量與機構
       function buildSegments(rows) {
-        // rows: [{start,end, code, qty}]
+        // rows: [{start,end, code, qty, org}]
         const sorted = [...rows].sort(
           (a, b) => a.start - b.start || a.end - b.end
         );
         const segs = [];
         for (const r of sorted) {
           if (!segs.length) {
+            const orgs = new Map();
+            if (r.org) orgs.set(r.org, 1);
             segs.push({
               start: r.start,
               end: r.end,
               items: new Map([[r.code, r.qty]]),
+              orgs,
             });
             continue;
           }
           const last = segs[segs.length - 1];
           if (r.start <= last.end) {
-            // 重疊或銜接 (含等於)
+            // 重疊或銜接
             last.end = Math.max(last.end, r.end);
             last.items.set(
               r.code,
               (last.items.get(r.code) || 0) + (r.qty || 0)
             );
+            if (r.org) last.orgs.set(r.org, (last.orgs.get(r.org) || 0) + 1);
           } else {
+            const orgs = new Map();
+            if (r.org) orgs.set(r.org, 1);
             segs.push({
               start: r.start,
               end: r.end,
               items: new Map([[r.code, r.qty]]),
+              orgs,
             });
           }
         }
@@ -427,6 +454,8 @@
               /\d{1,2}:\d{2}\s*[~\-]\s*\d{1,2}:\d{2}/.test(c)
             ) ||
             "";
+          const org = (cells[dIdx + 5] || "").trim(); // 讀取「長照機構」
+
           const range = parseTimeRange(String(tr).replace(/\[[^\]]*\]/g, ""));
           if (!range || !code || qty <= 0) continue;
 
@@ -435,7 +464,8 @@
           if (!dayMap.has(ymd)) dayMap.set(ymd, []);
           dayMap
             .get(ymd)
-            .push({ start: range.start, end: range.end, code, qty });
+            .push({ start: range.start, end: range.end, code, qty, org });
+
           rowCount++;
         }
 
@@ -497,6 +527,23 @@
               const timeEl = document.createElement("div");
               timeEl.className = "time";
               timeEl.textContent = time;
+              // 在時間右邊加色點，hover 顯示該段班的機構
+              (function () {
+                const entries = seg.orgs ? Array.from(seg.orgs.entries()) : [];
+                if (!entries.length) return;
+                // 以出現次數最多的機構決定顏色
+                entries.sort((a, b) => b[1] - a[1]);
+                const top = entries[0];
+                const dot = document.createElement("span");
+                dot.title = "機構：" + entries.map((e) => e[0]).join("、");
+                dot.style.cssText =
+                  "display:inline-block;width:10px;height:10px;border-radius:50%;margin-left:6px;vertical-align:-1.05px;border:1px solid rgba(0,0,0,.12);background:" +
+                  colorForOrg(top && top[0]) +
+                  ";";
+
+                timeEl.appendChild(dot);
+              })();
+
               const itemsEl = document.createElement("div");
               itemsEl.className = "items";
               const list = [...seg.items.entries()].sort((a, b) =>
