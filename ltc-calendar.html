@@ -701,13 +701,33 @@
         }
       }
 
+      // 計算「目前篩選條件」下的有資料天數
+      function countDaysWithData(monKey, data) {
+        const dayMap = data.months.get(monKey) || new Map();
+
+        // 未篩選＝全部：可直接用天數 Map 的大小
+        if (currentOrgFilter === "全部") return dayMap.size;
+
+        let days = 0;
+        for (const segs of dayMap.values()) {
+          if (Array.isArray(segs) && segs.length) {
+            const hasThisOrg = segs.some(
+              (seg) => seg?.orgs && seg.orgs.has(currentOrgFilter)
+            );
+            if (hasThisOrg) days++;
+          }
+        }
+        return days;
+      }
+
       function updateMetaBadge(monKey, data) {
         const badge = document.getElementById("metaBadge");
         if (!monKey) {
           badge.textContent = "尚未載入資料";
           return;
         }
-        const cntDays = data.months.get(monKey)?.size || 0;
+        const cntDays = countDaysWithData(monKey, data);
+
         const note =
           currentOrgFilter && currentOrgFilter !== "全部"
             ? ` · 篩選：${currentOrgFilter}`
