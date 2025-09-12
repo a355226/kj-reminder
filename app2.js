@@ -40,6 +40,7 @@
   let unlockedCategories = new Set(); // 本次工作階段已解鎖的分類（baseName）
   let pendingLockBase = null; // 正在操作的base類別名（無「(已移除)」）
   let pendingLockAction = null; // 'set' | 'remove' | 'view'
+let pendingLockOpenMemoId = null;
 
   (function () {
     try {
@@ -1114,17 +1115,19 @@ function getMemoRefTime(m) {
     closeModal("memoModal");
   }
 
-  function openDetail(id) {
-    selectedMemoId = id;
-    const m = memos.find((x) => x.id === id);
-    if (!m) return;
+function openDetail(id) {
+  selectedMemoId = id;
+  const m = memos.find((x) => x.id === id);
+  if (!m) return;
 
-    const base = baseCategoryName(m.section || "");
-    if (isCategoryLocked(base) && !isCategoryUnlocked(base)) {
-      // 先要求輸入密碼解鎖（「已移除」也共用同一把鎖）
-      openLockModal({ base, mode: "view" });
-      return;
-    }
+  const base = baseCategoryName(m.section || "");
+  if (isCategoryLocked(base) && !isCategoryUnlocked(base)) {
+    // ★ 記住是要開這張
+    pendingLockOpenMemoId = id;
+    openLockModal({ base, mode: "view" });
+    return;
+  }
+
 
     document.getElementById("detailSection").value = m.section;
     document.getElementById("detailTitle").value = m.title;
@@ -1303,6 +1306,13 @@ function getMemoRefTime(m) {
           closeModal("lockModal");
           renderSections();
           renderAll();
+              // ★ 新增：若是點備忘觸發的解鎖，立即開啟那張備忘
+    if (pendingLockOpenMemoId) {
+      const target = pendingLockOpenMemoId;
+      pendingLockOpenMemoId = null;
+      requestAnimationFrame(() => openDetail(target));
+    }
+
         } else {
           const ctx = memoView === "removed" ? "removed" : "active";
           await handleWrongPassword(base, ctx);
