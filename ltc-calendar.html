@@ -291,6 +291,180 @@
           align-items: flex-start;
         }
       }
+
+      /* ===== 列印（A4 單頁、緊湊） ===== */
+      @page {
+        size: A4 portrait;
+        margin: 8mm;
+      }
+      .print-only {
+        display: none;
+      }
+
+      @media print {
+        body > *:not(.print-only) {
+          display: none !important;
+        }
+        .print-only {
+          display: block !important;
+        }
+
+        html,
+        body {
+          background: #fff !important;
+        }
+
+        /* 讓內容更緊湊，盡量塞進一頁 */
+        .print-root {
+          font-family: ui-sans-serif, system-ui, -apple-system, "PingFang TC",
+            "Microsoft JhengHei", Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+          color: #334155;
+          font-size: 10.5px; /* 比畫面小一級 */
+          line-height: 1.25;
+        }
+        .print-head {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          align-items: end;
+          gap: 8px;
+          margin-bottom: 6px;
+          border-bottom: 1px solid #e5e7eb;
+          padding-bottom: 6px;
+        }
+        .print-title {
+          font-size: 16px;
+          font-weight: 800;
+          color: #0b5394;
+        }
+        .print-meta {
+          text-align: right;
+          color: #64748b;
+          font-weight: 600;
+        }
+        .print-patient {
+          margin-top: 2px;
+          font-size: 12px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+
+        /* 月曆（緊湊版） */
+        .print-cal {
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          overflow: hidden;
+          margin-top: 6px;
+        }
+        .print-dow {
+          display: grid;
+          grid-template-columns: repeat(7, 1fr);
+          background: #eef6ff;
+          color: #0b5394;
+          font-weight: 800;
+        }
+        .print-dow div {
+          padding: 4px 0;
+          text-align: center;
+        }
+
+        .print-grid {
+          display: grid;
+          grid-template-columns: repeat(7, 1fr);
+        }
+        .print-cell {
+          min-height: 68px; /* 比畫面小很多 */
+          border-right: 1px solid #eef2f7;
+          border-bottom: 1px solid #eef2f7;
+          padding: 4px 4px 2px 4px;
+          position: relative;
+        }
+        .print-cell:nth-child(7n) {
+          border-right: none;
+        }
+        .print-date {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          font-size: 10px;
+          font-weight: 800;
+          color: #0b3d5c;
+        }
+        .print-seg {
+          margin-top: 14px;
+          border: 1px solid #e6f0fb;
+          background: #f8fbff;
+          border-radius: 6px;
+          padding: 4px 5px;
+        }
+        .print-time {
+          font-weight: 800;
+          color: #0b5394;
+        }
+        .print-dot {
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          margin-left: 4px;
+          vertical-align: 0;
+          border: 1px solid rgba(0, 0, 0, 0.12);
+        }
+        .print-items {
+          margin-top: 2px;
+        }
+        .print-chip {
+          display: inline-block;
+          border: 1px solid #d1fae5;
+          background: #ecfdf5;
+          color: #065f46;
+          border-radius: 999px;
+          padding: 0 5px;
+          margin: 1px 3px 0 0;
+          font-weight: 700;
+          font-size: 10px;
+        }
+
+        /* 統計（緊湊表格、雙欄自動換行） */
+        .print-stats {
+          margin-top: 8px;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .stat-card {
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 6px;
+          background: #fff;
+        }
+        .stat-title {
+          font-weight: 800;
+          color: #0b5394;
+          margin-bottom: 4px;
+          font-size: 11.5px;
+        }
+        .stat-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 10px;
+        }
+        .stat-table th,
+        .stat-table td {
+          border-bottom: 1px solid #eef2f7;
+          padding: 2px 4px;
+          text-align: right;
+        }
+        .stat-table th:first-child,
+        .stat-table td:first-child {
+          text-align: left;
+        }
+        .stat-total {
+          text-align: right;
+          font-weight: 800;
+          color: #0f172a;
+          padding-top: 4px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -323,6 +497,23 @@
           <select id="monthSelect" style="display: none"></select>
         </label>
         <span class="badge" id="metaBadge">尚未載入資料</span>
+        <!-- 放在 filterBtn 之前 -->
+        <button id="exportBtn" class="icon-btn" title="匯出">
+          <!-- 匯出 / 下載圖示 -->
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 3v12"></path>
+            <path d="M8 11l4 4 4-4"></path>
+            <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+          </svg>
+        </button>
+
         <!-- 右側工具鈕（靠右） -->
         <div style="margin-left: auto; display: flex; gap: 8px">
           <button id="filterBtn" class="icon-btn" title="篩選">
@@ -397,6 +588,48 @@
         <div class="foot">
           <button class="ghost" id="cancelFilter">取消</button>
           <button class="primary" id="applyFilter">套用</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 匯出設定 -->
+    <dialog id="exportDlg">
+      <div class="dlg">
+        <div class="head"><h3>匯出 PDF</h3></div>
+        <div class="body">
+          <div style="display: grid; gap: 10px">
+            <label style="font-size: 14px">
+              個案姓名（選填）
+              <input
+                id="exportName"
+                type="text"
+                placeholder="例如：王小明"
+                style="
+                  display: block;
+                  width: 100%;
+                  margin-top: 6px;
+                  border: 1px solid #cfe0f2;
+                  border-radius: 10px;
+                  padding: 8px 10px;
+                "
+              />
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px">
+              <input id="optCalendar" type="checkbox" checked />
+              <span>月班表匯出</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px">
+              <input id="optStats" type="checkbox" checked />
+              <span>統計表匯出</span>
+            </label>
+          </div>
+          <p style="color: #90a4b0; font-size: 12px; margin-top: 10px">
+            提示：會自動帶入目前顯示的月份與篩選條件，並將所有內容壓縮排版於單一頁面。
+          </p>
+        </div>
+        <div class="foot">
+          <button class="ghost" id="cancelExport">取消</button>
+          <button class="primary" id="doExport">匯出 PDF</button>
         </div>
       </div>
     </dialog>
@@ -482,6 +715,25 @@
           orgColorMap.set(name, ORG_PALETTE[idx]);
         }
         return orgColorMap.get(name);
+      }
+
+      // 依「當月所有機構（排序後）」重置顏色，讓每次都從 ORG_PALETTE[0] 開始
+      function resetOrgColors(monKey) {
+        try {
+          orgColorMap.clear();
+        } catch (_) {
+          // 若不是 Map 可忽略
+        }
+        const names =
+          typeof uniqOrgsForMonth === "function"
+            ? uniqOrgsForMonth(monKey) // 已排序好的清單
+            : [];
+
+        // 依序指派顏色（超過 10 個就循環）
+        for (let i = 0; i < names.length; i++) {
+          const name = names[i];
+          orgColorMap.set(name, ORG_PALETTE[i % ORG_PALETTE.length]);
+        }
       }
 
       function parseTimeRange(str) {
@@ -898,7 +1150,7 @@
 
         currentMonthKey = months[0];
         monthSelect.value = currentMonthKey;
-
+        resetOrgColors(currentMonthKey);
         renderCalendar(currentMonthKey, parsedData);
         updateMetaBadge(currentMonthKey, parsedData);
         dlg.close();
@@ -906,6 +1158,7 @@
 
       monthSelect.addEventListener("change", (e) => {
         currentMonthKey = e.target.value;
+        resetOrgColors(currentMonthKey);
         renderCalendar(currentMonthKey, parsedData);
         updateMetaBadge(currentMonthKey, parsedData);
       });
@@ -916,6 +1169,7 @@
         document.getElementById("grid").innerHTML = "";
         document.getElementById("metaBadge").textContent = "尚未載入資料";
         monthSelect.style.display = "none";
+        orgColorMap.clear(); // ➜ 新增：清空顏色映射
       });
 
       // 初始渲染空月曆：呈現本月結構（方便一開始就有格子）
@@ -925,6 +1179,260 @@
         const fake = { months: new Map([[key, new Map()]]), rowCount: 0 };
         renderCalendar(key, fake);
       })();
+
+      /* ===== 匯出：打開對話框 ===== */
+      const exportBtn = document.getElementById("exportBtn");
+      const exportDlg = document.getElementById("exportDlg");
+      const exportName = document.getElementById("exportName");
+      const optCalendar = document.getElementById("optCalendar");
+      const optStats = document.getElementById("optStats");
+      document
+        .getElementById("cancelExport")
+        ?.addEventListener("click", () => exportDlg.close());
+      exportBtn?.addEventListener("click", () => {
+        if (!currentMonthKey) {
+          alert("請先貼上資料");
+          return;
+        }
+        exportName.value = ""; // 預設清空
+        optCalendar.checked = true; // 預設全選
+        optStats.checked = true;
+        exportDlg.showModal();
+      });
+
+      /* ===== 工具：重用你的統計邏輯，轉成可列印結構 ===== */
+      function buildStatsForMonth(monKey, data, filterOrg = "全部") {
+        const rows = data.monthsRows?.get(monKey) || [];
+        const byOrg = new Map(); // org -> Map(code -> {qty, amount})
+
+        for (const r of rows) {
+          // ★ 這行：若有指定單位，就只計算該單位
+          if (filterOrg && filterOrg !== "全部" && r.org !== filterOrg)
+            continue;
+
+          const price = PRICE_MAP[r.code];
+          if (!price) continue;
+          const org = r.org || "（未填機構）";
+          if (!byOrg.has(org)) byOrg.set(org, new Map());
+          const m = byOrg.get(org);
+          const newQty = (m.get(r.code)?.qty || 0) + (r.qty || 0);
+          m.set(r.code, { qty: newQty, amount: newQty * price });
+        }
+        return byOrg;
+      }
+
+      /* ===== 工具：依目前篩選條件組 meta 文字（沿用你畫面上的規則） ===== */
+      function getCurrentMetaText(monKey, data) {
+        const days = countDaysWithData(monKey, data);
+        const note =
+          currentOrgFilter && currentOrgFilter !== "全部"
+            ? ` · 篩選：${currentOrgFilter}`
+            : "";
+        return `${monKey} · 有資料天數：${days} 天${note}`;
+      }
+
+      /* ===== 產生「列印專用月曆」：不動你原本畫面 ===== */
+      function renderPrintCalendar(monKey, data) {
+        const wrap = document.createElement("div");
+        wrap.className = "print-cal";
+
+        // 星期列
+        const head = document.createElement("div");
+        head.className = "print-dow";
+        head.innerHTML = `<div>一</div><div>二</div><div>三</div><div>四</div><div>五</div>
+                    <div style="color:#a61e4d">六</div><div style="color:#a61e4d">日</div>`;
+        wrap.appendChild(head);
+
+        const grid = document.createElement("div");
+        grid.className = "print-grid";
+        wrap.appendChild(grid);
+
+        const [Y, M] = monKey.split("-").map(Number);
+        const first = new Date(Y, M - 1, 1);
+        const last = new Date(Y, M, 0);
+        const daysInMonth = last.getDate();
+        const jsDow = first.getDay(); // 0=Sun
+        const lead = jsDow === 0 ? 6 : jsDow - 1;
+
+        const dayMap = data.months.get(monKey) || new Map();
+
+        for (let i = 0; i < lead; i++)
+          grid.appendChild(document.createElement("div"));
+
+        for (let day = 1; day <= daysInMonth; day++) {
+          const ymd = `${Y}-${String(M).padStart(2, "0")}-${String(
+            day
+          ).padStart(2, "0")}`;
+          const cell = document.createElement("div");
+          cell.className = "print-cell";
+
+          const d = document.createElement("div");
+          d.className = "print-date";
+          d.textContent = String(day);
+          cell.appendChild(d);
+
+          const segs = dayMap.get(ymd) || [];
+          const vis =
+            currentOrgFilter === "全部"
+              ? segs
+              : segs.filter((s) => s.orgs && s.orgs.has(currentOrgFilter));
+
+          if (vis.length) {
+            for (const seg of vis) {
+              const segEl = document.createElement("div");
+              segEl.className = "print-seg";
+
+              const timeEl = document.createElement("div");
+              timeEl.className = "print-time";
+              timeEl.textContent = `${toHhmm(seg.start)}–${toHhmm(seg.end)}`;
+
+              // 色點（取出現最多的機構）
+              const entries = seg.orgs ? Array.from(seg.orgs.entries()) : [];
+              if (entries.length) {
+                entries.sort((a, b) => b[1] - a[1]);
+                const dot = document.createElement("span");
+                dot.className = "print-dot";
+                dot.style.background = colorForOrg(entries[0][0]);
+                timeEl.appendChild(dot);
+              }
+
+              const itemsEl = document.createElement("div");
+              itemsEl.className = "print-items";
+              const list = [...seg.items.entries()].sort((a, b) =>
+                a[0].localeCompare(b[0])
+              );
+              for (const [code, qty] of list) {
+                const chip = document.createElement("span");
+                chip.className = "print-chip";
+                chip.textContent = `${code}*${qty}`;
+                itemsEl.appendChild(chip);
+              }
+
+              segEl.appendChild(timeEl);
+              segEl.appendChild(itemsEl);
+              cell.appendChild(segEl);
+            }
+          }
+
+          grid.appendChild(cell);
+        }
+
+        return wrap;
+      }
+
+      /* ===== 產生「列印專用統計」 ===== */
+      function renderPrintStats(byOrgMap) {
+        const root = document.createElement("div");
+        root.className = "print-stats";
+
+        const orgs = [...byOrgMap.keys()].sort();
+        for (const org of orgs) {
+          const card = document.createElement("div");
+          card.className = "stat-card";
+
+          const title = document.createElement("div");
+          title.className = "stat-title";
+          title.textContent = org;
+          card.appendChild(title);
+
+          const tbl = document.createElement("table");
+          tbl.className = "stat-table";
+          tbl.innerHTML = `<thead>
+      <tr><th>項目代碼</th><th>數量</th><th>小計</th></tr>
+    </thead><tbody></tbody>`;
+          const tbody = tbl.querySelector("tbody");
+
+          let total = 0;
+          const m = byOrgMap.get(org);
+          for (const code of [...m.keys()].sort()) {
+            const { qty, amount } = m.get(code);
+            total += amount;
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td>${code}</td><td>${qty}</td><td>${amount.toLocaleString(
+              "zh-TW"
+            )}</td>`;
+            tbody.appendChild(tr);
+          }
+          card.appendChild(tbl);
+
+          const totalEl = document.createElement("div");
+          totalEl.className = "stat-total";
+          totalEl.textContent = `合計：${total.toLocaleString("zh-TW")}`;
+          card.appendChild(totalEl);
+
+          root.appendChild(card);
+        }
+
+        return root;
+      }
+
+      /* ===== 組裝整份列印文件並呼叫瀏覽器 PDF ===== */
+      document.getElementById("doExport")?.addEventListener("click", () => {
+        const name = exportName.value.trim();
+        const needCal = !!optCalendar.checked;
+        const needStats = !!optStats.checked;
+
+        if (!needCal && !needStats) {
+          alert("請至少勾選一個匯出內容");
+          return;
+        }
+
+        exportDlg.close();
+
+        // 建立列印根節點（不影響原畫面）
+        const root = document.createElement("div");
+        root.className = "print-only print-root";
+
+        // 頭部（標題 + 當月 Meta + 個案姓名）
+        const head = document.createElement("div");
+        head.className = "print-head";
+
+        const left = document.createElement("div");
+        left.innerHTML =
+          `<div class="print-title">長照服務紀錄彙整</div>` +
+          (name ? `<div class="print-patient">個案：${name}</div>` : "");
+        head.appendChild(left);
+
+        const right = document.createElement("div");
+        right.className = "print-meta";
+        right.textContent = getCurrentMetaText(currentMonthKey, parsedData);
+        head.appendChild(right);
+
+        root.appendChild(head);
+
+        // 內容：月曆 + 統計（依勾選）
+        if (needCal) {
+          root.appendChild(renderPrintCalendar(currentMonthKey, parsedData));
+        }
+        if (needStats) {
+          const byOrg = buildStatsForMonth(
+            currentMonthKey,
+            parsedData,
+            currentOrgFilter
+          );
+
+          if (byOrg.size) {
+            root.appendChild(renderPrintStats(byOrg));
+          } else {
+            const none = document.createElement("div");
+            none.style.cssText = "margin-top:8px;color:#94a3b8;";
+            none.textContent = "（本月無可計價項目）";
+            root.appendChild(none);
+          }
+        }
+
+        document.body.appendChild(root);
+
+        // 觸發列印（使用瀏覽器的「另存為 PDF」）
+        window.print();
+
+        // 列印對話框關閉後，清理節點（部分瀏覽器需要延遲一下）
+        setTimeout(() => {
+          try {
+            root.remove();
+          } catch (e) {}
+        }, 500);
+      });
     </script>
   </body>
 </html>
