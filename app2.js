@@ -1413,6 +1413,7 @@
         BOUND = 0.75,
         MAX_TILT = 3;
       const TAP_SLOP = 12;
+      task.style.touchAction = "pan-y";
 
       task.addEventListener("pointerdown", onDown);
       task.addEventListener("pointermove", onMove);
@@ -1508,7 +1509,7 @@
         task.style.transform = "";
         resetBars();
 
-        if (!wasSwipe && !cancel && tapLike) {
+        if (!wasSwipe && tapLike) {
           openDetail(task.dataset.id);
           cleanup();
           return;
