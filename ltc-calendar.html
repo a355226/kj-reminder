@@ -1164,10 +1164,15 @@
         .getElementById("cancelPaste")
         .addEventListener("click", () => dlg.close());
       document.getElementById("fillSample").addEventListener("click", () => {
-        rawInput.value = ["\t1\t114/08/30\tBA15-1[家務協助(自用)]\t補助\t1\t12:50~13:20[30分]\t長照機構\t服務人員\t狀態\tAA10申請狀態\t系統識別碼","\t2\t114/08/30\tBA13[陪同外出]\t補助\t1\t12:50~13:20[30分]\t長照機構\t服務人員\t狀態\tAA10申請狀態\t系統識別碼",
-          "\t3\t114/08/29\tBA02[基本日常照顧]\t補助\t1\t12:50~13:20[30分]\t長照機構\t服務人員\t狀態\tAA10申請狀態\t系統識別碼","\t4\t114/08/29\tBA20[陪伴服務]\t補助\t1\t12:50~13:20[30分]\t長照機構\t服務人員\t狀態\tAA10申請狀態\t系統識別碼",
-          "\t5\t114/08/29\tBA15-1[家務協助(自用)]\t補助\t1\t12:50~13:20[30分]\t長照機構\t服務人員\t狀態\tAA10申請狀態\t系統識別碼",].join("\n");
-      });
+        const rows = [
+  ["1","114/08/30","BA15-1[家務協助(自用)]","補助","1","12:50~13:20[30分]","長照機構","服務人員","狀態","AA10申請狀態","系統識別碼"],
+  ["2","114/08/30","BA13[陪同外出]","補助","1","12:50~13:20[30分]","長照機構","服務人員","狀態","AA10申請狀態","系統識別碼"],
+];
+document.getElementById("preview").innerHTML =
+  "<table border=1>" +
+  rows.map(r => "<tr>" + r.map(c => `<td>${c}</td>`).join("") + "</tr>").join("") +
+  "</table>";
+
 
       document.getElementById("confirmPaste").addEventListener("click", () => {
         const raw = rawInput.value.trim();
