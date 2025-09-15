@@ -1164,14 +1164,16 @@
         .getElementById("cancelPaste")
         .addEventListener("click", () => dlg.close());
       document.getElementById("fillSample").addEventListener("click", () => {
-        const rows = [
-  ["1","114/08/30","BA15-1[家務協助(自用)]","補助","1","12:50~13:20[30分]","長照機構","服務人員","狀態","AA10申請狀態","系統識別碼"],
-  ["2","114/08/30","BA13[陪同外出]","補助","1","12:50~13:20[30分]","長照機構","服務人員","狀態","AA10申請狀態","系統識別碼"],
-];
-document.getElementById("preview").innerHTML =
-  "<table border=1>" +
-  rows.map(r => "<tr>" + r.map(c => `<td>${c}</td>`).join("") + "</tr>").join("") +
-  "</table>";
+
+
+        rawInput.value = [
+  "1 114/08/30 BA15-1[家務協助(自用)] 補助 1 12:50~13:20[30分] 長照機構 服務人員 狀態 AA10申請狀態 系統識別碼",
+  "2 114/08/30 BA13[陪同外出] 補助 1 12:50~13:20[30分] 長照機構 服務人員 狀態 AA10申請狀態 系統識別碼",
+  "3 114/08/29 BA02[基本日常照顧] 補助 1 12:50~13:20[30分] 長照機構 服務人員 狀態 AA10申請狀態 系統識別碼",
+  "4 114/08/29 BA20[陪伴服務] 補助 1 12:50~13:20[30分] 長照機構 服務人員 狀態 AA10申請狀態 系統識別碼",
+  "5 114/08/29 BA15-1[家務協助(自用)] 補助 1 12:50~13:20[30分] 長照機構 服務人員 狀態 AA10申請狀態 系統識別碼"
+].join("\n");
+
 
 
       document.getElementById("confirmPaste").addEventListener("click", () => {
