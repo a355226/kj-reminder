@@ -31,7 +31,7 @@ const BYPASS = [
 ];
 
 // 視為「殼」的頁面：開啟 App 時一定網路優先
-const APP_SHELLS = ['/', '/index.html', '/mymemo.html'];
+const APP_SHELLS = ['/', '/index.html', '/mymemo.html', '/ltc-calendar.html'];
 
 // 需要「即時更新」的 JS 名稱（同網域）
 const JS_IMMEDIATE = [
