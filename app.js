@@ -2267,6 +2267,19 @@
       renderCompletedTasks();
     };
     menu.appendChild(recentBtn);
+    
+    /*** ▼ 新增：全部（放在近15日後面） ***/
+const allBtn = document.createElement("button");
+allBtn.textContent = "全部";
+allBtn.style.cssText =
+  "display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;";
+allBtn.onclick = () => {
+  completedMonthFilter = "all";
+  menu.style.display = "none";
+  renderCompletedTasks();
+};
+menu.appendChild(allBtn);
+/*** ▲ 新增：全部 ***/
 
     // 蒐集所有「月份代碼」，含「無」（無日期）
     const monthSet = new Set();
@@ -2340,24 +2353,22 @@
   // 渲染已完成（預設顯示 15 日內；點月份則顯示該月份）
   function renderCompletedTasks() {
     // === 先決定要顯示哪些「已完成」的任務 ===
-    let list = (Array.isArray(completedTasks) ? completedTasks : []).filter(
-      (t) => {
-        if (completedMonthFilter === "importantOnly") {
-          return !!t.important;
-        }
-        if (completedMonthFilter === "recent15") {
-          const completedDate = new Date(t.completedAt);
-          const diff = Math.floor(
-            (Date.now() - completedDate.getTime()) / 86400000
-          );
-          return diff <= 15;
-        } else {
-          const d = new Date(t.date);
-          const rocYM = toRocYM(d);
-          return rocYM === completedMonthFilter;
-        }
-      }
-    );
+let list = (Array.isArray(completedTasks) ? completedTasks : []).filter((t) => {
+  if (completedMonthFilter === "importantOnly") return !!t.important;
+  if (completedMonthFilter === "recent15") {
+    const completedDate = new Date(t.completedAt);
+    const diff = Math.floor((Date.now() - completedDate.getTime()) / 86400000);
+    return diff <= 15;
+  }
+  /*** ▼ 新增：全部 ***/
+  if (completedMonthFilter === "all") return true;
+  /*** ▲ 新增：全部 ***/
+
+  // 既有：按月份/「無期限」過濾
+  const d = new Date(t.date);
+  const rocYM = toRocYM(d);
+  return rocYM === completedMonthFilter;
+});
 
     // ✅ 新增：完成視圖也併入搜尋條件
     if (searchQuery) {
