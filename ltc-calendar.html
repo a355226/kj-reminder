@@ -987,15 +987,13 @@
 
               const itemsEl = document.createElement("div");
               itemsEl.className = "items";
-              const list = [...seg.items.entries()].sort((a, b) =>
-                a[0].localeCompare(b[0])
-              );
-              for (const [code, qty] of list) {
-                const chip = document.createElement("span");
-                chip.className = "chip";
-                chip.textContent = `${code}*${qty}`;
-                itemsEl.appendChild(chip);
-              }
+for (const [code, qty] of seg.items.entries()) {
+  const chip = document.createElement("span");
+  chip.className = "chip";
+  chip.textContent = `${code}*${qty}`;
+  itemsEl.appendChild(chip);
+}
+
               segEl.appendChild(timeEl);
               segEl.appendChild(itemsEl);
               cell.appendChild(segEl);
