@@ -1171,11 +1171,19 @@ for (const [code, qty] of seg.items.entries()) {
         ].join("\n");
       });
 
-document.getElementById("confirmPaste").addEventListener("click", () => {
-  applyPastedText(rawInput.value);
-  if (parsedData.rowCount) dlg.close();
-});
-
+      document.getElementById("confirmPaste").addEventListener("click", () => {
+        const raw = rawInput.value.trim();
+        if (!raw) {
+          alert("請先貼上資料");
+          return;
+        }
+        const data = parsePastedText(raw);
+        if (!data.rowCount) {
+          alert(
+            "沒有解析到有效資料，請確認貼上的欄位含有：服務日期 / 服務項目 / 服務數量 / 服務區間起訖"
+          );
+          return;
+        }
 
         parsedData = data;
         // 如果有多個月份，提供下拉選擇
@@ -1475,60 +1483,6 @@ document.getElementById("confirmPaste").addEventListener("click", () => {
           } catch (e) {}
         }, 500);
       });
-
-      function applyPastedText(raw) {
-  const trimmed = (raw || "").trim();
-  if (!trimmed) {
-    alert("沒有取得到任何文字，請確認來源是否有反白選取。");
-    return;
-  }
-
-  const data = parsePastedText(trimmed);
-  if (!data.rowCount) {
-    alert(
-      "沒有解析到有效資料，請確認貼上的欄位含有：服務日期 / 服務項目 / 服務數量 / 服務區間起訖"
-    );
-    return;
-  }
-
-  parsedData = data;
-  currentOrgFilter = "全部";
-
-  const months = [...parsedData.months.keys()].sort();
-  monthSelect.innerHTML = months
-    .map((m) => `<option value="${m}">${m}</option>`)
-    .join("");
-
-  if (months.length > 1) {
-    monthSelect.style.display = "inline-block";
-  } else {
-    monthSelect.style.display = "none";
-  }
-
-  currentMonthKey = months[0];
-  monthSelect.value = currentMonthKey;
-
-  resetOrgColors(currentMonthKey);
-  renderCalendar(currentMonthKey, parsedData);
-  updateMetaBadge(currentMonthKey, parsedData);
-}
-
-      (function initFromHash() {
-  if (!location.hash.startsWith("#data=")) return;
-  try {
-    const encoded = location.hash.slice(6);
-    const raw = decodeURIComponent(encoded || "");
-    if (raw && raw.trim()) {
-      applyPastedText(raw);
-      // 若你不想 hash 留在網址，可清掉：
-      history.replaceState(null, "", location.pathname + location.search);
-    }
-  } catch (e) {
-    console.error("解析右鍵傳入資料失敗", e);
-  }
-})();
-
-
     </script>
   </body>
 </html>
