@@ -181,7 +181,26 @@
         }
         return segs;
       }
+function buildDurationLabelByMinutes(startMin, endMin) {
+  if (typeof startMin !== "number" || typeof endMin !== "number") return "";
+  // 若結束時間小於開始，視為跨日
+  if (endMin < startMin) endMin += 24 * 60;
 
+  const diff = endMin - startMin;
+  if (diff <= 0) return "";
+
+  const h = Math.floor(diff / 60);
+  const m = diff % 60;
+
+  let text = "";
+  if (h > 0) text += h + "h";
+  if (m > 0) text += m + "m";
+
+  return text ? "(" + text + ")" : "";
+}
+
+
+  
   function buildDurationLabelByText(timeText) {
   // 支援格式：HH:MM~HH:MM 或 HH:MM ~ HH:MM
   const m = timeText.match(/(\d{1,2}):(\d{2})\s*[~～\-–]\s*(\d{1,2}):(\d{2})/);
@@ -334,10 +353,13 @@
             for (const seg of vis) {
               const segEl = document.createElement("div");
               segEl.className = "seg";
-              const time = `${toHhmm(seg.start)}–${toHhmm(seg.end)}`;
-              const timeEl = document.createElement("div");
-              timeEl.className = "time";
-              timeEl.textContent = time;
+const time = `${toHhmm(seg.start)}–${toHhmm(seg.end)}`;
+const durationLabel = buildDurationLabelByMinutes(seg.start, seg.end);
+
+const timeEl = document.createElement("div");
+timeEl.className = "time";
+timeEl.textContent = time + (durationLabel || "");
+
               // 在時間右邊加色點，hover 顯示該段班的機構
               (function () {
                 const entries = seg.orgs ? Array.from(seg.orgs.entries()) : [];
@@ -717,9 +739,13 @@ for (const [code, qty] of seg.items.entries()) {
               const segEl = document.createElement("div");
               segEl.className = "print-seg";
 
-              const timeEl = document.createElement("div");
-              timeEl.className = "print-time";
-              timeEl.textContent = `${toHhmm(seg.start)}–${toHhmm(seg.end)}`;
+const timeText = `${toHhmm(seg.start)}–${toHhmm(seg.end)}`;
+const durationLabel = buildDurationLabelByMinutes(seg.start, seg.end);
+
+const timeEl = document.createElement("div");
+timeEl.className = "print-time";
+timeEl.textContent = timeText + (durationLabel || "");
+
 
               // 色點（取出現最多的機構）
               const entries = seg.orgs ? Array.from(seg.orgs.entries()) : [];
