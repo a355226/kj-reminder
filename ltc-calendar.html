@@ -1483,6 +1483,49 @@ for (const [code, qty] of seg.items.entries()) {
           } catch (e) {}
         }, 500);
       });
+
+      (function initFromHash() {
+  if (!location.hash.startsWith("#data=")) return;
+
+  try {
+    const encoded = location.hash.slice(6); // 拿掉 "#data="
+    const raw = decodeURIComponent(encoded || "");
+    const text = (raw || "").trim();
+    if (!text) return;
+
+    const data = parsePastedText(text);
+    if (!data.rowCount) {
+      console.warn("從 #data 解析不到有效資料");
+      return;
+    }
+
+    parsedData = data;
+    currentOrgFilter = "全部";
+
+    const months = [...parsedData.months.keys()].sort();
+    monthSelect.innerHTML = months
+      .map((m) => `<option value="${m}">${m}</option>`)
+      .join("");
+
+    if (months.length > 1) {
+      monthSelect.style.display = "inline-block";
+    } else {
+      monthSelect.style.display = "none";
+    }
+
+    currentMonthKey = months[0];
+    monthSelect.value = currentMonthKey;
+
+    resetOrgColors(currentMonthKey);
+    renderCalendar(currentMonthKey, parsedData);
+    updateMetaBadge(currentMonthKey, parsedData);
+
+    // 清掉網址上的 #data=...，避免重新整理時又重新套用一次
+    history.replaceState(null, "", location.pathname + location.search);
+  } catch (e) {
+    console.error("解析 #data 失敗：", e);
+  }
+})();
     </script>
   </body>
 </html>
