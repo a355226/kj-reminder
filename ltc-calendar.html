@@ -650,20 +650,26 @@
     <script>
 
         //快取
-  const v = Date.now(); // 每次刷新都帶入唯一值，避開快取
-  document
-    .querySelectorAll('link[rel="icon"], link[rel="manifest"]')
-    .forEach((el) => {
-      if (el.href) {
-        el.href += (el.href.includes("?") ? "&" : "?") + "v=" + v;
-      }
-    });
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker
-      .register("/service-worker.js?v=" + v)
-      .then((reg) => console.log("SW 註冊成功", reg.scope))
-      .catch((err) => console.log("SW 註冊失敗", err));
-  }
+//快取
+const v = Date.now(); // 每次刷新都帶入唯一值，避開快取
+document
+  .querySelectorAll('link[rel="icon"], link[rel="manifest"]')
+  .forEach((el) => {
+    if (el.href) {
+      el.href += (el.href.includes("?") ? "&" : "?") + "v=" + v;
+    }
+  });
+
+if (
+  "serviceWorker" in navigator &&
+  (location.protocol === "https:" || location.hostname === "localhost")
+) {
+  navigator.serviceWorker
+    .register("/service-worker.js?v=" + v)
+    .then((reg) => console.log("SW 註冊成功", reg.scope))
+    .catch((err) => console.log("SW 註冊失敗", err));
+}
+
       // ===== 小工具 =====
       const fmt2 = (n) => String(n).padStart(2, "0");
       const toHhmm = (m) => `${fmt2(Math.floor(m / 60))}:${fmt2(m % 60)}`;
@@ -709,6 +715,9 @@
 
       // 目前的機構篩選（"全部" 或某機構名）
       let currentOrgFilter = "全部";
+
+            let parsedData = { months: new Map(), rowCount: 0 };
+      let currentMonthKey = null;
 
       const ORG_PALETTE = [
         "#FFB3B8", // 1 淺紅
@@ -905,6 +914,60 @@
         return { months: result, rowCount, monthsRows };
       }
 
+function applyPastedText(raw) {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) {
+    alert("請先貼上資料");
+    return;
+  }
+
+  (function initFromHash() {
+  if (!location.hash.startsWith("#data=")) return;
+  try {
+    const encoded = location.hash.slice(6);
+    const raw = decodeURIComponent(encoded || "");
+    if (raw && raw.trim()) {
+      applyPastedText(raw);
+      // 清掉網址上的 #data=...，避免重新整理又塞一次
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+  } catch (e) {
+    console.error("解析右鍵傳入資料失敗", e);
+  }
+})();
+
+
+  const data = parsePastedText(trimmed);
+  if (!data.rowCount) {
+    alert(
+      "沒有解析到有效資料，請確認貼上的欄位含有：服務日期 / 服務項目 / 服務數量 / 服務區間起訖"
+    );
+    return;
+  }
+
+  parsedData = data;
+  currentOrgFilter = "全部";
+
+  const months = [...parsedData.months.keys()].sort();
+  monthSelect.innerHTML = months
+    .map((m) => `<option value="${m}">${m}</option>`)
+    .join("");
+
+  if (months.length > 1) {
+    monthSelect.style.display = "inline-block";
+  } else {
+    monthSelect.style.display = "none";
+  }
+
+  currentMonthKey = months[0];
+  monthSelect.value = currentMonthKey;
+
+  resetOrgColors(currentMonthKey);
+  renderCalendar(currentMonthKey, parsedData);
+  updateMetaBadge(currentMonthKey, parsedData);
+}
+
+      
       // 建立指定月份的月曆（Mon-first）
       function renderCalendar(monKey, data) {
         const grid = document.getElementById("grid");
@@ -1151,9 +1214,6 @@ for (const [code, qty] of seg.items.entries()) {
           rawInput.focus();
         });
 
-      let parsedData = { months: new Map(), rowCount: 0 };
-      let currentMonthKey = null;
-
       pasteBtn.addEventListener("click", () => {
         rawInput.value = "";
         dlg.showModal();
@@ -1172,39 +1232,10 @@ for (const [code, qty] of seg.items.entries()) {
       });
 
       document.getElementById("confirmPaste").addEventListener("click", () => {
-        const raw = rawInput.value.trim();
-        if (!raw) {
-          alert("請先貼上資料");
-          return;
-        }
-        const data = parsePastedText(raw);
-        if (!data.rowCount) {
-          alert(
-            "沒有解析到有效資料，請確認貼上的欄位含有：服務日期 / 服務項目 / 服務數量 / 服務區間起訖"
-          );
-          return;
-        }
+  applyPastedText(rawInput.value);
+  if (parsedData.rowCount) dlg.close();
+});
 
-        parsedData = data;
-        // 如果有多個月份，提供下拉選擇
-        currentOrgFilter = "全部"; // 重新貼資料就重置篩選
-        const months = [...parsedData.months.keys()].sort();
-        monthSelect.innerHTML = months
-          .map((m) => `<option value="${m}">${m}</option>`)
-          .join("");
-        if (months.length > 1) {
-          monthSelect.style.display = "inline-block";
-        } else {
-          monthSelect.style.display = "none";
-        }
-
-        currentMonthKey = months[0];
-        monthSelect.value = currentMonthKey;
-        resetOrgColors(currentMonthKey);
-        renderCalendar(currentMonthKey, parsedData);
-        updateMetaBadge(currentMonthKey, parsedData);
-        dlg.close();
-      });
 
       monthSelect.addEventListener("change", (e) => {
         currentMonthKey = e.target.value;
