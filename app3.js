@@ -182,6 +182,37 @@
         return segs;
       }
 
+  function buildDurationLabelByText(timeText) {
+  // 支援格式：HH:MM~HH:MM 或 HH:MM ~ HH:MM
+  const m = timeText.match(/(\d{1,2}):(\d{2})\s*[~～\-–]\s*(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+
+  const sh = parseInt(m[1], 10);
+  const sm = parseInt(m[2], 10);
+  const eh = parseInt(m[3], 10);
+  const em = parseInt(m[4], 10);
+
+  let start = sh * 60 + sm;
+  let end = eh * 60 + em;
+
+  // 若結束時間小於開始時間，視為跨日
+  if (end < start) {
+    end += 24 * 60;
+  }
+
+  const diff = end - start;
+  if (diff <= 0) return '';
+
+  const h = Math.floor(diff / 60);
+  const mm = diff % 60;
+  const parts = [];
+  if (h > 0) parts.push(h + 'h');
+  if (mm > 0) parts.push(mm + 'm');
+
+  return parts.length ? '(' + parts.join('') + ')' : '';
+}
+
+
       // 解析貼上內容 ➜ 結構化 { 'YYYY-MM': { 'YYYY-MM-DD': [rows...] } }
       function parsePastedText(raw) {
         const monthBuckets = new Map(); // key: YYYY-MM -> Map(dateStr -> rows)
