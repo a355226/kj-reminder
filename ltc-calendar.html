@@ -816,22 +816,27 @@ function buildSegments(rows) {
 
 // 解析貼上文字
 function parsePastedText(raw) {
-  const monthBuckets = new Map(); // mon -> dayMap
-  const monthsRows = new Map();   // mon -> rows(for stats)
+  const monthBuckets = new Map(); // monKey -> Map(ymd -> rows[])
+  const monthsRows = new Map();   // monKey -> rows (給統計用)
   let rowCount = 0;
 
   const lines = String(raw).replace(/\r\n?/g, "\n").split("\n");
-  for (const line of lines) {
-    if (!line || !/(\d{3,4})\/(\d{1,2})\/(\d{1,2})/.test(line)) continue;
-    const cells = line.split(/\t+/g).map((s) => s.trim());
 
-    let dIdx = cells.findIndex((c) =>
-      /(\d{3,4})\/(\d{1,2})\/(\d{1,2})/.test(c)
-    );
-    if (dIdx === -1) continue;
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
 
-    const date = parseRocOrAdDate(cells[dIdx]);
+    // 1️⃣ 抓日期（民國或西元都吃）
+    const dateMatch = line.match(/(\d{3,4})\/(\d{1,2})\/(\d{1,2})/);
+    if (!dateMatch) continue;
+    const date = parseRocOrAdDate(dateMatch[0]);
     if (!date) continue;
+
+    // 2️⃣ 抓時間區間（任何地方出現 09:00~10:00 / 9:00-10:00 都算）
+    const timeMatch = line.match(/(\d{1,2}:\d{2})\s*[~\-–]\s*(\d{1,2}:\d{2})/);
+    if (!timeMatch) continue; // 至少要有時段，沒有就略過該行
+    const range = parseTimeRange(timeMatch[0]);
+    if (!range) continue;
 
     const y = date.getFullYear();
     const m = date.getMonth() + 1;
@@ -839,29 +844,50 @@ function parsePastedText(raw) {
     const monKey = `${y}-${fmt2(m)}`;
     const ymd = `${y}-${fmt2(m)}-${fmt2(d)}`;
 
-    const item = cells[dIdx + 1] || "";
-    const code = getCodeBeforeBracket(item);
-    const qty = parseInt(cells[dIdx + 3] || "0", 10) || 0;
+    // 3️⃣ 抓服務代碼：優先吃 BAxx[...] / BAxx 這類，沒有就給一個通用名稱
+    let code = "";
+    const codeBracketMatch = line.match(/\b(BA[0-9A-Za-z\-]+)(?=\[)/i);       // BA15-1[...]
+    const codePlainMatch = line.match(/\b(BA\d{2}(?:-\d+)?[a-z]?)\b/i);       // BA01, BA15-1 等
 
-    const tr =
-      cells[dIdx + 4] ||
-      cells.find((c) =>
-        /\d{1,2}:\d{2}\s*[~\-]\s*\d{1,2}:\d{2}/.test(c)
-      ) ||
-      "";
-
-    const org = (cells[dIdx + 5] || "").trim();
-    let staff = (cells[dIdx + 6] || "").trim();
-    if (!staff) {
-      const cand = cells.find((c) =>
-        /^[A-Za-z\u4E00-\u9FFF]{2,6}$/.test(c)
-      );
-      staff = cand || "";
+    if (codeBracketMatch) {
+      code = codeBracketMatch[1].toUpperCase();
+    } else if (codePlainMatch) {
+      code = codePlainMatch[1].toUpperCase();
+    } else {
+      // 找不到就給通用字，至少可以顯示在月曆上
+      code = "項目";
     }
 
-    const range = parseTimeRange(String(tr).replace(/\[[^\]]*\]/g, ""));
-    if (!range || !code || qty <= 0) continue;
+    // 4️⃣ 數量：寬鬆處理，預設 1
+    // 嘗試在時段之後找第一個整數，不強制一定要有
+    let qty = 1;
+    const afterTimeIndex = timeMatch.index + timeMatch[0].length;
+    const afterTime = line.slice(afterTimeIndex);
+    const qtyMatch = afterTime.match(/\b(\d+)\b/);
+    if (qtyMatch) {
+      const q = parseInt(qtyMatch[1], 10);
+      if (q > 0 && q < 1000) qty = q;
+    }
 
+    // 5️⃣ 機構名稱：時間與數量後面，抓第一個非空字串當作機構（如果有）
+    let org = "";
+    let tail = afterTime;
+    if (qtyMatch) {
+      const i = tail.indexOf(qtyMatch[0]);
+      if (i >= 0) {
+        tail = tail.slice(i + qtyMatch[0].length);
+      }
+    }
+    tail = tail.trim();
+    if (tail) {
+      // 有些會是「XX機構 服務員A」，這裡先拿第一段
+      org = tail.split(/\s+/)[0];
+    }
+
+    // 6️⃣ 人員欄位：現在先不強制，之後要再優化可再補
+    const staff = "";
+
+    // 7️⃣ 塞進結構
     if (!monthBuckets.has(monKey)) monthBuckets.set(monKey, new Map());
     const dayMap = monthBuckets.get(monKey);
     if (!dayMap.has(ymd)) dayMap.set(ymd, []);
@@ -880,6 +906,7 @@ function parsePastedText(raw) {
     rowCount++;
   }
 
+  // 把每天 rows 合併成 segments 給月曆用
   const result = new Map();
   for (const [mon, dayMap] of monthBuckets) {
     const segMap = new Map();
@@ -891,6 +918,7 @@ function parsePastedText(raw) {
 
   return { months: result, rowCount, monthsRows };
 }
+
 
 // 套用資料（給貼上 & #data= 用）
 function applyPastedText(raw) {
