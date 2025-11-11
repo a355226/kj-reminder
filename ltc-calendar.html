@@ -1484,20 +1484,57 @@ for (const [code, qty] of seg.items.entries()) {
         }, 500);
       });
 
-      (function initFromHash() {
+// ===== 從網址 #data=... 自動載入並產生月曆（給右鍵 / 擴充功能用） =====
+(function initFromHash() {
   if (!location.hash.startsWith("#data=")) return;
 
   try {
     const encoded = location.hash.slice(6); // 拿掉 "#data="
     const raw = decodeURIComponent(encoded || "");
-    const text = (raw || "").trim();
+    let text = (raw || "").trim();
     if (!text) return;
 
-    const data = parsePastedText(text);
+    // 如果已經是正常「貼上的一坨」(有 tab 或換行)，直接丟進原本 parser
+    let normalized = text;
+
+    // 如果完全沒有 tab，但看起來是「1 114/10/30 BA02...  2 114/10/30 ...」這種串，
+    // 幫你依「編號 + 日期」切成多列，再用 tab 串回去，讓 parsePastedText 可以吃。
+    if (!/\t/.test(text) && /(\d{3,4})\/(\d{1,2})\/(\d{1,2})/.test(text)) {
+      const tokens = text.split(/\s+/).filter(Boolean);
+      const rows = [];
+      let current = [];
+
+      for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i];
+        const next = tokens[i + 1] || "";
+
+        // 偵測「新的一列」開頭：數字 + 日期
+        if (
+          current.length > 0 &&
+          /^\d+$/.test(t) &&
+          /^(\d{3,4})\/(\d{1,2})\/(\d{1,2})$/.test(next)
+        ) {
+          rows.push(current.join("\t"));
+          current = [t]; // 這個編號當下一列的開頭
+        } else {
+          current.push(t);
+        }
+      }
+      if (current.length) {
+        rows.push(current.join("\t"));
+      }
+
+      normalized = rows.join("\n");
+      // console.log("normalized from hash:\n", normalized);
+    }
+
+    const data = parsePastedText(normalized);
     if (!data.rowCount) {
       console.warn("從 #data 解析不到有效資料");
       return;
     }
+
+    // == 以下完全比照你 confirmPaste 那段 ==
 
     parsedData = data;
     currentOrgFilter = "全部";
@@ -1520,12 +1557,13 @@ for (const [code, qty] of seg.items.entries()) {
     renderCalendar(currentMonthKey, parsedData);
     updateMetaBadge(currentMonthKey, parsedData);
 
-    // 清掉網址上的 #data=...，避免重新整理時又重新套用一次
+    // 清掉 #data，避免重整又跑一次
     history.replaceState(null, "", location.pathname + location.search);
   } catch (e) {
     console.error("解析 #data 失敗：", e);
   }
 })();
+
     </script>
   </body>
 </html>
