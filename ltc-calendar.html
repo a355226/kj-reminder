@@ -921,20 +921,38 @@ function applyPastedText(raw) {
     return;
   }
 
-  (function initFromHash() {
-  if (!location.hash.startsWith("#data=")) return;
-  try {
-    const encoded = location.hash.slice(6);
-    const raw = decodeURIComponent(encoded || "");
-    if (raw && raw.trim()) {
-      applyPastedText(raw);
-      // 清掉網址上的 #data=...，避免重新整理又塞一次
-      history.replaceState(null, "", location.pathname + location.search);
-    }
-  } catch (e) {
-    console.error("解析右鍵傳入資料失敗", e);
+  const data = parsePastedText(trimmed);
+  if (!data.rowCount) {
+    alert(
+      "沒有解析到有效資料，請確認貼上的欄位含有：服務日期 / 服務項目 / 服務數量 / 服務區間起訖"
+    );
+    return;
   }
-})();
+
+  parsedData = data;
+  currentOrgFilter = "全部";
+
+  const months = [...parsedData.months.keys()].sort();
+  const monthSelectEl = document.getElementById("monthSelect");
+
+  monthSelectEl.innerHTML = months
+    .map((m) => `<option value="${m}">${m}</option>`)
+    .join("");
+
+  if (months.length > 1) {
+    monthSelectEl.style.display = "inline-block";
+  } else {
+    monthSelectEl.style.display = "none";
+  }
+
+  currentMonthKey = months[0];
+  monthSelectEl.value = currentMonthKey;
+
+  resetOrgColors(currentMonthKey);
+  renderCalendar(currentMonthKey, parsedData);
+  updateMetaBadge(currentMonthKey, parsedData);
+}
+
 
 
   const data = parsePastedText(trimmed);
@@ -1514,6 +1532,22 @@ for (const [code, qty] of seg.items.entries()) {
           } catch (e) {}
         }, 500);
       });
+
+      (function initFromHash() {
+  if (!location.hash.startsWith("#data=")) return;
+  try {
+    const encoded = location.hash.slice(6);
+    const raw = decodeURIComponent(encoded || "");
+    if (raw && raw.trim()) {
+      applyPastedText(raw);
+    }
+    // 清掉網址上的 #data=...，避免重新整理又重跑
+    history.replaceState(null, "", location.pathname + location.search);
+  } catch (e) {
+    console.error("解析右鍵傳入資料失敗", e);
+  }
+})();
+
     </script>
   </body>
 </html>
