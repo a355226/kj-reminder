@@ -3,9 +3,7 @@
   // --- 這行以下貼你的原本腳本（原樣貼上即可） ---
   // PASTE HERE ↓↓↓
 
-    <script>
-
-        //快取
+          //快取
   const v = Date.now(); // 每次刷新都帶入唯一值，避開快取
   document
     .querySelectorAll('link[rel="icon"], link[rel="manifest"]')
@@ -919,8 +917,6 @@ for (const [code, qty] of seg.items.entries()) {
     console.error("解析 #data 失敗：", e);
   }
 })();
-
-    </script>
 
   // --- 這行以上 ---
 })();
