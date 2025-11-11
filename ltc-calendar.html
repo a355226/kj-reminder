@@ -1533,6 +1533,22 @@ for (const [code, qty] of seg.items.entries()) {
         }, 500);
       });
 
+      (function initFromHash() {
+  if (!location.hash.startsWith("#data=")) return;
+  try {
+    const encoded = location.hash.slice(6);
+    const raw = decodeURIComponent(encoded || "");
+    if (raw && raw.trim()) {
+      applyPastedText(raw);
+    }
+    // 清掉網址上的 #data=...，避免重新整理又重跑
+    history.replaceState(null, "", location.pathname + location.search);
+  } catch (e) {
+    console.error("解析右鍵傳入資料失敗", e);
+  }
+})();
+
+
     </script>
   </body>
 </html>
