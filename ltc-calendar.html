@@ -6,7 +6,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="ltc-calendar.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="ltc-calendar.png" />
     <link rel="manifest" href="manifest2.json" />
-    
+
     <title>長照服務紀錄彙整</title>
     <style>
       :root {
@@ -468,43 +468,54 @@
       }
 
       /* 時間 + 圓點：強制同一行 */
-.seg .time {
-  display: inline-flex;        /* 改成橫向排版容器 */
-  align-items: center;
-  white-space: nowrap;         /* 禁止時間與圓點之間換行 */
-}
+      .seg .time {
+        display: inline-flex; /* 改成橫向排版容器 */
+        align-items: center;
+        white-space: nowrap; /* 禁止時間與圓點之間換行 */
+      }
 
-/* 服務項目：強制直排 */
-.seg .items {
-  margin-top: 4px;
-  color: #0b3d5c;
-  display: flex;               /* 改成 flex 容器 */
-  flex-direction: column;      /* 垂直排列子元素 */
-  gap: 4px;                    /* 每個 chip 之間留一點距離 */
-}
+      /* 服務項目：強制直排 */
+      .seg .items {
+        margin-top: 4px;
+        color: #0b3d5c;
+        display: flex; /* 改成 flex 容器 */
+        flex-direction: column; /* 垂直排列子元素 */
+        gap: 4px; /* 每個 chip 之間留一點距離 */
+      }
 
-/* 每個 chip 一行顯示，不拆行 */
-.seg .items .chip {
-  display: block;              /* 讓每顆 chip 自己佔一整行 */
-  white-space: nowrap;         /* 防止 BA20*10 之類被拆行 */
-}
-.print-time {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-}
+      /* 每個 chip 一行顯示，不拆行 */
+      .seg .items .chip {
+        display: block; /* 讓每顆 chip 自己佔一整行 */
+        white-space: nowrap; /* 防止 BA20*10 之類被拆行 */
+      }
+      .print-time {
+        display: inline-flex;
+        align-items: center;
+        white-space: nowrap;
+      }
 
-.print-items {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
+      .print-items {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
 
-.print-chip {
-  display: block;
-  white-space: nowrap;
-}
+      .print-chip {
+        display: block;
+        white-space: nowrap;
+      }
 
+      main.card {
+        overflow-x: auto;
+      }
+
+      /* 月曆格子：固定 7 欄，但每一欄至少 120px 寬 */
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(120px, 1fr));
+        gap: 6px;
+        min-width: 840px; /* 7 * 120，保證 7 欄寬度，加 gap 會再多一點沒關係 */
+      }
     </style>
   </head>
   <body>
@@ -521,9 +532,7 @@
             />長照服務紀錄彙整
           </h1>
 
-          <p>
-            按一下「貼上服務紀錄」，貼上所需資料，將自動彙整成月曆排班表。
-          </p>
+          <p>按一下「貼上服務紀錄」，貼上所需資料，將自動彙整成月曆排班表。</p>
         </div>
         <div class="cta">
           <button class="primary" id="pasteBtn">📋 貼上服務紀錄</button>
@@ -687,6 +696,6 @@
       </div>
     </dialog>
 
-<script src="./app3.js" defer></script>
+    <script src="./app3.js" defer></script>
   </body>
 </html>
