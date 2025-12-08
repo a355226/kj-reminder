@@ -384,23 +384,22 @@ let pendingLockOpenMemoId = null;
     });
   }
   function unbindFirebase() {
-    try {
-      memosRef && memosRef.off();
-      categoriesRef && categoriesRef.off();
+  try {
+    if (memosRef) {
+      memosRef.off();
+      memosRef = null;
+    }
+    if (categoriesRef) {
+      categoriesRef.off();
+      categoriesRef = null;
+    }
+    if (locksRef) {
+      locksRef.off();
+      locksRef = null;
+    }
+  } catch (_) {}
+}
 
-      locksRef = db.ref(`${roomPath}/memoCategoryLocks`);
-      locksRef.on("value", (snap) => {
-        categoryLocks = snap.val() || {};
-        // 鎖定狀態可能影響畫面（鎖圖示／可否開啟詳情）
-        renderSections();
-        renderAll();
-      });
-
-      try {
-        locksRef && locksRef.off();
-      } catch (_) {}
-    } catch (_) {}
-  }
   function saveMemos() {
     const obj = {};
     memos.forEach((m) => (obj[m.id] = m));
