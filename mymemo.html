@@ -926,17 +926,16 @@
         display: none !important;
       }
 
-      /* 只讓 #memoContent 有最小高度；保留右下角可調整 */
-      /* 放在所有 CSS 的最後面 */
-      #memoModal #memoContent,
-      #detailModal #detailContent {
-        height: auto !important; /* 避免其他規則給了固定高度 */
-        min-height: 20svh; /* 新版 iOS/Android：小視窗高 */
-        min-height: 20dvh; /* 動態視窗高（工具列收展時更準） */
-        min-height: 20vh; /* 備援：一般瀏覽器 */
-        resize: both !important;
-        box-sizing: border-box;
-      }
+/* ✅ 放在 <style> 的最後，直接統一所有 modal 裡的 textarea 行為 */
+.modal-content textarea {
+  /* 不要再設 height:auto，讓瀏覽器自己決定初始高度 */
+  min-height: 20svh;
+  min-height: 20dvh;
+  min-height: 20vh;
+  resize: both !important;  /* 強制上下左右都能拉 */
+  box-sizing: border-box;
+}
+
     </style>
   </head>
   <body>
