@@ -958,6 +958,21 @@
   const cancelNote = document.getElementById("cancelNote");
   const saveNoteBtn = document.getElementById("saveNote");
 
+  function openRecordsDlg() {
+    const dlg = document.getElementById("recordsDlg");
+    dlg.showModal();
+
+    // ✅ iOS 防自動放大：確保沒有任何 input 取得焦點
+    setTimeout(() => {
+      if (
+        document.activeElement &&
+        typeof document.activeElement.blur === "function"
+      ) {
+        document.activeElement.blur();
+      }
+    }, 0);
+  }
+
   // 取得某月份的所有機構（來自原始列）
   function uniqOrgsForMonth(monKey) {
     const rows = parsedData.monthsRows?.get(monKey) || [];
