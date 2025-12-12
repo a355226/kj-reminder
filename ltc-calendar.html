@@ -273,6 +273,7 @@
         padding: 14px;
       }
       .dlg .body textarea {
+        box-sizing: border-box; /* ✅關鍵：把 border+padding 算進 100% */
         width: 100%;
         min-height: 300px;
         border: 1px solid #cfe0f2;
