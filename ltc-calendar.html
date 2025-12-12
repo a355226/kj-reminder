@@ -757,6 +757,35 @@
           -webkit-overflow-scrolling: touch;
         }
       }
+
+      /* ✅ 讓 width:100% 不會因 padding/border 撐爆容器 */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      /* ✅ dialog 內的欄位強制不超出 */
+      dialog input,
+      dialog textarea,
+      dialog select {
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+
+      /* ✅ 若你外層是 grid / flex，避免子元素被擠出 */
+      .dlg .body,
+      .dlg .body label {
+        min-width: 0;
+      }
+
+      /* （可選）把瀏覽器預設 outline 改成不會「看起來超出」的效果 */
+      dialog input:focus,
+      dialog textarea:focus,
+      dialog select:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--ring);
+      }
     </style>
   </head>
   <body>
