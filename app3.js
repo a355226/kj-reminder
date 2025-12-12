@@ -758,7 +758,7 @@
 
         if (!entries.length) {
           recordsList.innerHTML =
-            '<div style="font-size:12px;color:#94a3b8;">目前尚未儲存任何月曆。</div>';
+            '<div style="font-size:12px;color:#94a3b8;">尚未儲存月曆，請點選左方[儲存圖示]建立。</div>';
           return;
         }
 
