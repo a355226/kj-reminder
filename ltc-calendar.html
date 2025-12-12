@@ -658,6 +658,22 @@
         border-color: var(--blue-400);
         box-shadow: 0 0 0 1px rgba(89, 167, 255, 0.25);
       }
+
+      /* 讓「我的月曆」「登入」兩顆有藍色外環、質感更明顯 */
+      #recordsBtn,
+      #loginBtn {
+        border-color: #93c5fd; /* 本身的邊框先改成淡藍 */
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.24),
+          /* 外圈藍色光暈 */ 0 4px 10px rgba(15, 23, 42, 0.1); /* 原本的陰影稍微加重一點 */
+      }
+
+      /* 滑過去時稍微亮一點 */
+      #recordsBtn:hover,
+      #loginBtn:hover {
+        background: #f3f8ff;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.3),
+          0 6px 14px rgba(15, 23, 42, 0.16);
+      }
     </style>
   </head>
   <body>
