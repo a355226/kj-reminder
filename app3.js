@@ -636,7 +636,7 @@
 
     const defaultLabel = `${currentMonthKey} 服務月曆`;
     const labelInput = prompt(
-      "請為這份服務月曆取一個名稱（例如：王小明 114/08）",
+      "請為這份服務月曆取名（例如：2025-11 王小明）",
       defaultLabel
     );
     if (!labelInput) return;
