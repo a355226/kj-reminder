@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
   <head>
+    <!-- Firebase：用來連接 Realtime Database（帳密登入不用 Email） -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/png" sizes="32x32" href="ltc-calendar.png" />
@@ -145,9 +150,13 @@
         background: var(--card);
         border: 1px solid #e4edf7;
         border-radius: 16px;
-        overflow: hidden;
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.04);
+
+        /* ✅ 由這一層負責橫向捲動（星期 + 格子一起捲） */
+        overflow-x: auto;
+        overflow-y: hidden;
       }
+
       .dow {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
@@ -173,7 +182,9 @@
         padding: 8px;
         position: relative;
         background: #ffffff;
+        min-width: 42px; /* 👈 新增：每一格至少要有這個寬度（含空白日） */
       }
+
       .cell:nth-child(7n) {
         border-right: none;
       }
@@ -468,10 +479,23 @@
       }
 
       /* 時間 + 圓點：強制同一行 */
+      /* ✅ 修正版：時間 + 圓點，必要時可以換行，避免被切掉 */
       .seg .time {
-        display: inline-flex; /* 改成橫向排版容器 */
+        display: inline-flex;
         align-items: center;
-        white-space: nowrap; /* 禁止時間與圓點之間換行 */
+
+        /* 🔑 兩個關鍵：不再鎖死一行，必要時可以斷行 */
+        white-space: normal;
+        flex-wrap: wrap;
+
+        /* 再保險一點：有需要就把字拆開換行 */
+        overflow-wrap: anywhere;
+      }
+
+      /* ✅ 整個服務區塊：允許任何地方換行，不要被格子裁切 */
+      .seg {
+        overflow-wrap: anywhere; /* 現代瀏覽器 */
+        word-break: break-all; /* 備援：英數、符號太長也硬拆 */
       }
 
       /* 服務項目：強制直排 */
@@ -484,10 +508,22 @@
       }
 
       /* 每個 chip 一行顯示，不拆行 */
+      /* 服務項目 chip：允許換行，避免被切掉 */
       .seg .items .chip {
-        display: block; /* 讓每顆 chip 自己佔一整行 */
-        white-space: nowrap; /* 防止 BA20*10 之類被拆行 */
+        display: block;
+        background: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #bbf7d0;
+        border-radius: 999px;
+        padding: 2px 6px;
+        margin: 2px 4px 0 0;
+        font-weight: 700;
+
+        /* 🔑 這兩行是重點： */
+        white-space: normal; /* ✅ 改回可以換行 */
+        word-break: break-all; /* ✅ 英數/BA20*10 太長也會強制折行 */
       }
+
       .print-time {
         display: inline-flex;
         align-items: center;
@@ -505,16 +541,122 @@
         white-space: nowrap;
       }
 
-      main.card {
-        overflow-x: auto;
+      /* 雲端月曆清單樣式 */
+      .record-row {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 8px 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #f8fafc;
+      }
+      .record-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .record-title {
+        font-weight: 700;
+        color: #0f172a;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .record-meta {
+        font-size: 12px;
+        color: #94a3b8;
+        margin-top: 2px;
+      }
+      /* 右側的動作按鈕：改成水平排列 */
+      .record-actions {
+        display: flex;
+        flex-direction: row; /* ← 原本是 column，改成 row */
+        align-items: center;
+        gap: 6px; /* 按鈕之間的水平間距 */
       }
 
-      /* 月曆格子：固定 7 欄，但每一欄至少 120px 寬 */
-      #grid {
+      .record-actions button {
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        white-space: nowrap; /* 避免「改名」「服務月曆」被拆行 */
+      }
+
+      /* === 手機版：強制顯示一整排 7 天，避免只露出 3 欄 === */
+      @media (max-width: 700px) {
+        #grid {
+          grid-template-columns: repeat(7, 1fr) !important;
+          min-width: 0 !important;
+          /* gap: 4px;  👈 這行刪掉 */
+        }
+
+        .cell {
+          padding: 4px 2px;
+          min-height: 100px;
+        }
+      }
+
+      /* 月曆內層：決定 7 欄的總寬度 */
+      /* 月曆內層：跟著容器寬度走，手機也能塞下 7 欄 */
+      .cal-inner {
+        width: 100%;
+        min-width: 0; /* ❗ 取消 840px 限制，讓 7 欄可以壓縮 */
+      }
+
+      /* 星期列：固定 7 欄 */
+      .dow {
         display: grid;
-        grid-template-columns: repeat(7, minmax(120px, 1fr));
-        gap: 6px;
-        min-width: 840px; /* 7 * 120，保證 7 欄寬度，加 gap 會再多一點沒關係 */
+        grid-template-columns: repeat(7, 1fr);
+        background: var(--blue-100);
+        color: #0b5394;
+        font-weight: 700;
+        border-bottom: 1px solid #d9e9ff;
+      }
+
+      /* 底下格子：同樣 7 欄 */
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+      }
+
+      /* === 手機版：字體再縮一點，幫忙塞進去 === */
+      @media (max-width: 700px) {
+        .seg {
+          font-size: 10px;
+          padding: 4px 3px;
+          line-height: 1.25;
+        }
+
+        .seg .time {
+          font-size: 10px;
+        }
+
+        .seg .items {
+          font-size: 10px;
+        }
+      }
+
+      /* 「我的服務月曆」內的搜尋列 */
+      .record-search {
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+      }
+
+      .record-search input {
+        width: 100%;
+        padding: 7px 10px;
+        border-radius: 999px;
+        border: 1px solid #d7e6f8;
+        font-size: 13px;
+        outline: none;
+        background: #f8fbff;
+      }
+
+      .record-search input:focus {
+        border-color: var(--blue-400);
+        box-shadow: 0 0 0 1px rgba(89, 167, 255, 0.25);
       }
     </style>
   </head>
@@ -547,7 +689,7 @@
         </label>
         <span class="badge" id="metaBadge">尚未載入資料</span>
         <!-- 放在 filterBtn 之前 -->
-        <button id="exportBtn" class="icon-btn" title="匯出">
+        <button id="exportBtn" class="icon-btn" title="匯出 PDF">
           <!-- 匯出 / 下載圖示 -->
           <svg
             viewBox="0 0 24 24"
@@ -563,8 +705,62 @@
           </svg>
         </button>
 
+        <!-- 新增：儲存目前月曆 -->
+        <button id="saveBtn" class="icon-btn" title="儲存這份月曆">
+          <!-- 軟碟 icon -->
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M4 4h14l2 2v14H4z" />
+            <path d="M9 4v6h6V4" />
+            <path d="M8 13h8v5H8z" />
+          </svg>
+        </button>
+
         <!-- 右側工具鈕（靠右） -->
         <div style="margin-left: auto; display: flex; gap: 8px">
+          <!-- 新增：我的月曆 -->
+          <button
+            id="recordsBtn"
+            class="icon-btn"
+            title="我的雲端月曆"
+            disabled
+          >
+            <!-- 資料夾 icon -->
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M3 7h5l2 3h11v9H3z" />
+              <path d="M3 7V5h4l2 2h12" />
+            </svg>
+          </button>
+
+          <!-- 新增：登入 / 切換使用者 -->
+          <button id="loginBtn" class="icon-btn" title="登入 / 切換使用者">
+            <!-- 使用者 icon -->
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+              <path d="M4 20a8 8 0 0 1 16 0" />
+            </svg>
+          </button>
+
           <button id="filterBtn" class="icon-btn" title="篩選">
             <!-- 漏斗 icon -->
             <svg
@@ -595,16 +791,18 @@
       </div>
 
       <div class="cal" id="calendar" aria-live="polite" aria-busy="false">
-        <div class="dow">
-          <div>一</div>
-          <div>二</div>
-          <div>三</div>
-          <div>四</div>
-          <div>五</div>
-          <div style="color: #a61e4d">六</div>
-          <div style="color: #a61e4d">日</div>
+        <div class="cal-inner">
+          <div class="dow">
+            <div>一</div>
+            <div>二</div>
+            <div>三</div>
+            <div>四</div>
+            <div>五</div>
+            <div style="color: #a61e4d">六</div>
+            <div style="color: #a61e4d">日</div>
+          </div>
+          <div class="grid" id="grid"></div>
         </div>
-        <div class="grid" id="grid"></div>
       </div>
 
       <div class="footer" style="text-align: right">Designed by Kenji Chou</div>
@@ -692,6 +890,123 @@
         </div>
         <div class="foot">
           <button class="primary" id="closeStats">關閉</button>
+        </div>
+      </div>
+    </dialog>
+    <!-- 登入 / 切換使用者 -->
+    <dialog id="loginDlg">
+      <div class="dlg">
+        <div class="head"><h3>登入 / 建立我的帳號</h3></div>
+        <div class="body">
+          <p style="font-size: 13px; color: #64748b; margin-top: 0">
+            本工具不需要註冊，自訂「帳號」與「密碼」即可建立專屬儲存區。
+            之後在任何裝置，皆用同一組帳號與密碼登入。
+          </p>
+          <div style="display: grid; gap: 10px; margin-top: 8px">
+            <label style="font-size: 14px">
+              帳號
+              <input
+                id="loginAccount"
+                type="text"
+                placeholder="請自訂一組帳號"
+                style="
+                  display: block;
+                  width: 100%;
+                  margin-top: 4px;
+                  border: 1px solid #cfe0f2;
+                  border-radius: 10px;
+                  padding: 8px 10px;
+                "
+              />
+            </label>
+            <label style="font-size: 14px">
+              密碼
+              <input
+                id="loginPassword"
+                type="password"
+                placeholder="請自訂一組密碼"
+                style="
+                  display: block;
+                  width: 100%;
+                  margin-top: 4px;
+                  border: 1px solid #cfe0f2;
+                  border-radius: 10px;
+                  padding: 8px 10px;
+                "
+              />
+            </label>
+          </div>
+          <!-- ⭐ 新增：自動登入 勾選 -->
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              margin-top: 10px;
+              font-size: 13px;
+              color: #475569;
+            "
+          >
+            <input id="loginAuto" type="checkbox" checked />
+            <span>在此裝置自動登入</span>
+          </label>
+          <p style="font-size: 12px; color: #94a3b8; margin-top: 8px">
+            提示：此帳號與密碼僅用來產生/進入你的雲端儲存位置。
+          </p>
+        </div>
+        <div class="foot">
+          <button class="ghost" id="logoutBtn">登出</button>
+          <button class="ghost" id="cancelLogin">取消</button>
+          <button class="primary" id="submitLogin">進入</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 我的雲端月曆清單 -->
+    <dialog id="recordsDlg">
+      <div class="dlg">
+        <div class="head"><h3>我的服務月曆</h3></div>
+        <div class="body">
+          <!-- 🔍 搜尋列 -->
+          <div class="record-search">
+            <input id="recordsSearch" type="search" placeholder="搜尋關鍵字" />
+          </div>
+
+          <!-- 清單 -->
+          <div
+            id="recordsList"
+            style="
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+              max-height: 430px;
+              overflow-y: auto;
+            "
+          ></div>
+
+          <!-- 查無結果提示 -->
+          <p
+            id="recordsEmpty"
+            style="
+              display: none;
+              font-size: 12px;
+              color: #94a3b8;
+              margin-top: 4px;
+            "
+          >
+            查無符合的服務月曆，請嘗試其他關鍵字。
+          </p>
+
+          <p
+            id="recordsHint"
+            style="font-size: 12px; color: #94a3b8; margin-top: 8px"
+          >
+            提示：每一筆都是一份已儲存的「貼上結果」。載入後，仍可重新貼上或再儲存為新紀錄。
+          </p>
+        </div>
+
+        <div class="foot">
+          <button class="primary" id="closeRecords">關閉</button>
         </div>
       </div>
     </dialog>
