@@ -751,19 +751,23 @@
             rowCount: val.rowCount || 0,
             daysWithData: val.daysWithData || 0,
             updatedAt: val.updatedAt || 0,
+            note: val.note || "", // ⭐ 帶出註記
           });
         });
 
-        entries.sort((a, b) => b.updatedAt - a.updatedAt);
+        // 更新快取，給「註記」對話框使用
+        recordsCache = entries
+          .slice()
+          .sort((a, b) => b.updatedAt - a.updatedAt);
 
-        if (!entries.length) {
+        if (!recordsCache.length) {
           recordsList.innerHTML =
             '<div style="font-size:12px;color:#94a3b8;">尚未儲存月曆，請點選左方[儲存圖示]建立。</div>';
           return;
         }
 
         recordsList.innerHTML = "";
-        for (const rec of entries) {
+        for (const rec of recordsCache) {
           const row = document.createElement("div");
           row.className = "record-row";
           row.dataset.id = rec.id;
@@ -778,25 +782,38 @@
 
           const meta = document.createElement("div");
           meta.className = "record-meta";
+
           const ym = rec.monthKey || "未指定月份";
-          meta.textContent = `${ym} · ${rec.daysWithData} 天 · ${rec.rowCount} 筆`;
+          const baseMeta = `${ym} · ${rec.daysWithData} 天 · ${rec.rowCount} 筆`;
+          meta.dataset.base = baseMeta; // ⭐ 之後更新註記用
+          meta.textContent = baseMeta + (rec.note ? "（已有註記）" : ""); // 有註記就加上提示
           main.appendChild(meta);
 
           const actions = document.createElement("div");
           actions.className = "record-actions";
 
+          // [載入]
           const btnLoad = document.createElement("button");
           btnLoad.className = "primary";
           btnLoad.textContent = "載入";
           btnLoad.dataset.act = "load";
           actions.appendChild(btnLoad);
 
+          // ⭐ 新增：[註記]（黃色）
+          const btnNote = document.createElement("button");
+          btnNote.className = "note-btn";
+          btnNote.textContent = "註記";
+          btnNote.dataset.act = "note";
+          actions.appendChild(btnNote);
+
+          // [改名]
           const btnRename = document.createElement("button");
           btnRename.className = "ghost";
           btnRename.textContent = "改名";
           btnRename.dataset.act = "rename";
           actions.appendChild(btnRename);
 
+          // [刪除]
           const btnDelete = document.createElement("button");
           btnDelete.className = "ghost";
           btnDelete.textContent = "刪除";
@@ -935,6 +952,11 @@
   const recordsDlg = document.getElementById("recordsDlg");
   const recordsList = document.getElementById("recordsList");
   const closeRecords = document.getElementById("closeRecords");
+  // 註記 dialog
+  const noteDlg = document.getElementById("noteDlg");
+  const noteInput = document.getElementById("noteInput");
+  const cancelNote = document.getElementById("cancelNote");
+  const saveNoteBtn = document.getElementById("saveNote");
 
   // 取得某月份的所有機構（來自原始列）
   function uniqOrgsForMonth(monKey) {
@@ -1070,6 +1092,10 @@
   let currentUserKey = null;
   let currentUserAccount = null;
   let pendingAction = null; // "save" 或 "records"
+
+  // === 我的服務月曆：快取清單 + 註記中使用的 id ===
+  let recordsCache = []; // [{ id,label,monthKey,daysWithData,rowCount,updatedAt,note }]
+  let currentNoteRecordId = null; // 正在編輯註記的那一筆 id
 
   pasteBtn.addEventListener("click", () => {
     rawInput.value = "";
@@ -1579,7 +1605,62 @@
       renameRecordById(id, currentLabel);
     } else if (act === "delete") {
       deleteRecordById(id);
+    } else if (act === "note") {
+      // ⭐ 開啟註記 dialog
+      currentNoteRecordId = id;
+      const rec = recordsCache.find((r) => r.id === id);
+      noteInput.value = rec?.note || "";
+      noteDlg.showModal();
+      setTimeout(() => noteInput.focus(), 10);
     }
+  });
+
+  // ⭐ 註記 dialog：取消
+  cancelNote?.addEventListener("click", () => {
+    currentNoteRecordId = null;
+    noteDlg.close();
+  });
+
+  // ⭐ 註記 dialog：儲存
+  saveNoteBtn?.addEventListener("click", () => {
+    if (!currentNoteRecordId) {
+      noteDlg.close();
+      return;
+    }
+    const text = noteInput.value.trim();
+    const ref = calendarsRef();
+    if (!ref) {
+      alert("找不到雲端儲存路徑，請稍後再試。");
+      return;
+    }
+
+    ref
+      .child(currentNoteRecordId)
+      .update({ note: text })
+      .then(() => {
+        // 更新快取
+        const rec = recordsCache.find((r) => r.id === currentNoteRecordId);
+        if (rec) rec.note = text;
+
+        // 更新畫面上的「已有註記」顯示
+        const row = recordsList?.querySelector(
+          `.record-row[data-id="${currentNoteRecordId}"]`
+        );
+        if (row) {
+          const metaEl = row.querySelector(".record-meta");
+          if (metaEl) {
+            const base = metaEl.dataset.base || metaEl.textContent || "";
+            metaEl.textContent = base + (text ? "（已有註記）" : "");
+          }
+        }
+
+        noteDlg.close();
+        currentNoteRecordId = null;
+      })
+      .catch((err) => {
+        console.error("儲存註記失敗：", err);
+        alert("儲存註記失敗，請稍後再試。");
+      });
   });
 
   // 確保登入狀態初始 UI
