@@ -2,6 +2,47 @@
 (() => {
   // --- 這行以下貼你的原本腳本（原樣貼上即可） ---
   // PASTE HERE ↓↓↓
+  // === Firebase 設定（請換成你自己的專案設定） ===
+  const firebaseConfig = {
+    apiKey: "AIzaSyBdjOF1TmU213ehRhRRzE6FCf8iyNe8WAg",
+    authDomain: "calendar-3b939.firebaseapp.com",
+    databaseURL:
+      "https://calendar-3b939-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "calendar-3b939",
+    storageBucket: "calendar-3b939.firebasestorage.app",
+    messagingSenderId: "240245031166",
+    appId: "1:240245031166:web:f7c4b802ae576d173fe5af",
+  };
+
+  let fbDb = null;
+  let fbAuthReady = false;
+
+  function ensureFirebase() {
+    if (!window.firebase) return;
+    if (fbDb) return;
+
+    if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
+      console.warn("尚未設定 firebaseConfig，雲端儲存功能停用。");
+      return;
+    }
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    fbDb = firebase.database();
+
+    if (firebase.auth) {
+      firebase
+        .auth()
+        .signInAnonymously()
+        .then(() => {
+          fbAuthReady = true;
+        })
+        .catch((err) => {
+          console.error("Firebase 匿名登入失敗：", err);
+        });
+    }
+  }
 
   //快取
   const v = Date.now(); // 每次刷新都帶入唯一值，避開快取
@@ -430,6 +471,437 @@
     badge.textContent = `${monKey} · 有服務天數：${cntDays} 天${note}`;
   }
 
+  // === 使用者登入 / 雲端儲存工具 ===
+
+  function makeUserKey(account, password) {
+    const a = (account || "").trim().toLowerCase();
+    const p = (password || "").trim();
+    if (!a || !p) return null;
+    // 用 encodeURIComponent 把帳號+密碼壓成安全字串
+    const raw = encodeURIComponent(a + "|" + p);
+    return raw.replace(/%/g, "_");
+  }
+
+  function calendarsRef() {
+    if (!fbDb || !currentUserKey) return null;
+    return fbDb.ref("ltcCalendars").child(currentUserKey).child("entries");
+  }
+
+  function updateLoginUI() {
+    if (loginBtn) {
+      if (currentUserKey) {
+        loginBtn.title = `已登入：${
+          currentUserAccount || ""
+        }（點此切換使用者）`;
+      } else {
+        loginBtn.title = "登入 / 建立我的帳號";
+      }
+    }
+    if (recordsBtn) {
+      if (currentUserKey) {
+        recordsBtn.disabled = false;
+      } else {
+        recordsBtn.disabled = true;
+      }
+    }
+  }
+
+  function openLoginDialog(nextAction) {
+    pendingAction = nextAction || null;
+    if (!loginDlg) return;
+
+    if (currentUserAccount) {
+      loginAccount.value = currentUserAccount;
+    } else {
+      loginAccount.value = "";
+    }
+    loginPassword.value = "";
+
+    if (loginAuto) {
+      // 有存在 localStorage 就勾選，沒有就不勾
+      try {
+        const raw = localStorage.getItem("ltcCalendarUser");
+        loginAuto.checked = !!raw;
+      } catch {
+        loginAuto.checked = false;
+      }
+    }
+
+    if (logoutBtn) {
+      logoutBtn.disabled = !currentUserKey; // 未登入就不能登出
+    }
+
+    loginDlg.showModal();
+  }
+
+  function logoutUser() {
+    currentUserKey = null;
+    currentUserAccount = null;
+    try {
+      localStorage.removeItem("ltcCalendarUser");
+    } catch (e) {
+      console.warn("移除 localStorage 使用者資訊失敗：", e);
+    }
+    updateLoginUI();
+    alert("已登出。");
+  }
+
+  function handleLoginSubmit() {
+    const acc = loginAccount.value.trim();
+    const pwd = loginPassword.value.trim();
+    if (!acc || !pwd) {
+      alert("請輸入帳號與密碼");
+      return;
+    }
+    ensureFirebase();
+    if (!fbDb) {
+      alert("目前尚未設定 Firebase，請先在程式中填入 firebaseConfig。");
+      return;
+    }
+
+    const key = makeUserKey(acc, pwd);
+    if (!key) {
+      alert("帳號或密碼格式有誤");
+      return;
+    }
+
+    currentUserKey = key;
+    currentUserAccount = acc;
+
+    const auto = loginAuto ? !!loginAuto.checked : true;
+
+    try {
+      if (auto) {
+        localStorage.setItem(
+          USER_STORAGE_KEY,
+          JSON.stringify({ key, account: acc })
+        );
+      } else {
+        localStorage.removeItem(USER_STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn("處理 localStorage 自動登入設定失敗：", e);
+    }
+
+    updateLoginUI();
+    loginDlg.close();
+
+    if (pendingAction === "save") {
+      pendingAction = null;
+      saveCurrentCalendarToCloud();
+    } else if (pendingAction === "records") {
+      pendingAction = null;
+      openRecordsDialog();
+    }
+  }
+
+  const USER_STORAGE_KEY = "ltcCalendarUser";
+
+  function restoreUserFromLocal() {
+    try {
+      const raw = localStorage.getItem(USER_STORAGE_KEY);
+      if (!raw) return;
+
+      const obj = JSON.parse(raw);
+      if (!obj || !obj.key) return;
+
+      currentUserKey = obj.key;
+      currentUserAccount = obj.account || "";
+
+      // 有還原使用者，就順便啟動 Firebase（匿名登入）
+      ensureFirebase();
+    } catch (e) {
+      console.warn("讀取 localStorage 使用者資訊失敗：", e);
+    }
+  }
+
+  function saveCurrentCalendarToCloud() {
+    if (!currentMonthKey || !parsedData || !parsedData.rowCount) {
+      alert("目前尚未產生任何月曆，請先貼上服務紀錄。");
+      return;
+    }
+    if (!lastRawText) {
+      alert("找不到原始貼上內容，請重新貼上一次後再儲存。");
+      return;
+    }
+    ensureFirebase();
+    if (!fbDb) {
+      alert("目前尚未設定 Firebase，請先在程式中填入 firebaseConfig。");
+      return;
+    }
+    if (!currentUserKey) {
+      openLoginDialog("save");
+      return;
+    }
+
+    const defaultLabel = `${currentMonthKey} 服務月曆`;
+    const labelInput = prompt(
+      "請為這份服務月曆取一個名稱（例如：王小明 114/08）",
+      defaultLabel
+    );
+    if (!labelInput) return;
+    const label = labelInput.trim();
+    if (!label) {
+      alert("名稱不可為空白。");
+      return;
+    }
+
+    const ref = calendarsRef();
+    if (!ref) {
+      alert("找不到雲端儲存路徑，請稍後再試。");
+      return;
+    }
+
+    const days = countDaysWithData(currentMonthKey, parsedData);
+    const basePayload = {
+      label,
+      monthKey: currentMonthKey,
+      raw: lastRawText,
+      rowCount: parsedData.rowCount || 0,
+      daysWithData: days,
+      updatedAt: Date.now(),
+    };
+
+    // 先找有沒有同名的
+    ref
+      .orderByChild("label")
+      .equalTo(label)
+      .once("value")
+      .then((snap) => {
+        let existingId = null;
+        let existingVal = null;
+        snap.forEach((child) => {
+          if (!existingId) {
+            existingId = child.key;
+            existingVal = child.val() || null;
+          }
+        });
+
+        if (existingId) {
+          // 有同名 → 問要不要覆蓋
+          const ok = confirm(`名稱「${label}」已存在，是否要覆蓋原有的紀錄？`);
+          if (!ok) return;
+
+          const payload = {
+            ...(existingVal || {}),
+            ...basePayload,
+            createdAt: existingVal?.createdAt || Date.now(),
+          };
+
+          return ref.child(existingId).set(payload);
+        } else {
+          // 沒同名 → 新增
+          const now = Date.now();
+          const payload = {
+            ...basePayload,
+            createdAt: now,
+          };
+          const newRef = ref.push();
+          return newRef.set(payload);
+        }
+      })
+      .then((res) => {
+        if (!res) return; // 使用者按「取消覆蓋」的情況
+        alert("已儲存到雲端「我的服務月曆」。");
+      })
+      .catch((err) => {
+        console.error("儲存到 Firebase 失敗：", err);
+        alert("儲存失敗，請稍後再試。");
+      });
+  }
+
+  function openRecordsDialog() {
+    if (!recordsDlg) return;
+    if (!currentUserKey) {
+      openLoginDialog("records");
+      return;
+    }
+    ensureFirebase();
+    if (!fbDb) {
+      alert("目前尚未設定 Firebase，請先在程式中填入 firebaseConfig。");
+      return;
+    }
+
+    recordsDlg.showModal();
+    loadRecordsList();
+  }
+
+  function loadRecordsList() {
+    if (!recordsList) return;
+    const ref = calendarsRef();
+    if (!ref) {
+      recordsList.textContent = "尚未登入，無法讀取雲端月曆。";
+      return;
+    }
+
+    recordsList.innerHTML =
+      '<div style="font-size:12px;color:#94a3b8;">讀取中...</div>';
+
+    ref
+      .orderByChild("updatedAt")
+      .once("value")
+      .then((snap) => {
+        const entries = [];
+        snap.forEach((child) => {
+          const val = child.val() || {};
+          entries.push({
+            id: child.key,
+            label: val.label || "(未命名)",
+            monthKey: val.monthKey || "",
+            rowCount: val.rowCount || 0,
+            daysWithData: val.daysWithData || 0,
+            updatedAt: val.updatedAt || 0,
+          });
+        });
+
+        entries.sort((a, b) => b.updatedAt - a.updatedAt);
+
+        if (!entries.length) {
+          recordsList.innerHTML =
+            '<div style="font-size:12px;color:#94a3b8;">目前尚未儲存任何月曆。</div>';
+          return;
+        }
+
+        recordsList.innerHTML = "";
+        for (const rec of entries) {
+          const row = document.createElement("div");
+          row.className = "record-row";
+          row.dataset.id = rec.id;
+
+          const main = document.createElement("div");
+          main.className = "record-main";
+
+          const title = document.createElement("div");
+          title.className = "record-title";
+          title.textContent = rec.label;
+          main.appendChild(title);
+
+          const meta = document.createElement("div");
+          meta.className = "record-meta";
+          const ym = rec.monthKey || "未指定月份";
+          meta.textContent = `${ym} · ${rec.daysWithData} 天 · ${rec.rowCount} 筆`;
+          main.appendChild(meta);
+
+          const actions = document.createElement("div");
+          actions.className = "record-actions";
+
+          const btnLoad = document.createElement("button");
+          btnLoad.className = "primary";
+          btnLoad.textContent = "載入";
+          btnLoad.dataset.act = "load";
+          actions.appendChild(btnLoad);
+
+          const btnRename = document.createElement("button");
+          btnRename.className = "ghost";
+          btnRename.textContent = "改名";
+          btnRename.dataset.act = "rename";
+          actions.appendChild(btnRename);
+
+          const btnDelete = document.createElement("button");
+          btnDelete.className = "ghost";
+          btnDelete.textContent = "刪除";
+          btnDelete.dataset.act = "delete";
+          actions.appendChild(btnDelete);
+
+          row.appendChild(main);
+          row.appendChild(actions);
+          recordsList.appendChild(row);
+        }
+      })
+      .catch((err) => {
+        console.error("讀取雲端月曆失敗：", err);
+        recordsList.innerHTML =
+          '<div style="font-size:12px;color:#f97373;">讀取失敗，請稍後再試。</div>';
+      });
+  }
+
+  function loadRecordById(id) {
+    const ref = calendarsRef();
+    if (!ref) return;
+    ref
+      .child(id)
+      .once("value")
+      .then((snap) => {
+        const val = snap.val();
+        if (!val || !val.raw) {
+          alert("這筆紀錄沒有可載入的內容。");
+          return;
+        }
+        const raw = String(val.raw);
+        const data = parsePastedText(raw);
+        if (!data.rowCount) {
+          alert("無法從這筆紀錄解析出有效資料。");
+          return;
+        }
+
+        parsedData = data;
+        lastRawText = raw;
+        currentOrgFilter = "全部";
+
+        const months = [...parsedData.months.keys()].sort();
+        monthSelect.innerHTML = months
+          .map((m) => `<option value="${m}">${m}</option>`)
+          .join("");
+        if (months.length > 1) {
+          monthSelect.style.display = "inline-block";
+        } else {
+          monthSelect.style.display = "none";
+        }
+
+        const prefer = val.monthKey;
+        if (prefer && parsedData.months.has(prefer)) {
+          currentMonthKey = prefer;
+        } else {
+          currentMonthKey = months[0];
+        }
+        monthSelect.value = currentMonthKey;
+
+        resetOrgColors(currentMonthKey);
+        renderCalendar(currentMonthKey, parsedData);
+        updateMetaBadge(currentMonthKey, parsedData);
+
+        recordsDlg.close();
+      })
+      .catch((err) => {
+        console.error("載入紀錄失敗：", err);
+        alert("載入失敗，請稍後再試。");
+      });
+  }
+
+  function renameRecordById(id, currentLabel) {
+    const ref = calendarsRef();
+    if (!ref) return;
+    const newName = prompt("請輸入新的名稱：", currentLabel || "");
+    if (!newName) return;
+
+    ref
+      .child(id)
+      .update({ label: newName.trim(), updatedAt: Date.now() })
+      .then(() => {
+        loadRecordsList();
+      })
+      .catch((err) => {
+        console.error("改名失敗：", err);
+        alert("改名失敗，請稍後再試。");
+      });
+  }
+
+  function deleteRecordById(id) {
+    if (!confirm("確定要刪除這筆月曆紀錄嗎？此動作無法復原。")) return;
+    const ref = calendarsRef();
+    if (!ref) return;
+    ref
+      .child(id)
+      .remove()
+      .then(() => {
+        loadRecordsList();
+      })
+      .catch((err) => {
+        console.error("刪除失敗：", err);
+        alert("刪除失敗，請稍後再試。");
+      });
+  }
+
   // UI 綁定
   const pasteBtn = document.getElementById("pasteBtn");
   const clearBtn = document.getElementById("clearBtn");
@@ -447,6 +919,23 @@
   const statsContent = document.getElementById("statsContent");
   const closeStats = document.getElementById("closeStats");
 
+  // === 登入 / 雲端儲存 UI ===
+  const saveBtn = document.getElementById("saveBtn");
+  const recordsBtn = document.getElementById("recordsBtn");
+  const loginBtn = document.getElementById("loginBtn");
+
+  const loginDlg = document.getElementById("loginDlg");
+  const loginAccount = document.getElementById("loginAccount");
+  const loginPassword = document.getElementById("loginPassword");
+  const loginAuto = document.getElementById("loginAuto"); // ⭐ 新增
+  const cancelLogin = document.getElementById("cancelLogin");
+  const submitLogin = document.getElementById("submitLogin");
+  const logoutBtn = document.getElementById("logoutBtn"); // ⭐ 新增
+
+  const recordsDlg = document.getElementById("recordsDlg");
+  const recordsList = document.getElementById("recordsList");
+  const closeRecords = document.getElementById("closeRecords");
+
   // 取得某月份的所有機構（來自原始列）
   function uniqOrgsForMonth(monKey) {
     const rows = parsedData.monthsRows?.get(monKey) || [];
@@ -462,13 +951,13 @@
     filterBox.innerHTML = opts
       .map(
         (o) => `
-    <label style="display:block;margin:6px 0">
-      <input type="radio" name="orgFilter" value="${o}" ${
+      <label style="display:block;margin:6px 0">
+        <input type="radio" name="orgFilter" value="${o}" ${
           currentOrgFilter === o ? "checked" : ""
         }>
-      ${o}
-    </label>
-  `
+        ${o}
+      </label>
+    `
       )
       .join("");
     filterDlg.showModal();
@@ -577,6 +1066,10 @@
 
   let parsedData = { months: new Map(), rowCount: 0 };
   let currentMonthKey = null;
+  // === 使用者登入 / 雲端儲存狀態 ===
+  let currentUserKey = null;
+  let currentUserAccount = null;
+  let pendingAction = null; // "save" 或 "records"
 
   pasteBtn.addEventListener("click", () => {
     rawInput.value = "";
@@ -611,6 +1104,7 @@
 
     parsedData = data;
     // 如果有多個月份，提供下拉選擇
+    lastRawText = raw; // ★ 記住這次貼上的原始內容
     currentOrgFilter = "全部"; // 重新貼資料就重置篩選
     const months = [...parsedData.months.keys()].sort();
     monthSelect.innerHTML = months
@@ -640,10 +1134,11 @@
   clearBtn.addEventListener("click", () => {
     parsedData = { months: new Map(), rowCount: 0 };
     currentMonthKey = null;
+    lastRawText = "";
     document.getElementById("grid").innerHTML = "";
     document.getElementById("metaBadge").textContent = "尚未載入資料";
     monthSelect.style.display = "none";
-    orgColorMap.clear(); // ➜ 新增：清空顏色映射
+    orgColorMap.clear();
   });
 
   // 初始渲染空月曆：呈現本月結構（方便一開始就有格子）
@@ -713,7 +1208,7 @@
     const head = document.createElement("div");
     head.className = "print-dow";
     head.innerHTML = `<div>一</div><div>二</div><div>三</div><div>四</div><div>五</div>
-                    <div style="color:#a61e4d">六</div><div style="color:#a61e4d">日</div>`;
+                      <div style="color:#a61e4d">六</div><div style="color:#a61e4d">日</div>`;
     wrap.appendChild(head);
 
     const grid = document.createElement("div");
@@ -815,8 +1310,8 @@
       const tbl = document.createElement("table");
       tbl.className = "stat-table";
       tbl.innerHTML = `<thead>
-      <tr><th>項目代碼</th><th>數量</th><th>小計</th></tr>
-    </thead><tbody></tbody>`;
+        <tr><th>項目代碼</th><th>數量</th><th>小計</th></tr>
+      </thead><tbody></tbody>`;
       const tbody = tbl.querySelector("tbody");
 
       let total = 0;
@@ -911,6 +1406,47 @@
     }, 500);
   });
 
+  // === 我的服務月曆：清單搜尋 ===
+  function filterRecordsList(query) {
+    const list = document.getElementById("recordsList");
+    if (!list) return;
+
+    const rows = list.querySelectorAll(".record-row");
+    const q = (query || "").trim().toLowerCase();
+    let visibleCount = 0;
+
+    rows.forEach((row) => {
+      // 用整張卡片的文字當成搜尋來源：月份、姓名、天數、筆數……都會被搜到
+      const text = row.textContent.toLowerCase();
+      const matched = !q || text.includes(q);
+
+      row.style.display = matched ? "" : "none";
+      if (matched) visibleCount++;
+    });
+
+    const emptyHint = document.getElementById("recordsEmpty");
+    if (emptyHint) {
+      // 有輸入且 0 筆 => 顯示「查無結果」
+      // 沒輸入且 0 筆 => 也可以顯示（看你習慣），這裡一併當作顯示
+      emptyHint.style.display = visibleCount === 0 ? "block" : "none";
+    }
+  }
+
+  // 每次打字就即時篩選
+  function setupRecordsSearch() {
+    const input = document.getElementById("recordsSearch");
+    if (!input) return;
+
+    input.addEventListener("input", () => {
+      filterRecordsList(input.value);
+    });
+  }
+
+  // ✅ 在初始化時呼叫一次（放在你原本的 init / DOMContentLoaded 那區）
+  document.addEventListener("DOMContentLoaded", () => {
+    setupRecordsSearch();
+  });
+
   // ===== 從網址 #data=... 自動載入並產生月曆（給右鍵 / 擴充功能用） =====
   (function initFromHash() {
     if (!location.hash.startsWith("#data=")) return;
@@ -961,6 +1497,7 @@
         return;
       }
 
+      lastRawText = normalized; // ★ 也記住這份來源文字
       // == 以下完全比照你 confirmPaste 那段 ==
 
       parsedData = data;
@@ -990,6 +1527,64 @@
       console.error("解析 #data 失敗：", e);
     }
   })();
+  // === 登入 / 儲存 / 我的月曆事件綁定 ===
+
+  loginBtn?.addEventListener("click", () => {
+    openLoginDialog(null);
+  });
+  cancelLogin?.addEventListener("click", () => {
+    loginDlg.close();
+  });
+  submitLogin?.addEventListener("click", () => {
+    handleLoginSubmit();
+  });
+
+  saveBtn?.addEventListener("click", () => {
+    saveCurrentCalendarToCloud();
+  });
+
+  recordsBtn?.addEventListener("click", () => {
+    openRecordsDialog();
+  });
+
+  closeRecords?.addEventListener("click", () => {
+    recordsDlg.close();
+  });
+
+  logoutBtn?.addEventListener("click", () => {
+    if (!currentUserKey) {
+      alert("目前尚未登入。");
+      return;
+    }
+    if (confirm("確定要登出嗎？這台裝置將不再自動登入。")) {
+      logoutUser();
+      loginDlg.close();
+    }
+  });
+
+  recordsList?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const act = btn.dataset.act;
+    const row = btn.closest(".record-row");
+    if (!row) return;
+    const id = row.dataset.id;
+    if (!id) return;
+
+    if (act === "load") {
+      loadRecordById(id);
+    } else if (act === "rename") {
+      const labelEl = row.querySelector(".record-title");
+      const currentLabel = labelEl ? labelEl.textContent : "";
+      renameRecordById(id, currentLabel);
+    } else if (act === "delete") {
+      deleteRecordById(id);
+    }
+  });
+
+  // 確保登入狀態初始 UI
+  restoreUserFromLocal();
+  updateLoginUI();
 
   // --- 這行以上 ---
 })();
