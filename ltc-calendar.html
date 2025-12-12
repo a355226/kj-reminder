@@ -583,6 +583,31 @@
         white-space: nowrap; /* 避免「改名」「服務月曆」被拆行 */
       }
 
+      /* ⭐ 雲端清單的小按鈕樣式微調 */
+      .record-actions .primary {
+        /* 載入：延用大按鈕的藍色，但縮小尺寸 */
+        background: linear-gradient(180deg, var(--blue-400), var(--blue-600));
+        color: #fff;
+        border: none;
+        box-shadow: 0 4px 10px rgba(31, 122, 232, 0.28);
+      }
+
+      .record-actions .ghost {
+        background: #ffffff;
+        color: var(--blue-600);
+        border: 1px solid #cfe6ff;
+      }
+
+      /* ⭐ 新增：註記（淡黃色備忘錄風格） */
+      .record-actions .note-btn {
+        background: #fef9c3;
+        border: 1px solid #facc15;
+        color: #92400e;
+      }
+      .record-actions .note-btn:hover {
+        background: #fef3c7;
+      }
+
       /* === 手機版：強制顯示一整排 7 天，避免只露出 3 欄 === */
       @media (max-width: 700px) {
         #grid {
@@ -974,6 +999,33 @@
           <button class="ghost" id="logoutBtn">登出</button>
           <button class="ghost" id="cancelLogin">取消</button>
           <button class="primary" id="submitLogin">進入</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 單筆月曆註記 -->
+    <dialog id="noteDlg">
+      <div class="dlg">
+        <div class="head"><h3>註記</h3></div>
+        <div class="body">
+          <textarea
+            id="noteInput"
+            placeholder="為此份服務月曆做註記 🙂"
+            style="
+              width: 100%;
+              min-height: 160px;
+              border: 1px solid #cfe0f2;
+              border-radius: 12px;
+              padding: 10px;
+              font-family: ui-sans-serif, system-ui, -apple-system,
+                'PingFang TC', 'Microsoft JhengHei', sans-serif;
+              background: #fffbeb;
+            "
+          ></textarea>
+        </div>
+        <div class="foot">
+          <button class="ghost" id="cancelNote">取消</button>
+          <button class="primary" id="saveNote">儲存</button>
         </div>
       </div>
     </dialog>
