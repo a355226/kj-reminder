@@ -734,6 +734,29 @@
           font-size: 12px;
         }
       }
+
+      @supports (-webkit-touch-callout: none) {
+        dialog input,
+        dialog textarea,
+        dialog select {
+          font-size: 16px !important;
+        }
+      }
+
+      /* ✅ 手機：彈窗固定在視窗內，內容超出就讓 body 區域捲動 */
+      @media (max-width: 700px) {
+        dialog {
+          width: calc(100vw - 24px);
+          max-width: none;
+          margin: 12px auto;
+          max-height: 88vh;
+        }
+        .dlg .body {
+          max-height: calc(88vh - 56px - 64px); /* 頭/尾大約高度，讓中間可滾 */
+          overflow: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+      }
     </style>
   </head>
   <body>
