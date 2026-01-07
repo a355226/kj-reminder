@@ -473,14 +473,18 @@
 
   // === 使用者登入 / 雲端儲存工具 ===
 
-  function makeUserKey(account, password) {
-    const a = (account || "").trim().toLowerCase();
-    const p = (password || "").trim();
-    if (!a || !p) return null;
-    // 用 encodeURIComponent 把帳號+密碼壓成安全字串
-    const raw = encodeURIComponent(a + "|" + p);
-    return raw.replace(/%/g, "_");
-  }
+ function makeUserKey(account, password) {
+  const a = (account || "").trim().toLowerCase();
+  const p = (password || "").trim();
+  if (!a || !p) return null;
+
+  const utf8 = unescape(encodeURIComponent(a + "|" + p));
+  const b64 = btoa(utf8);
+
+  // base64url（把 + / = 處理掉）
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
 
   function calendarsRef() {
     if (!fbDb || !currentUserKey) return null;
