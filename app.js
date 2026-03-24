@@ -1,4 +1,23 @@
 (() => {
+  (function ensureUrgentGlowCss() {
+    if (document.getElementById("urgentGlowCss")) return;
+    const s = document.createElement("style");
+    s.id = "urgentGlowCss";
+    s.textContent = `
+      .urgent-task-glow {
+        animation: goldenBreathe 2s infinite ease-in-out !important;
+        border: 1px solid transparent;
+        border-radius: 8px; /* 依照你的卡片圓角微調 */
+      }
+      @keyframes goldenBreathe {
+        0% { box-shadow: 0 0 3px rgba(255, 193, 7, 0.4), inset 0 0 3px rgba(255, 193, 7, 0.2); border-color: rgba(255, 193, 7, 0.4); }
+        50% { box-shadow: 0 0 12px rgba(255, 193, 7, 0.9), inset 0 0 8px rgba(255, 193, 7, 0.5); border-color: rgba(255, 193, 7, 1); }
+        100% { box-shadow: 0 0 3px rgba(255, 193, 7, 0.4), inset 0 0 3px rgba(255, 193, 7, 0.2); border-color: rgba(255, 193, 7, 0.4); }
+      }
+    `;
+    document.head.appendChild(s);
+  })();
+  // ▲ 結束 ▲
   let tasksLoaded = false;
   let completedLoaded = false;
   // categoriesLoaded 已存在，保留使用
@@ -1105,6 +1124,7 @@
 
         const el = document.createElement("div");
         el.className = "task";
+        if (days !== null && days <= 1) el.classList.add("urgent-task-glow");
         el.dataset.id = t.id;
         el.style.backgroundColor = bg;
         if (typeof taskCardHTML === "function")
@@ -1429,6 +1449,7 @@
 
     const el = document.createElement("div");
     el.className = "task";
+    if (days !== null && days <= 1) el.classList.add("urgent-task-glow");
     el.dataset.id = id;
     el.style.backgroundColor = bg;
     el.innerHTML = taskCardHTML(task, displayDays);
@@ -1704,6 +1725,7 @@
 
     const el = document.createElement("div");
     el.className = "task";
+    if (days !== null && days <= 1) el.classList.add("urgent-task-glow");
     el.dataset.id = task.id;
     el.style.backgroundColor = bg;
     el.innerHTML = taskCardHTML(task, displayDays);
@@ -2217,6 +2239,7 @@
 
       const el = document.createElement("div");
       el.className = "task";
+      if (days !== null && days <= 1) el.classList.add("urgent-task-glow");
       el.dataset.id = t.id;
       el.style.backgroundColor = bg;
       el.innerHTML = taskCardHTML(t, displayDays);
@@ -2267,19 +2290,19 @@
       renderCompletedTasks();
     };
     menu.appendChild(recentBtn);
-    
+
     /*** ▼ 新增：全部（放在近15日後面） ***/
-const allBtn = document.createElement("button");
-allBtn.textContent = "全部";
-allBtn.style.cssText =
-  "display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;";
-allBtn.onclick = () => {
-  completedMonthFilter = "all";
-  menu.style.display = "none";
-  renderCompletedTasks();
-};
-menu.appendChild(allBtn);
-/*** ▲ 新增：全部 ***/
+    const allBtn = document.createElement("button");
+    allBtn.textContent = "全部";
+    allBtn.style.cssText =
+      "display:block;border:0;background:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;text-align:left;";
+    allBtn.onclick = () => {
+      completedMonthFilter = "all";
+      menu.style.display = "none";
+      renderCompletedTasks();
+    };
+    menu.appendChild(allBtn);
+    /*** ▲ 新增：全部 ***/
 
     // 蒐集所有「月份代碼」，含「無」（無日期）
     const monthSet = new Set();
@@ -2353,22 +2376,26 @@ menu.appendChild(allBtn);
   // 渲染已完成（預設顯示 15 日內；點月份則顯示該月份）
   function renderCompletedTasks() {
     // === 先決定要顯示哪些「已完成」的任務 ===
-let list = (Array.isArray(completedTasks) ? completedTasks : []).filter((t) => {
-  if (completedMonthFilter === "importantOnly") return !!t.important;
-  if (completedMonthFilter === "recent15") {
-    const completedDate = new Date(t.completedAt);
-    const diff = Math.floor((Date.now() - completedDate.getTime()) / 86400000);
-    return diff <= 15;
-  }
-  /*** ▼ 新增：全部 ***/
-  if (completedMonthFilter === "all") return true;
-  /*** ▲ 新增：全部 ***/
+    let list = (Array.isArray(completedTasks) ? completedTasks : []).filter(
+      (t) => {
+        if (completedMonthFilter === "importantOnly") return !!t.important;
+        if (completedMonthFilter === "recent15") {
+          const completedDate = new Date(t.completedAt);
+          const diff = Math.floor(
+            (Date.now() - completedDate.getTime()) / 86400000
+          );
+          return diff <= 15;
+        }
+        /*** ▼ 新增：全部 ***/
+        if (completedMonthFilter === "all") return true;
+        /*** ▲ 新增：全部 ***/
 
-  // 既有：按月份/「無期限」過濾
-  const d = new Date(t.date);
-  const rocYM = toRocYM(d);
-  return rocYM === completedMonthFilter;
-});
+        // 既有：按月份/「無期限」過濾
+        const d = new Date(t.date);
+        const rocYM = toRocYM(d);
+        return rocYM === completedMonthFilter;
+      }
+    );
 
     // ✅ 新增：完成視圖也併入搜尋條件
     if (searchQuery) {
@@ -2385,13 +2412,12 @@ let list = (Array.isArray(completedTasks) ? completedTasks : []).filter((t) => {
     );
 
     // 以「最後更新日」排序（最新在上）
-// 已完成通常以 completedAt 為準；若沒有就退回 updatedAt，再退回 createdAt
-list.sort((a, b) => {
-  const ua = Number(a.completedAt ?? a.updatedAt ?? a.createdAt ?? 0);
-  const ub = Number(b.completedAt ?? b.updatedAt ?? b.createdAt ?? 0);
-  return ub - ua; // 由新到舊
-});
-
+    // 已完成通常以 completedAt 為準；若沒有就退回 updatedAt，再退回 createdAt
+    list.sort((a, b) => {
+      const ua = Number(a.completedAt ?? a.updatedAt ?? a.createdAt ?? 0);
+      const ub = Number(b.completedAt ?? b.updatedAt ?? b.createdAt ?? 0);
+      return ub - ua; // 由新到舊
+    });
 
     // 重畫區塊（暫時 DOM；不動 categories 陣列）
     renderSections(sectionsForDone);
@@ -2408,6 +2434,7 @@ list.sort((a, b) => {
     list.forEach((t) => {
       const el = document.createElement("div");
       el.className = "task";
+      if (days !== null && days <= 1) el.classList.add("urgent-task-glow");
       el.dataset.id = t.id;
       el.style.backgroundColor = "var(--green-light)"; // 已完成用淡綠色
       const importantPrefix = t.important ? "❗ " : "";
