@@ -2431,10 +2431,11 @@
     // （renderSections 已經把區塊重建了，所以不用再 clearAllSections）
 
     // === 繪製符合條件的已完成任務 ===
+    // === 繪製符合條件的已完成任務 ===
     list.forEach((t) => {
       const el = document.createElement("div");
       el.className = "task";
-      if (days !== null && days <= 1) el.classList.add("urgent-task-glow");
+      // 🗑️ 直接把 if (days !== null...) 那行刪掉
       el.dataset.id = t.id;
       el.style.backgroundColor = "var(--green-light)"; // 已完成用淡綠色
       const importantPrefix = t.important ? "❗ " : "";
