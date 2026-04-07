@@ -1,7 +1,5 @@
 // public/app.js
 (() => {
-  // --- 這行以下貼你的原本腳本（原樣貼上即可） ---
-  // PASTE HERE ↓↓↓
   // === Firebase 設定（請換成你自己的專案設定） ===
   const firebaseConfig = {
     apiKey: "AIzaSyBdjOF1TmU213ehRhRRzE6FCf8iyNe8WAg",
@@ -45,7 +43,7 @@
   }
 
   //快取
-  const v = Date.now(); // 每次刷新都帶入唯一值，避開快取
+  const v = Date.now();
   document
     .querySelectorAll('link[rel="icon"], link[rel="manifest"]')
     .forEach((el) => {
@@ -59,6 +57,7 @@
       .then((reg) => console.log("SW 註冊成功", reg.scope))
       .catch((err) => console.log("SW 註冊失敗", err));
   }
+
   // ===== 小工具 =====
   const fmt2 = (n) => String(n).padStart(2, "0");
   const toHhmm = (m) => `${fmt2(Math.floor(m / 60))}:${fmt2(m % 60)}`;
@@ -67,9 +66,7 @@
     return h * 60 + mm;
   };
 
-  // === 機構色盤與工具（放在小工具後面） ===
-
-  // === 價格對照表（僅統計表內有的項目） ===
+  // === 價格對照表 ===
   const PRICE_MAP = {
     BA01: 260,
     BA02: 195,
@@ -102,20 +99,19 @@
     BA24: 220,
   };
 
-  // 目前的機構篩選（"全部" 或某機構名）
   let currentOrgFilter = "全部";
 
   const ORG_PALETTE = [
-    "#FFB3B8", // 1 淺紅
-    "#FFC9A6", // 2 淺橘
-    "#FFE79A", // 3 淺黃
-    "#D7F59A", // 4 萊姆
-    "#B6E3A8", // 5 淺綠
-    "#A8E8E0", // 6 淺青綠(薄荷青)
-    "#A7E8FF", // 7 淺青(天青)
-    "#BBD5FF", // 8 淺藍
-    "#D3C6FF", // 9 淺靛/薰衣草
-    "#FFD1F0", // 10 淺洋紅/粉紫
+    "#FFB3B8",
+    "#FFC9A6",
+    "#FFE79A",
+    "#D7F59A",
+    "#B6E3A8",
+    "#A8E8E0",
+    "#A7E8FF",
+    "#BBD5FF",
+    "#D3C6FF",
+    "#FFD1F0",
   ];
 
   const orgColorMap = new Map();
@@ -128,19 +124,13 @@
     return orgColorMap.get(name);
   }
 
-  // 依「當月所有機構（排序後）」重置顏色，讓每次都從 ORG_PALETTE[0] 開始
   function resetOrgColors(monKey) {
     try {
       orgColorMap.clear();
-    } catch (_) {
-      // 若不是 Map 可忽略
-    }
+    } catch (_) {}
     const names =
-      typeof uniqOrgsForMonth === "function"
-        ? uniqOrgsForMonth(monKey) // 已排序好的清單
-        : [];
+      typeof uniqOrgsForMonth === "function" ? uniqOrgsForMonth(monKey) : [];
 
-    // 依序指派顏色（超過 10 個就循環）
     for (let i = 0; i < names.length; i++) {
       const name = names[i];
       orgColorMap.set(name, ORG_PALETTE[i % ORG_PALETTE.length]);
@@ -155,51 +145,45 @@
     const end = parseHhmm(m[2]);
     return { start, end };
   }
+
   function parseRocOrAdDate(token) {
     const m = String(token).match(/(\d{3,4})\/(\d{1,2})\/(\d{1,2})/);
     if (!m) return null;
     let y = parseInt(m[1], 10);
     const mo = parseInt(m[2], 10) - 1;
     const d = parseInt(m[3], 10);
-    if (y < 1911) y += 1911; // 民國 ➜ 西元
+    if (y < 1911) y += 1911;
     return new Date(y, mo, d);
   }
+
   function getCodeBeforeBracket(item) {
     if (!item) return "";
     const i = item.indexOf("[");
     return (i > 0 ? item.slice(0, i) : item).trim();
   }
 
-  // 合併連續/重疊的時段，同時彙整該時段的項目數量
-  // 合併連續/重疊的時段，同時彙整該時段的項目數量與機構
   function buildSegments(rows) {
-    // rows: [{start,end, code, qty, org, staff}]
     const sorted = [...rows].sort((a, b) => a.start - b.start || a.end - b.end);
     const segs = [];
     for (const r of sorted) {
-      if (!segs.length) {
-        const orgs = new Map();
-        if (r.org) orgs.set(r.org, 1);
-        const staffs = new Map();
-        if (r.staff) staffs.set(r.staff, 1);
-        segs.push({
-          start: r.start,
-          end: r.end,
-          items: new Map([[r.code, r.qty]]),
-          orgs,
-          staffs,
-        });
-        continue;
+      let merged = false;
+      for (let i = segs.length - 1; i >= 0; i--) {
+        const prev = segs[i];
+        const prevOrg = prev.orgs ? Array.from(prev.orgs.keys())[0] : "";
+        const currOrg = r.org || "";
+
+        if (prevOrg === currOrg && r.start <= prev.end) {
+          prev.end = Math.max(prev.end, r.end);
+          prev.items.set(r.code, (prev.items.get(r.code) || 0) + (r.qty || 0));
+          if (r.org) prev.orgs.set(r.org, (prev.orgs.get(r.org) || 0) + 1);
+          if (r.staff)
+            prev.staffs.set(r.staff, (prev.staffs.get(r.staff) || 0) + 1);
+          merged = true;
+          break;
+        }
       }
-      const last = segs[segs.length - 1];
-      if (r.start <= last.end) {
-        // 重疊或銜接
-        last.end = Math.max(last.end, r.end);
-        last.items.set(r.code, (last.items.get(r.code) || 0) + (r.qty || 0));
-        if (r.org) last.orgs.set(r.org, (last.orgs.get(r.org) || 0) + 1);
-        if (r.staff)
-          last.staffs.set(r.staff, (last.staffs.get(r.staff) || 0) + 1);
-      } else {
+
+      if (!merged) {
         const orgs = new Map();
         if (r.org) orgs.set(r.org, 1);
         const staffs = new Map();
@@ -213,11 +197,13 @@
         });
       }
     }
+
+    segs.sort((a, b) => a.start - b.start || a.end - b.end);
     return segs;
   }
+
   function buildDurationLabelByMinutes(startMin, endMin) {
     if (typeof startMin !== "number" || typeof endMin !== "number") return "";
-    // 若結束時間小於開始，視為跨日
     if (endMin < startMin) endMin += 24 * 60;
 
     const diff = endMin - startMin;
@@ -233,50 +219,17 @@
     return text ? "(" + text + ")" : "";
   }
 
-  function buildDurationLabelByText(timeText) {
-    // 支援格式：HH:MM~HH:MM 或 HH:MM ~ HH:MM
-    const m = timeText.match(
-      /(\d{1,2}):(\d{2})\s*[~～\-–]\s*(\d{1,2}):(\d{2})/
-    );
-    if (!m) return "";
-
-    const sh = parseInt(m[1], 10);
-    const sm = parseInt(m[2], 10);
-    const eh = parseInt(m[3], 10);
-    const em = parseInt(m[4], 10);
-
-    let start = sh * 60 + sm;
-    let end = eh * 60 + em;
-
-    // 若結束時間小於開始時間，視為跨日
-    if (end < start) {
-      end += 24 * 60;
-    }
-
-    const diff = end - start;
-    if (diff <= 0) return "";
-
-    const h = Math.floor(diff / 60);
-    const mm = diff % 60;
-    const parts = [];
-    if (h > 0) parts.push(h + "h");
-    if (mm > 0) parts.push(mm + "m");
-
-    return parts.length ? "(" + parts.join("") + ")" : "";
-  }
-
-  // 解析貼上內容 ➜ 結構化 { 'YYYY-MM': { 'YYYY-MM-DD': [rows...] } }
   function parsePastedText(raw) {
-    const monthBuckets = new Map(); // key: YYYY-MM -> Map(dateStr -> rows)
-    const monthsRows = new Map(); // YYYY-MM -> [{date, code, qty, org}]
+    const monthBuckets = new Map();
+    const monthsRows = new Map();
 
     let rowCount = 0;
     const lines = String(raw).replace(/\r\n?/g, "\n").split("\n");
 
     for (const line of lines) {
-      if (!line || !/(\d{3,4})\/(\d{1,2})\/(\d{1,2})/.test(line)) continue; // 必須含日期
+      if (!line || !/(\d{3,4})\/(\d{1,2})\/(\d{1,2})/.test(line)) continue;
       const cells = line.split(/\t+/g).map((s) => s.trim());
-      // 找到日期欄位位置
+
       let dIdx = cells.findIndex((c) =>
         /(\d{3,4})\/(\d{1,2})\/(\d{1,2})/.test(c)
       );
@@ -291,14 +244,14 @@
 
       const item = cells[dIdx + 1] || "";
       const code = getCodeBeforeBracket(item);
-      const qty = parseInt(cells[dIdx + 3] || "0", 10) || 0; // 服務數量
+      const qty = parseInt(cells[dIdx + 3] || "0", 10) || 0;
       const tr =
         cells[dIdx + 4] ||
         cells.find((c) => /\d{1,2}:\d{2}\s*[~\-]\s*\d{1,2}:\d{2}/.test(c)) ||
         "";
-      const org = (cells[dIdx + 5] || "").trim(); // 讀取「長照機構」
+      const org = (cells[dIdx + 5] || "").trim();
       let staff = (cells[dIdx + 6] || "").trim();
-      // Fallback：若沒抓到，嘗試找像是人名的內容（2–6 個中英文字、純字串）
+
       if (!staff) {
         const cand = cells.find((c) => /^[A-Za-z\u4E00-\u9FFF]{2,6}$/.test(c));
         staff = cand || "";
@@ -324,12 +277,22 @@
       rowCount++;
     }
 
-    // 將每天的 rows 轉成 segments（合併時段+彙整項目）
-    const result = new Map(); // YYYY-MM -> Map(ymd -> segments[])
+    const result = new Map();
     for (const [mon, dayMap] of monthBuckets) {
       const segMap = new Map();
       for (const [ymd, rows] of dayMap) {
         const segs = buildSegments(rows);
+
+        // 標記時間重疊衝突
+        for (let i = 0; i < segs.length; i++) {
+          for (let j = i + 1; j < segs.length; j++) {
+            if (segs[i].start < segs[j].end && segs[i].end > segs[j].start) {
+              segs[i].isConflict = true;
+              segs[j].isConflict = true;
+            }
+          }
+        }
+
         segMap.set(ymd, segs);
       }
       result.set(mon, segMap);
@@ -338,7 +301,6 @@
     return { months: result, rowCount, monthsRows };
   }
 
-  // 建立指定月份的月曆（Mon-first）
   function renderCalendar(monKey, data) {
     const grid = document.getElementById("grid");
     grid.innerHTML = "";
@@ -348,14 +310,11 @@
     const last = new Date(Y, M, 0);
     const daysInMonth = last.getDate();
 
-    // Monday-first 偏移：將 JS 的 0(日)~6(六) 轉為 1~7（Mon=1)，算前置空格
-    const jsDow = first.getDay(); // 0=Sun,1=Mon,...
-    const lead = jsDow === 0 ? 6 : jsDow - 1; // 0(日)→6格；1(一)→0格
+    const jsDow = first.getDay();
+    const lead = jsDow === 0 ? 6 : jsDow - 1;
 
-    // 取得該月的資料 map
     const dayMap = data.months.get(monKey) || new Map();
 
-    // 前置空白
     for (let i = 0; i < lead; i++)
       grid.appendChild(document.createElement("div"));
 
@@ -374,14 +333,22 @@
         currentOrgFilter === "全部"
           ? segs
           : segs.filter((s) => s.orgs && s.orgs.has(currentOrgFilter));
+
       if (vis.length) {
         cell.classList.add("has-data");
         const mark = document.createElement("div");
         mark.className = "mark";
         cell.appendChild(mark);
+
         for (const seg of vis) {
           const segEl = document.createElement("div");
           segEl.className = "seg";
+
+          if (seg.isConflict) {
+            segEl.style.border = "2px dashed #f87171";
+            segEl.style.backgroundColor = "#fef2f2";
+          }
+
           const time = `${toHhmm(seg.start)}–${toHhmm(seg.end)}`;
           const durationLabel = buildDurationLabelByMinutes(seg.start, seg.end);
 
@@ -389,11 +356,19 @@
           timeEl.className = "time";
           timeEl.textContent = time + (durationLabel || "");
 
-          // 在時間右邊加色點，hover 顯示該段班的機構
+          if (seg.isConflict) {
+            const warnIcon = document.createElement("span");
+            warnIcon.textContent = " ⚠️重疊";
+            warnIcon.style.color = "#dc2626";
+            warnIcon.style.fontSize = "12px";
+            warnIcon.style.fontWeight = "bold";
+            warnIcon.style.marginLeft = "4px";
+            timeEl.appendChild(warnIcon);
+          }
+
           (function () {
             const entries = seg.orgs ? Array.from(seg.orgs.entries()) : [];
             if (!entries.length) return;
-            // 以出現次數最多的機構決定顏色
             entries.sort((a, b) => b[1] - a[1]);
             const top = entries[0];
             const dot = document.createElement("span");
@@ -437,11 +412,8 @@
     }
   }
 
-  // 計算「目前篩選條件」下的有資料天數
   function countDaysWithData(monKey, data) {
     const dayMap = data.months.get(monKey) || new Map();
-
-    // 未篩選＝全部：可直接用天數 Map 的大小
     if (currentOrgFilter === "全部") return dayMap.size;
 
     let days = 0;
@@ -471,13 +443,10 @@
     badge.textContent = `${monKey} · 有服務天數：${cntDays} 天${note}`;
   }
 
-  // === 使用者登入 / 雲端儲存工具 ===
-
   function makeUserKey(account, password) {
     const a = (account || "").trim().toLowerCase();
     const p = (password || "").trim();
     if (!a || !p) return null;
-    // 用 encodeURIComponent 把帳號+密碼壓成安全字串
     const raw = encodeURIComponent(a + "|" + p);
     return raw.replace(/%/g, "_");
   }
@@ -518,7 +487,6 @@
     loginPassword.value = "";
 
     if (loginAuto) {
-      // 有存在 localStorage 就勾選，沒有就不勾
       try {
         const raw = localStorage.getItem("ltcCalendarUser");
         loginAuto.checked = !!raw;
@@ -528,7 +496,7 @@
     }
 
     if (logoutBtn) {
-      logoutBtn.disabled = !currentUserKey; // 未登入就不能登出
+      logoutBtn.disabled = !currentUserKey;
     }
 
     loginDlg.showModal();
@@ -608,7 +576,6 @@
       currentUserKey = obj.key;
       currentUserAccount = obj.account || "";
 
-      // 有還原使用者，就順便啟動 Firebase（匿名登入）
       ensureFirebase();
     } catch (e) {
       console.warn("讀取 localStorage 使用者資訊失敗：", e);
@@ -662,7 +629,6 @@
       updatedAt: Date.now(),
     };
 
-    // 先找有沒有同名的
     ref
       .orderByChild("label")
       .equalTo(label)
@@ -678,7 +644,6 @@
         });
 
         if (existingId) {
-          // 有同名 → 問要不要覆蓋
           const ok = confirm(`名稱「${label}」已存在，是否要覆蓋原有的紀錄？`);
           if (!ok) return;
 
@@ -690,7 +655,6 @@
 
           return ref.child(existingId).set(payload);
         } else {
-          // 沒同名 → 新增
           const now = Date.now();
           const payload = {
             ...basePayload,
@@ -701,7 +665,7 @@
         }
       })
       .then((res) => {
-        if (!res) return; // 使用者按「取消覆蓋」的情況
+        if (!res) return;
         alert("已儲存到雲端「我的服務月曆」。");
       })
       .catch((err) => {
@@ -751,11 +715,10 @@
             rowCount: val.rowCount || 0,
             daysWithData: val.daysWithData || 0,
             updatedAt: val.updatedAt || 0,
-            note: val.note || "", // ⭐ 帶出註記
+            note: val.note || "",
           });
         });
 
-        // 更新快取，給「註記」對話框使用
         recordsCache = entries
           .slice()
           .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -785,35 +748,31 @@
 
           const ym = rec.monthKey || "未指定月份";
           const baseMeta = `${ym} · ${rec.daysWithData} 天 · ${rec.rowCount} 筆`;
-          meta.dataset.base = baseMeta; // ⭐ 之後更新註記用
-          meta.textContent = baseMeta + (rec.note ? "（已有註記）" : ""); // 有註記就加上提示
+          meta.dataset.base = baseMeta;
+          meta.textContent = baseMeta + (rec.note ? "（已有註記）" : "");
           main.appendChild(meta);
 
           const actions = document.createElement("div");
           actions.className = "record-actions";
 
-          // [載入]
           const btnLoad = document.createElement("button");
           btnLoad.className = "primary";
           btnLoad.textContent = "載入";
           btnLoad.dataset.act = "load";
           actions.appendChild(btnLoad);
 
-          // ⭐ 新增：[註記]（黃色）
           const btnNote = document.createElement("button");
           btnNote.className = "note-btn";
           btnNote.textContent = "註記";
           btnNote.dataset.act = "note";
           actions.appendChild(btnNote);
 
-          // [改名]
           const btnRename = document.createElement("button");
           btnRename.className = "ghost";
           btnRename.textContent = "改名";
           btnRename.dataset.act = "rename";
           actions.appendChild(btnRename);
 
-          // [刪除]
           const btnDelete = document.createElement("button");
           btnDelete.className = "ghost";
           btnDelete.textContent = "刪除";
@@ -919,13 +878,12 @@
       });
   }
 
-  // UI 綁定
   const pasteBtn = document.getElementById("pasteBtn");
   const clearBtn = document.getElementById("clearBtn");
   const dlg = document.getElementById("pasteDlg");
   const rawInput = document.getElementById("rawInput");
   const monthSelect = document.getElementById("monthSelect");
-  // ==== 篩選 / 統計 UI ====
+
   const filterBtn = document.getElementById("filterBtn");
   const statsBtn = document.getElementById("statsBtn");
   const filterDlg = document.getElementById("filterDlg");
@@ -936,7 +894,6 @@
   const statsContent = document.getElementById("statsContent");
   const closeStats = document.getElementById("closeStats");
 
-  // === 登入 / 雲端儲存 UI ===
   const saveBtn = document.getElementById("saveBtn");
   const recordsBtn = document.getElementById("recordsBtn");
   const loginBtn = document.getElementById("loginBtn");
@@ -944,15 +901,15 @@
   const loginDlg = document.getElementById("loginDlg");
   const loginAccount = document.getElementById("loginAccount");
   const loginPassword = document.getElementById("loginPassword");
-  const loginAuto = document.getElementById("loginAuto"); // ⭐ 新增
+  const loginAuto = document.getElementById("loginAuto");
   const cancelLogin = document.getElementById("cancelLogin");
   const submitLogin = document.getElementById("submitLogin");
-  const logoutBtn = document.getElementById("logoutBtn"); // ⭐ 新增
+  const logoutBtn = document.getElementById("logoutBtn");
 
   const recordsDlg = document.getElementById("recordsDlg");
   const recordsList = document.getElementById("recordsList");
   const closeRecords = document.getElementById("closeRecords");
-  // 註記 dialog
+
   const noteDlg = document.getElementById("noteDlg");
   const noteInput = document.getElementById("noteInput");
   const cancelNote = document.getElementById("cancelNote");
@@ -962,7 +919,6 @@
     const dlg = document.getElementById("recordsDlg");
     dlg.showModal();
 
-    // ✅ iOS 防自動放大：確保沒有任何 input 取得焦點
     setTimeout(() => {
       if (
         document.activeElement &&
@@ -973,7 +929,6 @@
     }, 0);
   }
 
-  // 取得某月份的所有機構（來自原始列）
   function uniqOrgsForMonth(monKey) {
     const rows = parsedData.monthsRows?.get(monKey) || [];
     const s = new Set();
@@ -981,7 +936,6 @@
     return Array.from(s).sort();
   }
 
-  // 開啟篩選面板
   function openFilterUI() {
     const orgs = uniqOrgsForMonth(currentMonthKey);
     const opts = ["全部", ...orgs];
@@ -1014,36 +968,31 @@
   cancelFilter.addEventListener("click", () => filterDlg.close());
   filterBtn.addEventListener("click", openFilterUI);
 
-  // 開啟統計（以目前月份為範圍）
-  // 開啟統計（以目前月份為範圍）
   function openStatsUI() {
     if (!currentMonthKey) {
       alert("請先貼上資料");
       return;
     }
     const rows = parsedData.monthsRows?.get(currentMonthKey) || [];
-    const byOrg = new Map(); // org -> Map(code -> {qty, amount})
-    const otherCodes = new Map(); // ★ 新增：非 PRICE_MAP 代碼彙總（GA09、CB04 等）
+    const byOrg = new Map();
+    const otherCodes = new Map();
 
     for (const r of rows) {
       if (!r.code) continue;
       const price = PRICE_MAP[r.code];
 
       if (price) {
-        // === 原本邏輯：PRICE_MAP 內的項目（目前都是 BA 碼） ===
         const org = r.org || "（未填機構）";
         if (!byOrg.has(org)) byOrg.set(org, new Map());
         const m = byOrg.get(org);
         const newQty = (m.get(r.code)?.qty || 0) + (r.qty || 0);
         m.set(r.code, { qty: newQty, amount: newQty * price });
       } else {
-        // ★ 新增：不是 PRICE_MAP 的代碼 → 統一累計「組數」，不用算錢
         const newQty = (otherCodes.get(r.code) || 0) + (r.qty || 0);
         otherCodes.set(r.code, newQty);
       }
     }
 
-    // 如果什麼都沒有，就顯示沒有可統計項目
     if (!byOrg.size && !otherCodes.size) {
       statsContent.textContent = "（本月無可統計項目）";
       statsDlg.showModal();
@@ -1052,7 +1001,6 @@
 
     let out = "";
 
-    // ① 先輸出 BA（或之後你加進 PRICE_MAP 的項目）統計
     if (byOrg.size) {
       for (const org of [...byOrg.keys()].sort()) {
         const m = byOrg.get(org);
@@ -1067,14 +1015,11 @@
           "zh-TW"
         )}\n------------------------\n`;
       }
-      // 去掉最後一條多餘分隔線
       out = out.replace(/\n------------------------\n$/, "");
     } else {
-      // 沒有任何 BA / PRICE_MAP 內項目時，補一句說明
       out += "（本月無可計價 BA 項目）";
     }
 
-    // ② 再輸出「除了 BA 之外」的其他代碼 + 總組數
     if (otherCodes.size) {
       if (out) out += "\n------------------------\n";
       out += "其他項目使用情形：\n";
@@ -1082,7 +1027,6 @@
         const qty = otherCodes.get(code);
         out += `${code}*${qty}\n`;
       }
-      // 移除最後一個多餘換行
       out = out.replace(/\n$/, "");
     }
 
@@ -1093,7 +1037,6 @@
   statsBtn.addEventListener("click", openStatsUI);
   closeStats.addEventListener("click", () => statsDlg.close());
 
-  // 新增這兩行
   const clearRawBtn = document.getElementById("clearRaw");
   if (clearRawBtn)
     clearRawBtn.addEventListener("click", () => {
@@ -1103,14 +1046,12 @@
 
   let parsedData = { months: new Map(), rowCount: 0 };
   let currentMonthKey = null;
-  // === 使用者登入 / 雲端儲存狀態 ===
   let currentUserKey = null;
   let currentUserAccount = null;
-  let pendingAction = null; // "save" 或 "records"
+  let pendingAction = null;
 
-  // === 我的服務月曆：快取清單 + 註記中使用的 id ===
-  let recordsCache = []; // [{ id,label,monthKey,daysWithData,rowCount,updatedAt,note }]
-  let currentNoteRecordId = null; // 正在編輯註記的那一筆 id
+  let recordsCache = [];
+  let currentNoteRecordId = null;
 
   pasteBtn.addEventListener("click", () => {
     rawInput.value = "";
@@ -1144,9 +1085,8 @@
     }
 
     parsedData = data;
-    // 如果有多個月份，提供下拉選擇
-    lastRawText = raw; // ★ 記住這次貼上的原始內容
-    currentOrgFilter = "全部"; // 重新貼資料就重置篩選
+    lastRawText = raw;
+    currentOrgFilter = "全部";
     const months = [...parsedData.months.keys()].sort();
     monthSelect.innerHTML = months
       .map((m) => `<option value="${m}">${m}</option>`)
@@ -1182,7 +1122,6 @@
     orgColorMap.clear();
   });
 
-  // 初始渲染空月曆：呈現本月結構（方便一開始就有格子）
   (function initEmpty() {
     const now = new Date();
     const key = `${now.getFullYear()}-${fmt2(now.getMonth() + 1)}`;
@@ -1190,7 +1129,6 @@
     renderCalendar(key, fake);
   })();
 
-  /* ===== 匯出：打開對話框 ===== */
   const exportBtn = document.getElementById("exportBtn");
   const exportDlg = document.getElementById("exportDlg");
   const exportName = document.getElementById("exportName");
@@ -1204,19 +1142,17 @@
       alert("請先貼上資料");
       return;
     }
-    exportName.value = ""; // 預設清空
-    optCalendar.checked = true; // 預設全選
+    exportName.value = "";
+    optCalendar.checked = true;
     optStats.checked = true;
     exportDlg.showModal();
   });
 
-  /* ===== 工具：重用你的統計邏輯，轉成可列印結構 ===== */
   function buildStatsForMonth(monKey, data, filterOrg = "全部") {
     const rows = data.monthsRows?.get(monKey) || [];
-    const byOrg = new Map(); // org -> Map(code -> {qty, amount})
+    const byOrg = new Map();
 
     for (const r of rows) {
-      // ★ 這行：若有指定單位，就只計算該單位
       if (filterOrg && filterOrg !== "全部" && r.org !== filterOrg) continue;
 
       const price = PRICE_MAP[r.code];
@@ -1230,7 +1166,6 @@
     return byOrg;
   }
 
-  /* ===== 工具：依目前篩選條件組 meta 文字（沿用你畫面上的規則） ===== */
   function getCurrentMetaText(monKey, data) {
     const days = countDaysWithData(monKey, data);
     const note =
@@ -1240,12 +1175,10 @@
     return `${monKey} · 有服務天數：${days} 天${note}`;
   }
 
-  /* ===== 產生「列印專用月曆」：不動你原本畫面 ===== */
   function renderPrintCalendar(monKey, data) {
     const wrap = document.createElement("div");
     wrap.className = "print-cal";
 
-    // 星期列
     const head = document.createElement("div");
     head.className = "print-dow";
     head.innerHTML = `<div>一</div><div>二</div><div>三</div><div>四</div><div>五</div>
@@ -1260,7 +1193,7 @@
     const first = new Date(Y, M - 1, 1);
     const last = new Date(Y, M, 0);
     const daysInMonth = last.getDate();
-    const jsDow = first.getDay(); // 0=Sun
+    const jsDow = first.getDay();
     const lead = jsDow === 0 ? 6 : jsDow - 1;
 
     const dayMap = data.months.get(monKey) || new Map();
@@ -1292,6 +1225,11 @@
           const segEl = document.createElement("div");
           segEl.className = "print-seg";
 
+          if (seg.isConflict) {
+            segEl.style.border = "2px dashed #dc2626";
+            segEl.style.backgroundColor = "#fef2f2";
+          }
+
           const timeText = `${toHhmm(seg.start)}–${toHhmm(seg.end)}`;
           const durationLabel = buildDurationLabelByMinutes(seg.start, seg.end);
 
@@ -1299,7 +1237,16 @@
           timeEl.className = "print-time";
           timeEl.textContent = timeText + (durationLabel || "");
 
-          // 色點（取出現最多的機構）
+          if (seg.isConflict) {
+            const warnIcon = document.createElement("span");
+            warnIcon.textContent = " ⚠️重疊";
+            warnIcon.style.color = "#dc2626";
+            warnIcon.style.fontSize = "12px";
+            warnIcon.style.fontWeight = "bold";
+            warnIcon.style.marginLeft = "4px";
+            timeEl.appendChild(warnIcon);
+          }
+
           const entries = seg.orgs ? Array.from(seg.orgs.entries()) : [];
           if (entries.length) {
             entries.sort((a, b) => b[1] - a[1]);
@@ -1333,7 +1280,6 @@
     return wrap;
   }
 
-  /* ===== 產生「列印專用統計」 ===== */
   function renderPrintStats(byOrgMap) {
     const root = document.createElement("div");
     root.className = "print-stats";
@@ -1379,7 +1325,6 @@
     return root;
   }
 
-  /* ===== 組裝整份列印文件並呼叫瀏覽器 PDF ===== */
   document.getElementById("doExport")?.addEventListener("click", () => {
     const name = exportName.value.trim();
     const needCal = !!optCalendar.checked;
@@ -1392,11 +1337,9 @@
 
     exportDlg.close();
 
-    // 建立列印根節點（不影響原畫面）
     const root = document.createElement("div");
     root.className = "print-only print-root";
 
-    // 頭部（標題 + 當月 Meta + 個案姓名）
     const head = document.createElement("div");
     head.className = "print-head";
 
@@ -1413,7 +1356,6 @@
 
     root.appendChild(head);
 
-    // 內容：月曆 + 統計（依勾選）
     if (needCal) {
       root.appendChild(renderPrintCalendar(currentMonthKey, parsedData));
     }
@@ -1436,10 +1378,8 @@
 
     document.body.appendChild(root);
 
-    // 觸發列印（使用瀏覽器的「另存為 PDF」）
     window.print();
 
-    // 列印對話框關閉後，清理節點（部分瀏覽器需要延遲一下）
     setTimeout(() => {
       try {
         root.remove();
@@ -1447,7 +1387,6 @@
     }, 500);
   });
 
-  // === 我的服務月曆：清單搜尋 ===
   function filterRecordsList(query) {
     const list = document.getElementById("recordsList");
     if (!list) return;
@@ -1457,7 +1396,6 @@
     let visibleCount = 0;
 
     rows.forEach((row) => {
-      // 用整張卡片的文字當成搜尋來源：月份、姓名、天數、筆數……都會被搜到
       const text = row.textContent.toLowerCase();
       const matched = !q || text.includes(q);
 
@@ -1467,13 +1405,10 @@
 
     const emptyHint = document.getElementById("recordsEmpty");
     if (emptyHint) {
-      // 有輸入且 0 筆 => 顯示「查無結果」
-      // 沒輸入且 0 筆 => 也可以顯示（看你習慣），這裡一併當作顯示
       emptyHint.style.display = visibleCount === 0 ? "block" : "none";
     }
   }
 
-  // 每次打字就即時篩選
   function setupRecordsSearch() {
     const input = document.getElementById("recordsSearch");
     if (!input) return;
@@ -1483,26 +1418,21 @@
     });
   }
 
-  // ✅ 在初始化時呼叫一次（放在你原本的 init / DOMContentLoaded 那區）
   document.addEventListener("DOMContentLoaded", () => {
     setupRecordsSearch();
   });
 
-  // ===== 從網址 #data=... 自動載入並產生月曆（給右鍵 / 擴充功能用） =====
   (function initFromHash() {
     if (!location.hash.startsWith("#data=")) return;
 
     try {
-      const encoded = location.hash.slice(6); // 拿掉 "#data="
+      const encoded = location.hash.slice(6);
       const raw = decodeURIComponent(encoded || "");
       let text = (raw || "").trim();
       if (!text) return;
 
-      // 如果已經是正常「貼上的一坨」(有 tab 或換行)，直接丟進原本 parser
       let normalized = text;
 
-      // 如果完全沒有 tab，但看起來是「1 114/10/30 BA02...  2 114/10/30 ...」這種串，
-      // 幫你依「編號 + 日期」切成多列，再用 tab 串回去，讓 parsePastedText 可以吃。
       if (!/\t/.test(text) && /(\d{3,4})\/(\d{1,2})\/(\d{1,2})/.test(text)) {
         const tokens = text.split(/\s+/).filter(Boolean);
         const rows = [];
@@ -1512,14 +1442,13 @@
           const t = tokens[i];
           const next = tokens[i + 1] || "";
 
-          // 偵測「新的一列」開頭：數字 + 日期
           if (
             current.length > 0 &&
             /^\d+$/.test(t) &&
             /^(\d{3,4})\/(\d{1,2})\/(\d{1,2})$/.test(next)
           ) {
             rows.push(current.join("\t"));
-            current = [t]; // 這個編號當下一列的開頭
+            current = [t];
           } else {
             current.push(t);
           }
@@ -1529,7 +1458,6 @@
         }
 
         normalized = rows.join("\n");
-        // console.log("normalized from hash:\n", normalized);
       }
 
       const data = parsePastedText(normalized);
@@ -1538,8 +1466,7 @@
         return;
       }
 
-      lastRawText = normalized; // ★ 也記住這份來源文字
-      // == 以下完全比照你 confirmPaste 那段 ==
+      lastRawText = normalized;
 
       parsedData = data;
       currentOrgFilter = "全部";
@@ -1562,13 +1489,11 @@
       renderCalendar(currentMonthKey, parsedData);
       updateMetaBadge(currentMonthKey, parsedData);
 
-      // 清掉 #data，避免重整又跑一次
       history.replaceState(null, "", location.pathname + location.search);
     } catch (e) {
       console.error("解析 #data 失敗：", e);
     }
   })();
-  // === 登入 / 儲存 / 我的月曆事件綁定 ===
 
   loginBtn?.addEventListener("click", () => {
     openLoginDialog(null);
@@ -1621,7 +1546,6 @@
     } else if (act === "delete") {
       deleteRecordById(id);
     } else if (act === "note") {
-      // ⭐ 開啟註記 dialog
       currentNoteRecordId = id;
       const rec = recordsCache.find((r) => r.id === id);
       noteInput.value = rec?.note || "";
@@ -1630,13 +1554,11 @@
     }
   });
 
-  // ⭐ 註記 dialog：取消
   cancelNote?.addEventListener("click", () => {
     currentNoteRecordId = null;
     noteDlg.close();
   });
 
-  // ⭐ 註記 dialog：儲存
   saveNoteBtn?.addEventListener("click", () => {
     if (!currentNoteRecordId) {
       noteDlg.close();
@@ -1653,11 +1575,9 @@
       .child(currentNoteRecordId)
       .update({ note: text })
       .then(() => {
-        // 更新快取
         const rec = recordsCache.find((r) => r.id === currentNoteRecordId);
         if (rec) rec.note = text;
 
-        // 更新畫面上的「已有註記」顯示
         const row = recordsList?.querySelector(
           `.record-row[data-id="${currentNoteRecordId}"]`
         );
@@ -1678,16 +1598,6 @@
       });
   });
 
-  // 確保登入狀態初始 UI
   restoreUserFromLocal();
   updateLoginUI();
-
-  // --- 這行以上 ---
 })();
-
-// 小保險：確保在 DOM 準備好後再跑需要抓節點的流程（可留可不留）
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => {});
-} else {
-  // DOM 已就緒
-}
