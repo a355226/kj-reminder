@@ -780,8 +780,15 @@
       try {
         if (typeof saveTasksToFirebase === "function") saveTasksToFirebase();
         const lbl = document.getElementById("detailLastUpdate");
-        if (lbl && typeof formatRocDateTime === "function")
-          lbl.textContent = "更新：" + formatRocDateTime(t.updatedAt);
+        if (lbl && typeof formatRocDateTime === "function") {
+          const createdStr = t.createdAt
+            ? "建立：" + formatRocDateTime(t.createdAt)
+            : "";
+          const updatedStr = "更新：" + formatRocDateTime(t.updatedAt);
+          lbl.style.fontSize = "0.6em";
+          lbl.style.lineHeight = "1.4";
+          lbl.innerHTML = [createdStr, updatedStr].filter(Boolean).join("<br>");
+        }
       } catch (_) {}
     }
 
@@ -1561,9 +1568,17 @@
     document.getElementById("detailImportant").checked = !!task.important;
     // 進行中：顯示最後儲存；若沒儲存過就顯示建立時間
     {
+      const createdStr = task.createdAt
+        ? "建立：" + formatRocDateTime(task.createdAt)
+        : "";
       const last = task.updatedAt || task.createdAt || null;
+      const updatedStr = last ? "更新：" + formatRocDateTime(last) : "";
       const lbl = document.getElementById("detailLastUpdate");
-      if (lbl) lbl.textContent = last ? "更新：" + formatRocDateTime(last) : "";
+      if (lbl) {
+        lbl.style.fontSize = "0.6em"; // 縮小字體
+        lbl.style.lineHeight = "1.4"; // 調整行距，避免兩行太擠
+        lbl.innerHTML = [createdStr, updatedStr].filter(Boolean).join("<br>");
+      }
     }
 
     if (window.__resetSlideComplete) window.__resetSlideComplete();
@@ -1642,7 +1657,15 @@
     task.updatedAt = Date.now();
 
     const _lbl = document.getElementById("detailLastUpdate");
-    if (_lbl) _lbl.textContent = "更新：" + formatRocDateTime(task.updatedAt);
+    if (_lbl) {
+      const createdStr = task.createdAt
+        ? "建立：" + formatRocDateTime(task.createdAt)
+        : "";
+      const updatedStr = "更新：" + formatRocDateTime(task.updatedAt);
+      _lbl.style.fontSize = "0.6em";
+      _lbl.style.lineHeight = "1.4";
+      _lbl.innerHTML = [createdStr, updatedStr].filter(Boolean).join("<br>");
+    }
 
     try {
       const rc = window.__recurrenceCore;
@@ -2537,12 +2560,20 @@
     document.getElementById("detailContent").value = t.content || "";
     document.getElementById("detailDate").value = t.date || "";
     document.getElementById("detailNote").value = t.note || "";
+
     {
       const lbl = document.getElementById("detailLastUpdate");
-      if (lbl)
-        lbl.textContent = t.completedAt
-          ? "更新：" + formatRocDateTime(t.completedAt)
+      if (lbl) {
+        const createdStr = t.createdAt
+          ? "建立：" + formatRocDateTime(t.createdAt)
           : "";
+        const completedStr = t.completedAt
+          ? "完成：" + formatRocDateTime(t.completedAt)
+          : "";
+        lbl.style.fontSize = "0.6em";
+        lbl.style.lineHeight = "1.4";
+        lbl.innerHTML = [createdStr, completedStr].filter(Boolean).join("<br>");
+      }
     }
 
     setDetailReadonly(true);
