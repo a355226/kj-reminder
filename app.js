@@ -1581,7 +1581,10 @@
       }
     }
 
-    if (window.__resetSlideComplete) window.__resetSlideComplete();
+    // 讀取目前的進度並渲染滑桿
+    if (window.__setSlideProgress) {
+      window.__setSlideProgress(task.progress || 0);
+    }
     // Recurrence：插入內嵌按鈕與摘要、必要時校正日期
     if (window.__recurrenceCore) {
       const { ensureDetailInlineUI, summaryFromRecurrence, computeNext } =
@@ -3082,112 +3085,132 @@
     if (exitBtn) exitBtn.style.display = "block";
   }
 
-  // ===== 滑動完成：立即可用 =====
-  (function initSlideToComplete() {
-    const track =
-      document.getElementById("slideComplete")?.querySelector(".slide-track") ||
-      (function () {
-        // 如果還沒渲染 detailModal 就先等一下
-        document.addEventListener("DOMContentLoaded", initSlideToComplete);
-        return null;
-      })();
-    if (!track) return;
+ // ===== 滑動完成：支援 0%~100% 進度追蹤 =====
+ (function initSlideToComplete() {
+  const track =
+    document.getElementById("slideComplete")?.querySelector(".slide-track") ||
+    (function () {
+      document.addEventListener("DOMContentLoaded", initSlideToComplete);
+      return null;
+    })();
+  if (!track) return;
 
-    const handle = document.getElementById("slideHandle");
-    const fill = document.getElementById("slideFill");
+  const handle = document.getElementById("slideHandle");
+  const fill = document.getElementById("slideFill");
+  const hint = track.querySelector(".slide-hint");
 
-    let dragging = false;
-    let startX = 0;
-    let startLeft = 0;
+  let dragging = false;
+  let startX = 0;
+  let startLeft = 0;
+  let currentPercent = 0;
 
-    function maxLeft() {
-      // 可滑動範圍（容器寬 - 把手寬 - 兩側邊距 3px*2）
-      const W = track.clientWidth;
-      const hw = handle.clientWidth;
-      return Math.max(0, W - hw - 6);
+  function maxLeft() {
+    return Math.max(0, track.clientWidth - handle.clientWidth - 6);
+  }
+
+  function updateUI(percent) {
+    currentPercent = Math.max(0, Math.min(100, percent));
+    const x = (currentPercent / 100) * maxLeft();
+    handle.style.transform = `translateX(${x}px)`;
+    fill.style.width = `${currentPercent}%`;
+
+    track.classList.remove("done", "partial");
+    if (currentPercent >= 100) {
+      track.classList.add("done");
+      if (hint) hint.textContent = "放開以完成任務！";
+    } else if (currentPercent > 0) {
+      track.classList.add("partial");
+      if (hint) hint.textContent = `目前進度：${currentPercent}%`;
+    } else {
+      if (hint) hint.textContent = "➡ 往右拖拉完成";
     }
+  }
 
-    function setLeft(px) {
-      const lim = maxLeft();
-      const x = Math.max(0, Math.min(px, lim));
-      handle.style.transform = `translateX(${x}px)`;
-      const percent = Math.round((x / lim) * 100);
-      fill.style.width = `${percent}%`;
-      return percent;
-    }
+  window.__setSlideProgress = function (percent) {
+    handle.style.transition = "none";
+    fill.style.transition = "none";
+    updateUI(percent || 0);
+  };
 
-    function pointerDown(e) {
-      dragging = true;
-      const p = e.touches ? e.touches[0] : e;
-      startX = p.clientX;
-      // 解析目前 translateX
-      const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
-      startLeft = cur ? parseFloat(cur[1]) : 0;
-      e.preventDefault();
-    }
+  window.__resetSlideComplete = () => window.__setSlideProgress(0);
 
-    function pointerMove(e) {
-      if (!dragging) return;
-      const p = e.touches ? e.touches[0] : e;
-      const dx = p.clientX - startX;
-      setLeft(startLeft + dx);
-      e.preventDefault();
-    }
+  function pointerDown(e) {
+    dragging = true;
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX;
+    const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
+    startLeft = cur ? parseFloat(cur[1]) : 0;
 
-    function pointerUp() {
-      if (!dragging) return;
-      dragging = false;
-      const lim = maxLeft();
-      // 讀目前 translateX
-      const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
-      const x = cur ? parseFloat(cur[1]) : 0;
-      const percent = lim === 0 ? 0 : x / lim;
+    handle.style.transition = "none";
+    fill.style.transition = "none";
+    e.preventDefault();
+  }
 
-      // 到 90% 以上視為完成
-      if (percent >= 0.9) {
-        track.classList.add("done");
-        setLeft(lim);
-        // 稍等一下讓動畫有感覺
-        setTimeout(() => {
-          // 呼叫你現有的完成流程
-          completeTask();
-          // 重置外觀（下次再打開 modal 時是初始狀態）
-          resetSlider();
-        }, 200);
-      } else {
-        // 回彈
-        handle.style.transition = "transform .25s ease";
-        fill.style.transition = "width .25s ease";
-        setLeft(0);
-        setTimeout(() => {
-          handle.style.transition = "";
-          fill.style.transition = "width .25s ease"; // 保留 fill 的小過渡
-        }, 260);
+  function pointerMove(e) {
+    if (!dragging) return;
+    const p = e.touches ? e.touches[0] : e;
+    const dx = p.clientX - startX;
+
+    const lim = maxLeft();
+    let newX = Math.max(0, Math.min(startLeft + dx, lim));
+    updateUI(Math.round((newX / lim) * 100));
+    e.preventDefault();
+  }
+
+  function pointerUp() {
+    if (!dragging) return;
+    dragging = false;
+
+    handle.style.transition = "transform .25s ease";
+    fill.style.transition = "width .25s ease";
+
+    // 只有拉滿 100% 才觸發完成
+    if (currentPercent >= 100) {
+      updateUI(100);
+      setTimeout(() => {
+        completeTask();
+        updateUI(0);
+      }, 200);
+    } else {
+      // 1~99% 正常儲存目前進度
+      updateUI(currentPercent);
+
+      if (selectedTaskId) {
+        const t = tasks.find((x) => x.id === selectedTaskId);
+        if (t) {
+          t.progress = currentPercent;
+          t.updatedAt = Date.now();
+          if (typeof saveTasksToFirebase === "function") saveTasksToFirebase();
+
+          const card = document.querySelector(`[data-id='${selectedTaskId}']`);
+          if (card) {
+            let pTrack = card.querySelector(".task-progress-track");
+            if (currentPercent > 0) {
+              if (!pTrack) {
+                pTrack = document.createElement("div");
+                pTrack.className = "task-progress-track";
+                pTrack.innerHTML = `<div class="task-progress-fill"></div>`;
+                card.appendChild(pTrack);
+              }
+              const pFill = pTrack.querySelector(".task-progress-fill");
+              if (pFill) pFill.style.width = `${currentPercent}%`;
+            } else if (pTrack) {
+              pTrack.remove();
+            }
+          }
+        }
       }
     }
+  }
 
-    function resetSlider() {
-      track.classList.remove("done");
-      handle.style.transition = "transform .2s ease";
-      fill.style.transition = "width .25s ease";
-      setLeft(0);
-      setTimeout(() => {
-        handle.style.transition = "";
-      }, 220);
-    }
+  handle.addEventListener("mousedown", pointerDown);
+  document.addEventListener("mousemove", pointerMove);
+  document.addEventListener("mouseup", pointerUp);
 
-    // 對外暴露，讓 openDetail 時可以重置
-    window.__resetSlideComplete = resetSlider;
-
-    // 綁定事件（滑鼠 + 觸控）
-    handle.addEventListener("mousedown", pointerDown);
-    document.addEventListener("mousemove", pointerMove);
-    document.addEventListener("mouseup", pointerUp);
-
-    handle.addEventListener("touchstart", pointerDown, { passive: false });
-    document.addEventListener("touchmove", pointerMove, { passive: false });
-    document.addEventListener("touchend", pointerUp);
-  })();
+  handle.addEventListener("touchstart", pointerDown, { passive: false });
+  document.addEventListener("touchmove", pointerMove, { passive: false });
+  document.addEventListener("touchend", pointerUp);
+})();
 
   function closeFabMenu() {
     const m = document.getElementById("menu");
@@ -3593,14 +3616,21 @@
   })();
 
   function taskCardHTML(task, displayDays) {
+    const progress = task.progress || 0;
+    // 若有進度(大於0)，才插入底部進度條
+    const progressHTML = progress > 0 
+      ? `<div class="task-progress-track"><div class="task-progress-fill" style="width: ${progress}%"></div></div>` 
+      : '';
+  
     return `
-    <div class="swipe-bar right"><span class="label">✅ 已完成</span></div>
-    <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
-    <div class="task-content">
-      <div class="task-title">${getTitleWithFlag(task)}</div>
-    </div>
-    <div class="task-days">${displayDays}</div>
-  `;
+      <div class="swipe-bar right"><span class="label">✅ 已完成</span></div>
+      <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
+      <div class="task-content">
+        <div class="task-title">${getTitleWithFlag(task)}</div>
+      </div>
+      <div class="task-days">${displayDays}</div>
+      ${progressHTML}
+    `;
   }
 
   const V_SLOPE = 1.2;
