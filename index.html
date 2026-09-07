@@ -1261,7 +1261,31 @@ button.palette-btn:active {
 .register-btn:hover{ background:#2fb351; }
 .register-btn:active{ transform:translateY(1px); }
 
+/* 任務卡片底部的極細進度條 */
+.task-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  pointer-events: none; /* 避免干擾滑動與點擊 */
+  z-index: 3; /* 確保在背景上方 */
+}
+.task-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #34d08c, #1fa87a); /* 依你要求：更深的進度綠色 */
+  transition: width 0.3s ease;
+}
 
+/* 詳情視窗內的滑桿狀態 (1~99% 深綠色) */
+.slide-track.partial .slide-hint {
+  color: #176d59; /* 深綠文字 */
+}
+.slide-track.partial .slide-fill {
+  background: linear-gradient(90deg, #7ee8b5, #34d08c);
+  opacity: 0.6;
+}
 
 
   </style>
