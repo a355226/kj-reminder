@@ -1535,6 +1535,49 @@ button.palette-btn:active {
 .guide-btn:active{ transform: translateY(1px); }
 .guide-btn:focus-visible{ outline:2px solid #176dff; outline-offset:2px; }
 
+/* 日期欄位容器（用於內部定位清除按鈕） */
+.date-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 讓日期輸入框右側預留叉叉按鈕的空間 */
+.date-input-wrapper input[type="date"] {
+  width: 100%;
+  padding-right: 28px !important;
+}
+
+/* 清除日期的叉叉按鈕 */
+.date-clear-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #dcdcdc;
+  color: #666;
+  border: none;
+  font-size: 11px;
+  font-weight: bold;
+  display: none; /* 預設無日期時隱藏 */
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  z-index: 5;
+}
+
+.date-clear-btn:active {
+  background: #bbb;
+  color: #333;
+}
+
 </style>
 
 
