@@ -1287,7 +1287,90 @@ button.palette-btn:active {
   opacity: 0.6;
 }
 
+/* 任務分類標題列對齊 */
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
 
+/* 標題文字區塊，靠左靠齊 */
+.section-title > span:first-child {
+  flex: 1;
+}
+
+/* 右側控制區（數量徽章 + 箭頭按鈕） */
+.section-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 收合時顯示的任務數量小膠囊 */
+.section-badge {
+  display: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0077b6;
+  background-color: #e3f2fd;
+  padding: 2px 8px;
+  border-radius: 12px;
+  line-height: 1.2;
+}
+
+/* 箭頭按鈕基本外觀 */
+.section-toggle {
+  background: transparent;
+  border: none;
+  color: #b0b8c1;
+  padding: 4px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.section-toggle:hover {
+  background-color: #f0f2f5;
+  color: #555;
+}
+.section-toggle svg {
+  transition: transform 0.25s ease;
+}
+
+/* 編輯模式隱藏 */
+.section.edit-mode .section-controls {
+  display: none !important;
+}
+
+/* ===== 收合狀態（顯著且乾淨） ===== */
+.section.collapsed {
+  background-color: #fafbfc; /* 極淡灰底，呈現已收闔的卡片感 */
+  padding-bottom: 0.75rem;
+}
+.section.collapsed .section-title {
+  margin-bottom: 0; /* 縮平底部留白 */
+}
+.section.collapsed .section-badge {
+  display: inline-block; /* 浮現數量 */
+}
+.section.collapsed .section-toggle {
+  background-color: #e9ecef; /* 按鈕呈現實心小方塊 */
+  color: #495057; /* 箭頭顏色加深 */
+}
+.section.collapsed .section-toggle svg {
+  transform: rotate(-180deg);
+}
+.section.collapsed .task {
+  display: none !important;
+}
   </style>
 </head>
 <body>
