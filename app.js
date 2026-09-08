@@ -1911,6 +1911,7 @@
   }
 
   //確認完成編輯
+  //確認完成編輯
   function exitEditMode() {
     isEditing = false;
 
@@ -1918,7 +1919,19 @@
     document.querySelectorAll(".section").forEach((section) => {
       section.classList.remove("edit-mode");
       const titleBar = section.querySelector(".section-title");
-      if (titleBar) titleBar.textContent = section.id; // 只留名稱
+      if (titleBar) {
+        titleBar.innerHTML = `
+          <span>${section.id}</span>
+          <div class="section-controls">
+            <span class="section-badge"></span>
+            <button class="section-toggle" aria-label="展開/收合分類" onclick="toggleSection(event)">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        `;
+      }
     });
 
     const exitBtn = document.getElementById("exitEditBtn");
@@ -2284,6 +2297,15 @@
     bindSwipeToTasks();
     applyImportantFilter(); // ✅ 最後一層
     hideEmptySectionsAfterFilter(); // ★ 新增：確保重要篩選後的空分類也被隱藏
+    // 更新所有收合狀態分類的未完成計數
+    document.querySelectorAll(".section.collapsed").forEach((sec) => {
+      const badge = sec.querySelector(".section-badge");
+      const count = sec.querySelectorAll(".task").length;
+      if (badge) {
+        badge.textContent = count;
+        badge.style.display = count > 0 ? "inline-block" : "none";
+      }
+    });
   }
 
   // 轉民國年月（回傳如 "11407"）
@@ -3002,27 +3024,47 @@
 
   function renderSections(list) {
     const wrap = document.getElementById("section-container");
-    // 先重建 doneMore（固定在最上面）
     wrap.innerHTML = `
-    <div id="doneMore" style="display:none; text-align:right; margin:0.25rem 0;">
-      <button id="doneMoreBtn" style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">🗂️</button>
-      <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
-    </div>
-  `;
+      <div id="doneMore" style="display:none; text-align:right; margin:0.25rem 0;">
+        <button id="doneMoreBtn" style="border:0; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer;">🗂️</button>
+        <div id="doneMonthMenu" style="display:none; position:absolute; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.08); padding:6px; z-index:50;"></div>
+      </div>
+    `;
 
-    // 依 categories 畫出各分類
+    // 讀取收合記憶
+    let collapsedState = {};
+    try {
+      collapsedState = JSON.parse(
+        localStorage.getItem("collapsed_sections") || "{}"
+      );
+    } catch (err) {}
+
     list.forEach((name) => {
       const sec = document.createElement("div");
-      sec.className = "section";
+      const isCollapsed = collapsedState[name] ? " collapsed" : "";
+      sec.className = "section" + isCollapsed;
       sec.id = name;
-      sec.innerHTML = `<div class="section-title">${name}</div>`;
+
+      // 加入標題與低調的 SVG 箭頭
+      sec.innerHTML = `
+      <div class="section-title">
+        <span>${name}</span>
+        <div class="section-controls">
+          <span class="section-badge"></span>
+          <button class="section-toggle" aria-label="展開/收合分類" onclick="toggleSection(event)">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        </div>
+      </div>
+    `;
       wrap.appendChild(sec);
     });
 
     updateSectionOptions();
-    initSectionSortable(); // 你已有的函式
+    initSectionSortable();
 
-    // 重新掛「更多…」按鈕的事件（因為 innerHTML 會清掉舊的事件）
     const btn = document.getElementById("doneMoreBtn");
     if (btn)
       btn.onclick = () => {
@@ -3032,7 +3074,6 @@
             menu.style.display === "block" ? "none" : "block";
       };
 
-    // ✅ 如果還在編輯模式，重畫後馬上套回編輯配件
     if (isEditing) {
       decorateSectionsForEdit();
     }
@@ -3085,132 +3126,135 @@
     if (exitBtn) exitBtn.style.display = "block";
   }
 
- // ===== 滑動完成：支援 0%~100% 進度追蹤 =====
- (function initSlideToComplete() {
-  const track =
-    document.getElementById("slideComplete")?.querySelector(".slide-track") ||
-    (function () {
-      document.addEventListener("DOMContentLoaded", initSlideToComplete);
-      return null;
-    })();
-  if (!track) return;
+  // ===== 滑動完成：支援 0%~100% 進度追蹤 =====
+  (function initSlideToComplete() {
+    const track =
+      document.getElementById("slideComplete")?.querySelector(".slide-track") ||
+      (function () {
+        document.addEventListener("DOMContentLoaded", initSlideToComplete);
+        return null;
+      })();
+    if (!track) return;
 
-  const handle = document.getElementById("slideHandle");
-  const fill = document.getElementById("slideFill");
-  const hint = track.querySelector(".slide-hint");
+    const handle = document.getElementById("slideHandle");
+    const fill = document.getElementById("slideFill");
+    const hint = track.querySelector(".slide-hint");
 
-  let dragging = false;
-  let startX = 0;
-  let startLeft = 0;
-  let currentPercent = 0;
+    let dragging = false;
+    let startX = 0;
+    let startLeft = 0;
+    let currentPercent = 0;
 
-  function maxLeft() {
-    return Math.max(0, track.clientWidth - handle.clientWidth - 6);
-  }
-
-  function updateUI(percent) {
-    currentPercent = Math.max(0, Math.min(100, percent));
-    const x = (currentPercent / 100) * maxLeft();
-    handle.style.transform = `translateX(${x}px)`;
-    fill.style.width = `${currentPercent}%`;
-
-    track.classList.remove("done", "partial");
-    if (currentPercent >= 100) {
-      track.classList.add("done");
-      if (hint) hint.textContent = "放開以完成任務！";
-    } else if (currentPercent > 0) {
-      track.classList.add("partial");
-      if (hint) hint.textContent = `目前進度：${currentPercent}%`;
-    } else {
-      if (hint) hint.textContent = "➡ 往右拖拉完成";
+    function maxLeft() {
+      return Math.max(0, track.clientWidth - handle.clientWidth - 6);
     }
-  }
 
-  window.__setSlideProgress = function (percent) {
-    handle.style.transition = "none";
-    fill.style.transition = "none";
-    updateUI(percent || 0);
-  };
+    function updateUI(percent) {
+      currentPercent = Math.max(0, Math.min(100, percent));
+      const x = (currentPercent / 100) * maxLeft();
+      handle.style.transform = `translateX(${x}px)`;
+      fill.style.width = `${currentPercent}%`;
 
-  window.__resetSlideComplete = () => window.__setSlideProgress(0);
+      track.classList.remove("done", "partial");
+      if (currentPercent >= 100) {
+        track.classList.add("done");
+        if (hint) hint.textContent = "放開以完成任務！";
+      } else if (currentPercent > 0) {
+        track.classList.add("partial");
+        if (hint) hint.textContent = `目前進度：${currentPercent}%`;
+      } else {
+        if (hint) hint.textContent = "➡ 往右拖拉完成";
+      }
+    }
 
-  function pointerDown(e) {
-    dragging = true;
-    const p = e.touches ? e.touches[0] : e;
-    startX = p.clientX;
-    const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
-    startLeft = cur ? parseFloat(cur[1]) : 0;
+    window.__setSlideProgress = function (percent) {
+      handle.style.transition = "none";
+      fill.style.transition = "none";
+      updateUI(percent || 0);
+    };
 
-    handle.style.transition = "none";
-    fill.style.transition = "none";
-    e.preventDefault();
-  }
+    window.__resetSlideComplete = () => window.__setSlideProgress(0);
 
-  function pointerMove(e) {
-    if (!dragging) return;
-    const p = e.touches ? e.touches[0] : e;
-    const dx = p.clientX - startX;
+    function pointerDown(e) {
+      dragging = true;
+      const p = e.touches ? e.touches[0] : e;
+      startX = p.clientX;
+      const cur = handle.style.transform.match(/translateX\(([-\d.]+)px\)/);
+      startLeft = cur ? parseFloat(cur[1]) : 0;
 
-    const lim = maxLeft();
-    let newX = Math.max(0, Math.min(startLeft + dx, lim));
-    updateUI(Math.round((newX / lim) * 100));
-    e.preventDefault();
-  }
+      handle.style.transition = "none";
+      fill.style.transition = "none";
+      e.preventDefault();
+    }
 
-  function pointerUp() {
-    if (!dragging) return;
-    dragging = false;
+    function pointerMove(e) {
+      if (!dragging) return;
+      const p = e.touches ? e.touches[0] : e;
+      const dx = p.clientX - startX;
 
-    handle.style.transition = "transform .25s ease";
-    fill.style.transition = "width .25s ease";
+      const lim = maxLeft();
+      let newX = Math.max(0, Math.min(startLeft + dx, lim));
+      updateUI(Math.round((newX / lim) * 100));
+      e.preventDefault();
+    }
 
-    // 只有拉滿 100% 才觸發完成
-    if (currentPercent >= 100) {
-      updateUI(100);
-      setTimeout(() => {
-        completeTask();
-        updateUI(0);
-      }, 200);
-    } else {
-      // 1~99% 正常儲存目前進度
-      updateUI(currentPercent);
+    function pointerUp() {
+      if (!dragging) return;
+      dragging = false;
 
-      if (selectedTaskId) {
-        const t = tasks.find((x) => x.id === selectedTaskId);
-        if (t) {
-          t.progress = currentPercent;
-          t.updatedAt = Date.now();
-          if (typeof saveTasksToFirebase === "function") saveTasksToFirebase();
+      handle.style.transition = "transform .25s ease";
+      fill.style.transition = "width .25s ease";
 
-          const card = document.querySelector(`[data-id='${selectedTaskId}']`);
-          if (card) {
-            let pTrack = card.querySelector(".task-progress-track");
-            if (currentPercent > 0) {
-              if (!pTrack) {
-                pTrack = document.createElement("div");
-                pTrack.className = "task-progress-track";
-                pTrack.innerHTML = `<div class="task-progress-fill"></div>`;
-                card.appendChild(pTrack);
+      // 只有拉滿 100% 才觸發完成
+      if (currentPercent >= 100) {
+        updateUI(100);
+        setTimeout(() => {
+          completeTask();
+          updateUI(0);
+        }, 200);
+      } else {
+        // 1~99% 正常儲存目前進度
+        updateUI(currentPercent);
+
+        if (selectedTaskId) {
+          const t = tasks.find((x) => x.id === selectedTaskId);
+          if (t) {
+            t.progress = currentPercent;
+            t.updatedAt = Date.now();
+            if (typeof saveTasksToFirebase === "function")
+              saveTasksToFirebase();
+
+            const card = document.querySelector(
+              `[data-id='${selectedTaskId}']`
+            );
+            if (card) {
+              let pTrack = card.querySelector(".task-progress-track");
+              if (currentPercent > 0) {
+                if (!pTrack) {
+                  pTrack = document.createElement("div");
+                  pTrack.className = "task-progress-track";
+                  pTrack.innerHTML = `<div class="task-progress-fill"></div>`;
+                  card.appendChild(pTrack);
+                }
+                const pFill = pTrack.querySelector(".task-progress-fill");
+                if (pFill) pFill.style.width = `${currentPercent}%`;
+              } else if (pTrack) {
+                pTrack.remove();
               }
-              const pFill = pTrack.querySelector(".task-progress-fill");
-              if (pFill) pFill.style.width = `${currentPercent}%`;
-            } else if (pTrack) {
-              pTrack.remove();
             }
           }
         }
       }
     }
-  }
 
-  handle.addEventListener("mousedown", pointerDown);
-  document.addEventListener("mousemove", pointerMove);
-  document.addEventListener("mouseup", pointerUp);
+    handle.addEventListener("mousedown", pointerDown);
+    document.addEventListener("mousemove", pointerMove);
+    document.addEventListener("mouseup", pointerUp);
 
-  handle.addEventListener("touchstart", pointerDown, { passive: false });
-  document.addEventListener("touchmove", pointerMove, { passive: false });
-  document.addEventListener("touchend", pointerUp);
-})();
+    handle.addEventListener("touchstart", pointerDown, { passive: false });
+    document.addEventListener("touchmove", pointerMove, { passive: false });
+    document.addEventListener("touchend", pointerUp);
+  })();
 
   function closeFabMenu() {
     const m = document.getElementById("menu");
@@ -3334,12 +3378,17 @@
       hasSearch || hasDayFilter || hasImportant || hasDate || isDoneView;
 
     document.querySelectorAll("#section-container .section").forEach((sec) => {
-      // 這個分類裡是否有「顯示中的」任務（用 computed style 判斷）
+      // 💡 關鍵：先暫時解除 collapsed，確保取得正確的真實 computed style
+      const wasCollapsed = sec.classList.contains("collapsed");
+      if (wasCollapsed) sec.classList.remove("collapsed");
+
       const hasVisibleTask = Array.from(sec.querySelectorAll(".task")).some(
         (t) => getComputedStyle(t).display !== "none"
       );
 
-      // 進行中 + 沒任何濾鏡 → 依你的原設定保留所有分類；其餘情況隱藏空分類
+      // 💡 檢查完畢後恢復 collapsed
+      if (wasCollapsed) sec.classList.add("collapsed");
+
       if (!filtersOn && !isDoneView) {
         sec.style.display = "";
       } else {
@@ -3508,6 +3557,7 @@
       if (!sec) return false;
       if (e.target.closest(".task")) return false;
       if (e.target.closest(".drag-handle")) return false;
+      if (e.target.closest(".section-toggle")) return false; // 加這行！排除收合按鈕
       return sec;
     }
 
@@ -3618,10 +3668,11 @@
   function taskCardHTML(task, displayDays) {
     const progress = task.progress || 0;
     // 若有進度(大於0)，才插入底部進度條
-    const progressHTML = progress > 0 
-      ? `<div class="task-progress-track"><div class="task-progress-fill" style="width: ${progress}%"></div></div>` 
-      : '';
-  
+    const progressHTML =
+      progress > 0
+        ? `<div class="task-progress-track"><div class="task-progress-fill" style="width: ${progress}%"></div></div>`
+        : "";
+
     return `
       <div class="swipe-bar right"><span class="label">✅ 已完成</span></div>
       <div class="swipe-bar left"><span class="label">🗑 移除</span></div>
@@ -5744,6 +5795,34 @@
     }
   });
   //---------------點擊穿透解決
+
+  window.toggleSection = function (e) {
+    e.stopPropagation();
+    const sec = e.target.closest(".section");
+    if (!sec) return;
+
+    sec.classList.toggle("collapsed");
+
+    // 計算並更新未完成數量
+    const badge = sec.querySelector(".section-badge");
+    if (badge) {
+      const taskCount = sec.querySelectorAll(".task").length;
+      badge.textContent = taskCount;
+      badge.style.display =
+        sec.classList.contains("collapsed") && taskCount > 0
+          ? "inline-block"
+          : "none";
+    }
+
+    // 記憶狀態
+    try {
+      const state = JSON.parse(
+        localStorage.getItem("collapsed_sections") || "{}"
+      );
+      state[sec.id] = sec.classList.contains("collapsed");
+      localStorage.setItem("collapsed_sections", JSON.stringify(state));
+    } catch (err) {}
+  };
 
   // === 將需要被 HTML inline 呼叫的函式掛到 window（置於檔案最後）===
   Object.assign(window, {
