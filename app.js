@@ -605,14 +605,16 @@
     }
 
     // ------ inline UI (detail/create) ------
-        function ensureDetailInlineUI() {
+    function ensureDetailInlineUI() {
       const dateEl = document.getElementById("detailDate");
       if (!dateEl) return;
 
+      // 已經建立過兩顆按鈕就不重複建立
       const parentHas = (sel) =>
         dateEl.parentElement && dateEl.parentElement.querySelector(sel);
       if (parentHas("#recurrenceBtn") && parentHas("#gcalBtn")) return;
 
+      // 標題右側的排程摘要欄位（保留）
       const labels = Array.from(
         document.querySelectorAll("#detailForm label")
       ).filter((l) => l.textContent.trim().startsWith("預定完成日"));
@@ -620,52 +622,21 @@
         labels[0].innerHTML = `<span>預定完成日</span><span id="recurrenceSummary" style="font-size:.85rem;color:#666;margin-left:.5rem;"></span>`;
       }
 
-      // 外層橫列
+      // 佈局：跟「新增任務」一樣 → 日期半寬 + 右側按鈕
       const row = document.createElement("div");
       row.className = "inline-row";
-      dateEl.classList.add("half");
+      dateEl.classList.add("half"); // ← 重點：半寬
       dateEl.parentElement.insertBefore(row, dateEl);
+      row.appendChild(dateEl);
 
-      // 日期外層包裹容器（方便放叉叉按鈕）
-      const wrap = document.createElement("div");
-      wrap.className = "date-input-wrapper half";
-      row.appendChild(wrap);
-      wrap.appendChild(dateEl);
-
-      // 叉叉清除按鈕
-      const clearBtn = document.createElement("button");
-      clearBtn.type = "button";
-      clearBtn.className = "date-clear-btn";
-      clearBtn.innerHTML = "✕";
-      clearBtn.title = "清除日期";
-      clearBtn.setAttribute("aria-label", "清除日期");
-      wrap.appendChild(clearBtn);
-
-      const updateClearBtn = () => {
-        clearBtn.style.display = dateEl.value ? "inline-flex" : "none";
-      };
-
-      dateEl.addEventListener("input", updateClearBtn);
-      dateEl.addEventListener("change", updateClearBtn);
-
-      clearBtn.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dateEl.value = "";
-        updateClearBtn();
-        // 觸發原生事件，通知連鎖邏輯（取消排程/標記手動修改等）
-        dateEl.dispatchEvent(new Event("input", { bubbles: true }));
-        dateEl.dispatchEvent(new Event("change", { bubbles: true }));
-      };
-
-      // 匯入 Google 日曆按鈕
+      //  匯入 Google 日曆（顯示）
       if (!row.querySelector("#gcalBtn")) {
         const calBtn = document.createElement("button");
         calBtn.id = "gcalBtn";
         calBtn.type = "button";
         calBtn.title = "匯入到 Google 日曆";
         calBtn.setAttribute("aria-label", "匯入到 Google 日曆");
-        calBtn.textContent = "";
+        calBtn.textContent = ""; // 讓背景居中顯示
         calBtn.style.cssText =
           "width:30px;height:30px;padding:0;border:1px solid #ddd;" +
           "background:#f9f9f9 url('https://cdn.jsdelivr.net/gh/a355226/kj-reminder@main/googleca.png')" +
@@ -674,7 +645,7 @@
         row.appendChild(calBtn);
       }
 
-      // 定期排程按鈕（隱藏）
+      // 🗓️ 定期排程（保留但隱藏，不佔版面）
       if (!row.querySelector("#recurrenceBtn")) {
         const btn = document.createElement("button");
         btn.id = "recurrenceBtn";
@@ -690,9 +661,9 @@
         row.appendChild(btn);
       }
 
+      // 原本的「日期 vs 排程互斥」維持
       wireDateVsRecurrenceInterlock(TARGET_DETAIL);
     }
-
 
     function ensureCreateInlineUI() {
       const dateEl = document.getElementById("taskDate");
@@ -1567,8 +1538,6 @@
     document.getElementById("detailTitle").value = task.title;
     document.getElementById("detailContent").value = task.content;
     document.getElementById("detailDate").value = task.date;
-        const detailClearBtn = document.querySelector("#detailForm .date-clear-btn");
-    if (detailClearBtn) detailClearBtn.style.display = task.date ? "inline-flex" : "none";
     document.getElementById("detailNote").value = task.note;
 
     document.getElementById("detailModal").style.display = "flex";
