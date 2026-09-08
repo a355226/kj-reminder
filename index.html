@@ -1371,6 +1371,12 @@ button.palette-btn:active {
 .section.collapsed .task {
   display: none !important;
 }
+
+/* 讓底部保留安全空間，避免最後一個分類被右下角按鈕遮擋 */
+#section-container {
+  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+}
+
   </style>
 </head>
 <body>
