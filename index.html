@@ -1350,6 +1350,8 @@ button.palette-btn:active {
   display: none !important;
 }
 
+
+
 /* ===== 收合狀態（顯著且乾淨） ===== */
 .section.collapsed {
   background-color: #fafbfc; /* 極淡灰底，呈現已收闔的卡片感 */
@@ -1375,6 +1377,53 @@ button.palette-btn:active {
 /* 讓底部保留安全空間，避免最後一個分類被右下角按鈕遮擋 */
 #section-container {
   padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+}
+
+/* === 強制修正：編輯模式標題靠左排版 === */
+.section.edit-mode {
+  padding-left: 1rem !important; /* 修正 2.5rem 的過度推擠，恢復與平時一樣的內距 */
+}
+
+.section.edit-mode .section-title {
+  display: flex !important;
+  justify-content: flex-start !important; /* 不要在左右兩端對齊 */
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+/* 關鍵：拔掉 flex: 1，禁止第一個元素 (把手 ☰) 把後面全部推到右邊 */
+.section.edit-mode .section-title > span:first-child,
+.section.edit-mode .drag-handle,
+.section.edit-mode .section-name {
+  flex: none !important;
+  width: auto !important;
+}
+
+.section.edit-mode .drag-handle {
+  display: inline-block !important;
+  margin: 0 !important;
+  cursor: grab;
+}
+
+.section.edit-mode .section-name {
+  margin: 0 !important;
+}
+
+.section.edit-mode .rename-btn {
+  display: inline-flex !important;
+  position: static !important;
+  margin: 0 !important;
+  transform: translateY(-1px) !important;
+}
+
+/* 右上角紅色叉叉獨立靠右 */
+.section.edit-mode .delete-btn {
+  position: absolute !important;
+  right: 0 !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  margin: 0 !important;
 }
 
   </style>
