@@ -6205,80 +6205,110 @@ let pendingSyncChanges = []; // 存放差異比對結果
     restoreTaskConfirmed, // 加入這行
   });
 
-// ==========================================
-  // 網路連線狀態偵測與 100% 即時觸發同步機制 (iOS 專屬強制甦醒版)
+  // ==========================================
+  // 網路連線狀態偵測與 100% 即時觸發同步機制 (iOS 終極輪詢 + 觸控甦醒版)
   // ==========================================
   let syncDebounceTimer2 = null;
   let isFirebaseConnected = false;
+  let iosWatchdog = null;
 
   function checkAndTriggerSync() {
     isOffline = !navigator.onLine && !isFirebaseConnected;
-    
+
     const badge = document.getElementById("offlineBadge");
     if (badge) badge.style.display = isOffline ? "inline-block" : "none";
 
+    // 強制從 localStorage 讀取最新狀態
     if (typeof roomPath !== "undefined" && roomPath) {
-      hasUnsyncedChanges = localStorage.getItem("hasUnsynced_" + roomPath) === "true";
+      hasUnsyncedChanges =
+        localStorage.getItem("hasUnsynced_" + roomPath) === "true";
     }
 
     if (!isOffline && hasUnsyncedChanges) {
       clearTimeout(syncDebounceTimer2);
-      
       syncDebounceTimer2 = setTimeout(() => {
         const modal = document.getElementById("syncModal");
         if (modal && modal.style.display === "flex") return;
-        
-        console.log("偵測到連線恢復與本機變更，立刻觸發同步視窗...");
-        if (typeof triggerSyncFlow === 'function') triggerSyncFlow();
-      }, 800);
+
+        console.log("連線已恢復，立刻觸發同步視窗...");
+        if (typeof triggerSyncFlow === "function") triggerSyncFlow();
+      }, 500); // 縮短延遲，讓彈出更迅速
+    }
+  }
+
+  function forceFirebaseReconnect() {
+    // 強制踹醒 Firebase 的 WebSocket 通道
+    if (typeof db !== "undefined" && db.goOffline && db.goOnline) {
+      console.log("強制重置 Firebase 連線...");
+      db.goOffline();
+      setTimeout(() => db.goOnline(), 150);
     }
   }
 
   function handleNetworkChange() {
+    if (navigator.onLine && !isFirebaseConnected) {
+      forceFirebaseReconnect();
+    }
     checkAndTriggerSync();
   }
 
+  // 1. 原生監聽 (對 Android 與桌機最有效)
   window.addEventListener("online", handleNetworkChange);
   window.addEventListener("offline", handleNetworkChange);
 
-  // 🌟 iOS 終極殺手鐧：暴力重置 Firebase 連線通道
-  function forceWakeUpIOS() {
-    console.log("網頁被喚醒，強制重置 iOS 網路連線...");
-    
-    // 檢查 Firebase 是否存在，強迫它先斷開再立刻連上，逼迫 iOS 重建 WebSocket
-    if (typeof db !== "undefined" && db.goOffline && db.goOnline) {
-      db.goOffline();
-      setTimeout(() => {
-        db.goOnline();
-      }, 150); 
-    }
-    
-    // 給系統一點時間抓取訊號，然後檢查同步狀態
-    setTimeout(checkAndTriggerSync, 800);
+  // 🌟 破解 iPhone 痛點 1：無賴輪詢 (Heartbeat)
+  // 針對 iOS 下拉控制中心開關飛航，不觸發事件的硬傷
+  function startWatchdog() {
+    if (iosWatchdog) clearInterval(iosWatchdog);
+    iosWatchdog = setInterval(() => {
+      // 只有當網頁是顯示狀態時才檢查
+      if (document.visibilityState === "visible") {
+        if (navigator.onLine && !isFirebaseConnected) {
+          forceFirebaseReconnect();
+        }
+        checkAndTriggerSync();
+      }
+    }, 2000); // 每 2 秒強制掃描一次
   }
 
-  // 監聽各種可能的 iOS 喚醒事件
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") forceWakeUpIOS();
-  });
-  window.addEventListener("focus", forceWakeUpIOS);
-  window.addEventListener("pageshow", (e) => {
-    if (e.persisted) forceWakeUpIOS();
+    if (document.visibilityState === "visible") {
+      handleNetworkChange();
+      startWatchdog();
+    } else {
+      if (iosWatchdog) clearInterval(iosWatchdog);
+    }
   });
 
+  window.addEventListener("focus", handleNetworkChange);
+
+  // 🌟 破解 iPhone 痛點 2：觸控甦醒
+  // 只要手指碰到螢幕，且有未同步資料，立刻偷查並喚醒
+  document.addEventListener(
+    "touchstart",
+    () => {
+      if (hasUnsyncedChanges && navigator.onLine && !isFirebaseConnected) {
+        forceFirebaseReconnect();
+        checkAndTriggerSync();
+      }
+    },
+    { passive: true }
+  );
+
   document.addEventListener("DOMContentLoaded", () => {
-    handleNetworkChange(); 
-    
+    handleNetworkChange();
+    startWatchdog(); // 啟動輪詢
+
+    // 延遲綁定 Firebase 狀態，避免開機誤判
     setTimeout(() => {
       if (typeof db !== "undefined" && db.ref) {
         db.ref(".info/connected").on("value", (snap) => {
           isFirebaseConnected = snap.val() === true;
-          checkAndTriggerSync(); 
+          checkAndTriggerSync();
         });
       }
-    }, 2000);
+    }, 1500);
   });
-
   // --- 這行以上 ---
 })();
 
