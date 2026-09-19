@@ -1,3 +1,7 @@
+let isOffline = !navigator.onLine;
+let hasUnsyncedChanges = false;
+let pendingSyncChanges = []; // 存放差異比對結果
+
 (() => {
   (function ensureUrgentGlowCss() {
     if (document.getElementById("urgentGlowCss")) return;
@@ -84,8 +88,18 @@
 
   function saveCategoriesToFirebase() {
     if (!roomPath) return;
+
+    if (isOffline) {
+      saveLocalState();
+      return;
+    }
+
     const arr = Array.from(new Set(categories));
-    return db.ref(`${roomPath}/categories`).set(arr); // ← 直接覆蓋，不合併
+    db.ref(`${roomPath}/categories`).set(arr);
+
+    updateServerCache("categories", arr);
+    hasUnsyncedChanges = false;
+    localStorage.setItem("hasUnsynced_" + roomPath, "false");
   }
 
   // === Firebase 初始化（放在這支 <script> 的最上面）===
@@ -2745,93 +2759,149 @@
   //document.addEventListener("DOMContentLoaded", ensureSignedIn);
   //window.addEventListener("pageshow", ensureSignedIn);
   // === 從雲端載入（先做進行中 tasks；completed 之後再接）===
+  function updateServerCache(key, data) {
+    if (!roomPath) return;
+    let cache = {};
+    try {
+      cache = JSON.parse(localStorage.getItem(`serverCache_${roomPath}`)) || {};
+    } catch (e) {}
+    cache[key] = data;
+    localStorage.setItem(`serverCache_${roomPath}`, JSON.stringify(cache));
+  }
+
+  let syncDebounceTimer = null;
+  function scheduleSyncFlow() {
+    if (!hasUnsyncedChanges) return;
+    clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = setTimeout(triggerSyncFlow, 1000); // 確保三種資料都載入後再比對
+  }
+
   function loadTasksFromFirebase() {
     if (!roomPath || !auth.currentUser) return;
 
-    // …(你原本 detach 舊監聽的程式保留)
+    // --- 先載入本地快取 (離線啟動時很重要) ---
+    hasUnsyncedChanges =
+      localStorage.getItem("hasUnsynced_" + roomPath) === "true";
+    let bootData = null;
+    if (hasUnsyncedChanges) {
+      try {
+        bootData = JSON.parse(localStorage.getItem(`localState_${roomPath}`));
+      } catch (e) {}
+    }
+    if (!bootData) {
+      try {
+        bootData = JSON.parse(localStorage.getItem(`serverCache_${roomPath}`));
+      } catch (e) {}
+    }
+    if (bootData) {
+      tasks = bootData.tasks || [];
+      completedTasks = bootData.completedTasks || [];
+      categories = bootData.categories || [];
+      tasksLoaded = true;
+      completedLoaded = true;
+      categoriesLoaded = true;
+      refreshCurrentView(); // 繪製現有快取畫面
+    }
 
-    // 2) 切到新房前，清空本地狀態與 UI
-    categoriesLoaded = false;
-    tasksLoaded = false; // ← 新增
-    completedLoaded = false; // ← 新增
-    tasks = [];
-    completedTasks = [];
-    categories = [];
-    const sc = document.getElementById("section-container");
-    if (sc) sc.innerHTML = "";
-    updateSectionOptions && updateSectionOptions();
-
-    // 3) 綁新 ref
+    // --- 綁定 Firebase 監聽 ---
     tasksRef = db.ref(`${roomPath}/tasks`);
     completedRef = db.ref(`${roomPath}/completedTasks`);
     categoriesRef = db.ref(`${roomPath}/categories`);
 
-    // 4) tasks
     tasksRef.on("value", (snap) => {
       const data = snap.val() || {};
-      tasks = Array.isArray(data) ? data.filter(Boolean) : Object.values(data);
-      tasksLoaded = true; // ← 新增
+      const serverList = Array.isArray(data)
+        ? data.filter(Boolean)
+        : Object.values(data);
+      updateServerCache("tasks", serverList);
+
+      if (hasUnsyncedChanges) {
+        scheduleSyncFlow();
+        return;
+      } // 有本地變更則暫停覆寫畫面
+
+      tasks = serverList;
+      tasksLoaded = true;
       if (categoriesLoaded) showOngoing && showOngoing();
     });
 
-    // 5) completed
     completedRef.on("value", (snap) => {
       const data = snap.val() || {};
-      completedTasks = Array.isArray(data)
+      const serverList = Array.isArray(data)
         ? data.filter(Boolean)
         : Object.values(data);
-      completedLoaded = true; // ← 新增
-      if (!categoriesLoaded) return;
-      if (statusFilter === "done")
+      updateServerCache("completedTasks", serverList);
+
+      if (hasUnsyncedChanges) {
+        scheduleSyncFlow();
+        return;
+      }
+
+      completedTasks = serverList;
+      completedLoaded = true;
+      if (categoriesLoaded && statusFilter === "done")
         renderCompletedTasks && renderCompletedTasks();
     });
 
-    // 6) categories（安全合併＋不再強制 set([])）
     categoriesRef.on("value", (snap) => {
       const cloud = snap.val();
-      // 統一轉陣列
       let serverList = Array.isArray(cloud)
         ? cloud.slice()
         : cloud && typeof cloud === "object"
         ? Object.values(cloud)
         : [];
 
-      // 第一次載入前若本地已有暫存（例如使用者已先新增分類），做一次合併避免覆蓋掉
-      if (!categoriesLoaded && categories.length) {
+      if (!categoriesLoaded && categories.length && !hasUnsyncedChanges) {
         serverList = Array.from(new Set([...serverList, ...categories]));
+        saveCategoriesToFirebase();
+      }
+      updateServerCache("categories", serverList);
+
+      if (hasUnsyncedChanges) {
+        scheduleSyncFlow();
+        return;
       }
 
       categories = serverList;
       categoriesLoaded = true;
-
       renderSections && renderSections(categories);
       updateSectionOptions && updateSectionOptions();
-      if (statusFilter === "done") {
+      if (statusFilter === "done")
         renderCompletedTasks && renderCompletedTasks();
-      } else {
-        showOngoing && showOngoing();
-      }
-
-      // 若雲端原本是空，但本地已有暫存分類 → 回寫一次（防丟）
-      if (serverList.length === 0 && categories.length > 0) {
-        saveCategoriesToFirebase();
-      }
+      else showOngoing && showOngoing();
     });
   }
 
   // === 寫回雲端（先寫 tasks；completed 之後再接）===
+  function saveLocalState() {
+    if (!roomPath) return;
+    hasUnsyncedChanges = true;
+    localStorage.setItem("hasUnsynced_" + roomPath, "true");
+    const state = {
+      tasks: tasks || [],
+      completedTasks: completedTasks || [],
+      categories: categories || [],
+    };
+    localStorage.setItem(`localState_${roomPath}`, JSON.stringify(state));
+    console.log("[Offline] 已暫存變更至本地");
+  }
+
   function saveTasksToFirebase() {
     if (!roomPath) return;
 
-    const updates = {};
+    // 🔴 離線攔截：只存本地
+    if (isOffline) {
+      saveLocalState();
+      return;
+    }
 
-    // 僅在「對應分支已載入完成」才覆蓋，避免把雲端清空
+    // 🟢 線上正常寫入 Firebase
+    const updates = {};
     if (tasksLoaded) {
       const obj = {};
       (Array.isArray(tasks) ? tasks : []).forEach((t) => (obj[t.id] = t));
       updates[`${roomPath}/tasks`] = obj;
     }
-
     if (completedLoaded) {
       const doneObj = {};
       (Array.isArray(completedTasks) ? completedTasks : []).forEach(
@@ -2839,18 +2909,18 @@
       );
       updates[`${roomPath}/completedTasks`] = doneObj;
     }
-
     if (Object.keys(updates).length) {
       db.ref().update(updates);
     } else {
-      console.warn("[saveTasksToFirebase] 跳過寫入：資料尚未載入完成", {
-        tasksLoaded,
-        completedLoaded,
-      });
+      console.warn("資料未載入完成，跳過寫入雲端");
     }
-  }
 
-  //登出
+    // 寫入後更新伺服器快取，並解除未同步標記
+    updateServerCache("tasks", tasks);
+    updateServerCache("completedTasks", completedTasks);
+    hasUnsyncedChanges = false;
+    localStorage.setItem("hasUnsynced_" + roomPath, "false");
+  }
 
   function openLogoutModal() {
     document.getElementById("logoutModal").style.display = "flex";
@@ -5794,6 +5864,193 @@
       html.classList.add("show-login");
     }
   });
+
+  function triggerSyncFlow() {
+    if (isOffline) return;
+    const serverStr = localStorage.getItem(`serverCache_${roomPath}`);
+    const localStr = localStorage.getItem(`localState_${roomPath}`);
+    if (!serverStr || !localStr) return;
+
+    const server = JSON.parse(serverStr);
+    const local = JSON.parse(localStr);
+    pendingSyncChanges = [];
+
+    // 比對 Helper
+    const diffArray = (oldArr, newArr, prefix) => {
+      const oldMap = new Map((oldArr || []).map((t) => [t.id, t]));
+      const newMap = new Map((newArr || []).map((t) => [t.id, t]));
+
+      newMap.forEach((lt, id) => {
+        const st = oldMap.get(id);
+        if (!st) {
+          pendingSyncChanges.push({
+            type: `${prefix}_add`,
+            id,
+            title: lt.title,
+            localData: lt,
+          });
+        } else if (JSON.stringify(st) !== JSON.stringify(lt)) {
+          pendingSyncChanges.push({
+            type: `${prefix}_mod`,
+            id,
+            title: lt.title,
+            localData: lt,
+          });
+        }
+      });
+      oldMap.forEach((st, id) => {
+        if (!newMap.has(id)) {
+          pendingSyncChanges.push({
+            type: `${prefix}_del`,
+            id,
+            title: st.title,
+          });
+        }
+      });
+    };
+
+    diffArray(server.tasks, local.tasks, "task");
+    diffArray(server.completedTasks, local.completedTasks, "comp");
+
+    // 分類比對
+    if (
+      JSON.stringify(server.categories || []) !==
+      JSON.stringify(local.categories || [])
+    ) {
+      pendingSyncChanges.push({
+        type: "cat_mod",
+        id: "categories",
+        title: "分類清單結構",
+        localData: local.categories,
+      });
+    }
+
+    if (pendingSyncChanges.length === 0) {
+      // 雖然有變更標記，但資料一致，直接解除
+      hasUnsyncedChanges = false;
+      localStorage.setItem("hasUnsynced_" + roomPath, "false");
+      return;
+    }
+
+    // 繪製 UI
+    const listEl = document.getElementById("syncModalList");
+    listEl.innerHTML = "";
+
+    const getBadge = (type) => {
+      if (type.includes("_add"))
+        return `<span class="sync-badge add">新增</span>`;
+      if (type.includes("_mod"))
+        return `<span class="sync-badge mod">修改</span>`;
+      if (type.includes("_del"))
+        return `<span class="sync-badge del">移除</span>`;
+      return "";
+    };
+
+    const getPrefixStr = (type) => {
+      if (type.startsWith("task")) return "進行中：";
+      if (type.startsWith("comp")) return "已完成：";
+      return "設定：";
+    };
+
+    pendingSyncChanges.forEach((change, index) => {
+      const cbId = `sync_cb_${index}`;
+      const displayTitle = change.title || "(無標題)";
+      const html = `
+        <div class="sync-item">
+          <input type="checkbox" id="${cbId}" class="sync-cb" data-id="${
+        change.id
+      }" data-type="${change.type}" checked>
+          <div class="sync-item-content">
+            ${getBadge(change.type)}
+            <div class="sync-title">${getPrefixStr(
+              change.type
+            )}${displayTitle}</div>
+          </div>
+        </div>
+      `;
+      listEl.insertAdjacentHTML("beforeend", html);
+    });
+
+    document.getElementById("syncModal").style.display = "flex";
+  }
+
+  // 使用者按下「確認同步」
+  function processSyncSelection() {
+    const serverStr = localStorage.getItem(`serverCache_${roomPath}`);
+    const server = serverStr
+      ? JSON.parse(serverStr)
+      : { tasks: [], completedTasks: [], categories: [] };
+
+    let finalTasksMap = new Map((server.tasks || []).map((t) => [t.id, t]));
+    let finalCompMap = new Map(
+      (server.completedTasks || []).map((t) => [t.id, t])
+    );
+    let finalCategories = [...(server.categories || [])];
+
+    document.querySelectorAll(".sync-cb").forEach((cb) => {
+      if (!cb.checked) return; // 沒勾選則保留伺服器原本的狀態
+      const id = cb.dataset.id;
+      const type = cb.dataset.type;
+      const changeObj = pendingSyncChanges.find(
+        (c) => c.id === id && c.type === type
+      );
+
+      if (type === "task_add" || type === "task_mod")
+        finalTasksMap.set(id, changeObj.localData);
+      else if (type === "task_del") finalTasksMap.delete(id);
+      else if (type === "comp_add" || type === "comp_mod")
+        finalCompMap.set(id, changeObj.localData);
+      else if (type === "comp_del") finalCompMap.delete(id);
+      else if (type === "cat_mod") finalCategories = changeObj.localData;
+    });
+
+    // 更新記憶體狀態
+    tasks = Array.from(finalTasksMap.values());
+    completedTasks = Array.from(finalCompMap.values());
+    categories = finalCategories;
+
+    // 強制上傳合併後結果並解除標記
+    hasUnsyncedChanges = false;
+    localStorage.setItem("hasUnsynced_" + roomPath, "false");
+    localStorage.removeItem(`localState_${roomPath}`);
+
+    saveTasksToFirebase();
+    saveCategoriesToFirebase();
+
+    closeModal("syncModal");
+    refreshCurrentView();
+  }
+
+  // 使用者按下「捨棄本機變更」
+  function discardLocalChanges() {
+    hasUnsyncedChanges = false;
+    localStorage.setItem("hasUnsynced_" + roomPath, "false");
+    localStorage.removeItem(`localState_${roomPath}`);
+
+    // 從伺服器快取還原
+    const serverStr = localStorage.getItem(`serverCache_${roomPath}`);
+    if (serverStr) {
+      const server = JSON.parse(serverStr);
+      tasks = server.tasks || [];
+      completedTasks = server.completedTasks || [];
+      categories = server.categories || [];
+    }
+    closeModal("syncModal");
+    refreshCurrentView();
+  }
+
+  // 補強 UI 重繪
+  function refreshCurrentView() {
+    if (categoriesLoaded) {
+      renderSections(categories);
+      if (statusFilter === "done") {
+        buildDoneMonthMenu();
+        renderCompletedTasks();
+      } else {
+        showOngoing();
+      }
+    }
+  }
   //---------------點擊穿透解決
 
   window.toggleSection = function (e) {
@@ -5853,7 +6110,26 @@
     viewerUndo,
     viewerRedo,
     viewerCopy,
+    processSyncSelection,
+    discardLocalChanges,
   });
+
+  window.addEventListener("online", handleNetworkChange);
+  window.addEventListener("offline", handleNetworkChange);
+  document.addEventListener("DOMContentLoaded", () => {
+    handleNetworkChange(); // 初始化檢查
+  });
+
+  function handleNetworkChange() {
+    isOffline = !navigator.onLine;
+    const badge = document.getElementById("offlineBadge");
+    if (badge) badge.style.display = isOffline ? "inline-block" : "none";
+
+    if (!isOffline && hasUnsyncedChanges) {
+      // 等待 Firebase 連線後觸發 on('value') 抓取最新資料
+      console.log("網路已恢復，等待雲端資料...");
+    }
+  }
 
   // --- 這行以上 ---
 })();
