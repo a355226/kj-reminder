@@ -89,8 +89,13 @@ let pendingSyncChanges = []; // 存放差異比對結果
   function saveCategoriesToFirebase() {
     if (!roomPath) return;
 
-    if (isOffline) {
+    // 🔴 修正：比照 Tasks，保護未同步的變更不被直接覆寫
+    if (isOffline || hasUnsyncedChanges) {
       saveLocalState();
+
+      if (!isOffline && typeof scheduleSyncFlow === "function") {
+        scheduleSyncFlow();
+      }
       return;
     }
 
@@ -2976,9 +2981,14 @@ let pendingSyncChanges = []; // 存放差異比對結果
   function saveTasksToFirebase() {
     if (!roomPath) return;
 
-    // 🔴 離線攔截：只存本地
-    if (isOffline) {
+    // 🔴 修正：若離線，或「尚有未同步變更待處理」，皆只存本地，不直接覆寫伺服器
+    if (isOffline || hasUnsyncedChanges) {
       saveLocalState();
+
+      // 如果網路其實已經通了，順手幫忙喚醒同步視窗
+      if (!isOffline && typeof scheduleSyncFlow === "function") {
+        scheduleSyncFlow();
+      }
       return;
     }
 
@@ -6278,6 +6288,36 @@ let pendingSyncChanges = []; // 存放差異比對結果
         });
       }
     }, 1500);
+  });
+
+  // ==========================================
+  // iOS 專屬優化：強制切回前景時重新整理狀態
+  // ==========================================
+  async function handleAppResume() {
+    // 給 iOS 一小段時間讓網路介面重新穩定接通
+    await new Promise((r) => setTimeout(r, 300));
+
+    // 強制重新評估網路並觸發同步檢查
+    if (typeof evaluateNetworkAndSync === "function") {
+      await evaluateNetworkAndSync();
+    }
+  }
+
+  // 綁定所有 iPhone 切回前景的關鍵生命週期事件
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      handleAppResume();
+    }
+  });
+
+  window.addEventListener("focus", handleAppResume);
+
+  // 特別針對 iPhone PWA 從背景喚醒（Resume）時最重要的事件
+  window.addEventListener("pageshow", (e) => {
+    // e.persisted 代表是從 BFCache（往返快取）中恢復，這在 iPhone PWA 非常常見
+    if (e.persisted) {
+      handleAppResume();
+    }
   });
   // --- 這行以上 ---
 })();
