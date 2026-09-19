@@ -2567,6 +2567,9 @@ let pendingSyncChanges = []; // 存放差異比對結果
       document.querySelectorAll("#detailModal button")
     ).find((b) => b.textContent.includes("已完成"));
 
+    // ▼ 新增取得還原按鈕
+    const restoreBtn = document.getElementById("restoreTaskBtn");
+
     if (ro) {
       if (saveBtn) {
         saveBtn.textContent = "我了解了！";
@@ -2574,9 +2577,11 @@ let pendingSyncChanges = []; // 存放差異比對結果
       }
       if (delBtn) {
         delBtn.onclick = confirmDeleteCompleted;
-      } // ← 改叫「確認刪除(完成)」
-
+      }
       if (completeBtn) completeBtn.style.display = "none";
+
+      // ▼ 已完成 (唯讀) 狀態：顯示還原按鈕
+      if (restoreBtn) restoreBtn.style.display = "block";
     } else {
       if (saveBtn) {
         saveBtn.textContent = "💾 儲存";
@@ -2586,16 +2591,15 @@ let pendingSyncChanges = []; // 存放差異比對結果
         delBtn.onclick = confirmDelete;
       }
       if (completeBtn) completeBtn.style.display = "";
+
+      // ▼ 進行中 (可編輯) 狀態：隱藏還原按鈕
+      if (restoreBtn) restoreBtn.style.display = "none";
     }
 
-    // ★ 新增：鎖住/解鎖「重要」checkbox
     const importantEl = document.getElementById("detailImportant");
     if (importantEl) importantEl.disabled = ro;
-
     const btn = document.getElementById("recurrenceBtn");
     if (btn) btn.disabled = !!ro;
-
-    // 只在進行中可用：唯讀時藏起來
     const gBtn = document.getElementById("gcalBtn");
     if (gBtn) gBtn.style.display = ro ? "none" : "";
   }
@@ -2668,6 +2672,73 @@ let pendingSyncChanges = []; // 存放差異比對結果
     saveTasksToFirebase();
 
     closeModal("confirmModal");
+    closeModal("detailModal");
+    renderCompletedTasks();
+  }
+
+  // 顯示還原確認視窗
+  function confirmRestoreTask() {
+    if (!selectedCompletedId) return;
+
+    const confirmBox = document.createElement("div");
+    confirmBox.className = "modal";
+    confirmBox.style.display = "flex";
+    confirmBox.innerHTML = `
+    <div class="modal-content">
+      <h3 style="text-align:center; color:#176dff; margin-top:0;">還原任務</h3>
+      <p style="text-align:center; color:#555; line-height:1.5; margin-bottom:1rem;">
+        確定要將此任務還原到「進行中」列表嗎？<br>
+        <small>(將回到原分類，若分類已刪除會自動重建)</small>
+      </p>
+      <div class="confirm-buttons">
+        <button class="confirm-btn" style="background:#176dff;">確認還原</button>
+        <button class="cancel-btn">取消</button>
+      </div>
+    </div>
+    `;
+    confirmBox.querySelector(".confirm-btn").onclick = () => {
+      restoreTaskConfirmed();
+      confirmBox.remove();
+    };
+    confirmBox.querySelector(".cancel-btn").onclick = () => confirmBox.remove();
+    document.body.appendChild(confirmBox);
+  }
+
+  // 執行還原任務邏輯
+  function restoreTaskConfirmed() {
+    if (!selectedCompletedId) return;
+
+    const idx = completedTasks.findIndex((x) => x.id === selectedCompletedId);
+    if (idx === -1) return;
+
+    // 1. 取出該任務
+    const taskToRestore = completedTasks.splice(idx, 1)[0];
+
+    // 2. 更新時間與狀態 (保留 createdAt，刷新 updatedAt，移除 completedAt)
+    taskToRestore.updatedAt = Date.now();
+    delete taskToRestore.completedAt;
+
+    // 3. 處理已刪除分類的邊界情況：去除 "(分類已移除)" 標籤
+    let targetSection = taskToRestore.section;
+    if (targetSection && targetSection.endsWith("(分類已移除)")) {
+      targetSection = targetSection.replace("(分類已移除)", "");
+      taskToRestore.section = targetSection;
+    }
+
+    // 4. 檢查乾淨的分類名稱是否存在，若不存在則重建
+    if (targetSection && !categories.includes(targetSection)) {
+      categories.push(targetSection);
+      saveCategoriesToFirebase(); // 同步分類到雲端並更新伺服器快取
+
+      // 更新下拉選單與列表 UI
+      if (typeof renderSections === "function") renderSections(categories);
+    }
+
+    // 5. 放回進行中陣列並存檔
+    tasks.push(taskToRestore);
+    saveTasksToFirebase();
+
+    // 6. 關閉資訊視窗並重新渲染已完成清單
     closeModal("detailModal");
     renderCompletedTasks();
   }
@@ -6130,6 +6201,8 @@ let pendingSyncChanges = []; // 存放差異比對結果
     viewerCopy,
     processSyncSelection,
     discardLocalChanges,
+    confirmRestoreTask, // 加入這行
+    restoreTaskConfirmed, // 加入這行
   });
 
   window.addEventListener("online", handleNetworkChange);
