@@ -1566,13 +1566,23 @@ button.palette-btn:active {
 
 <div style="text-align:center">
   <h1 class="app-title">
-    <a href="mymemo.html" class="title-link">
-      <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png" alt="icon" width="40">
+    <a href="javascript:void(0);" class="title-link" onclick="goToMemo(event)">
+      <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png"
+           alt="icon" width="40">
       <span>MyTask</span>
     </a>
-    <!-- ▼ 新增：離線模式標籤 -->
-    <span id="offlineBadge" style="display:none; font-size:12px; background:#ff4d4f; color:#fff; padding:3px 8px; border-radius:12px; margin-left:8px; vertical-align:middle; font-weight:normal; box-shadow:0 2px 4px rgba(0,0,0,0.15);">離線模式</span>
   </h1>
+  
+  <script>
+    function goToMemo(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      // 手機 PWA 與行動瀏覽器最穩定的換頁方式
+      window.location.assign("mymemo.html");
+    }
+  </script>
 </div>
 
 <style>
