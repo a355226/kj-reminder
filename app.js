@@ -6206,34 +6206,35 @@ let pendingSyncChanges = []; // 存放差異比對結果
   });
 
   // ==========================================
-  // 網路連線狀態偵測與 100% 即時觸發同步機制 (終極防懸掛版)
+  // 網路連線狀態偵測與 100% 即時觸發同步機制 (終極防懸掛 + 破解手機假斷線)
   // ==========================================
   let syncDebounceTimer2 = null;
+  let isFirebaseConnected = false; // 新增：紀錄 Firebase 真實連線狀態
 
   function checkAndTriggerSync() {
-    // 確保取得最準確的原生網路狀態
-    isOffline = !navigator.onLine;
-    
+    // 🌟 修正核心 BUG：綜合判斷！只要原生 API 或 Firebase 任意一個有連上，就是上線！
+    isOffline = !navigator.onLine && !isFirebaseConnected;
+
     const badge = document.getElementById("offlineBadge");
     if (badge) badge.style.display = isOffline ? "inline-block" : "none";
 
-    // 🌟 關鍵：強制從 localStorage 讀取最新狀態，避免休眠導致記憶體變數不同步
+    // 強制從 localStorage 讀取最新變更狀態，避免休眠造成記憶體遺失
     if (typeof roomPath !== "undefined" && roomPath) {
-      hasUnsyncedChanges = localStorage.getItem("hasUnsynced_" + roomPath) === "true";
+      hasUnsyncedChanges =
+        localStorage.getItem("hasUnsynced_" + roomPath) === "true";
     }
 
-    // 如果目前已連線，且有未同步的變更，就立刻準備彈出視窗
+    // 已連線且有未同步變更 -> 立刻彈出視窗
     if (!isOffline && hasUnsyncedChanges) {
       clearTimeout(syncDebounceTimer2);
-      
-      // 延遲 800 毫秒讓 Firebase SDK 與 DOM 完全準備好
+
       syncDebounceTimer2 = setTimeout(() => {
         // 防止重複打開視窗
         const modal = document.getElementById("syncModal");
         if (modal && modal.style.display === "flex") return;
-        
-        console.log("偵測到連線與本機變更，立刻觸發同步視窗...");
-        if (typeof triggerSyncFlow === 'function') triggerSyncFlow();
+
+        console.log("偵測到連線恢復與本機變更，立刻觸發同步視窗...");
+        if (typeof triggerSyncFlow === "function") triggerSyncFlow();
       }, 800);
     }
   }
@@ -6246,38 +6247,30 @@ let pendingSyncChanges = []; // 存放差異比對結果
   window.addEventListener("online", handleNetworkChange);
   window.addEventListener("offline", handleNetworkChange);
 
-  // 🌟 2. 終極殺手鐧：手機切換 App (去設定開關飛航) 切回來時，強制喚醒重新檢查
+  // 2. 手機切換 App (去設定開關飛航) 切回來時，強制喚醒重新檢查
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-      setTimeout(checkAndTriggerSync, 500); // 給手機系統一點時間恢復網路連線
+      setTimeout(checkAndTriggerSync, 500);
     }
   });
-  
-  // 針對部分舊版 iOS Safari 的備用喚醒方案
+
   window.addEventListener("focus", () => {
     setTimeout(checkAndTriggerSync, 500);
   });
 
   document.addEventListener("DOMContentLoaded", () => {
     handleNetworkChange(); // 初始化檢查
-    
-    // 3. 加入 Firebase 內建的精準連線偵測 (雙重保險)
+
+    // 3. 加入 Firebase 內建的精準連線偵測 (完全破解手機假斷線)
     setTimeout(() => {
       if (typeof db !== "undefined" && db.ref) {
         db.ref(".info/connected").on("value", (snap) => {
-          const connected = snap.val() === true;
-          if (connected) {
-            isOffline = false;
-            checkAndTriggerSync(); // 確定連上 Firebase 時立刻檢查並跳出視窗
-          } else {
-            isOffline = true;
-            checkAndTriggerSync(); // 斷線時也強制更新 UI
-          }
+          isFirebaseConnected = snap.val() === true;
+          checkAndTriggerSync(); // 無論 Firebase 連上或斷開，都交由綜合判斷處理
         });
       }
     }, 2000); // 延遲 2 秒綁定，避免開機瞬間的誤判斷線
   });
-
 
   // --- 這行以上 ---
 })();
