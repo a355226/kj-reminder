@@ -1564,16 +1564,16 @@ button.palette-btn:active {
 
 <div class="container" style="display:flex; justify-content:center;">
 
-<div style="text-align:center">
-  <h1 class="app-title">
-    <a href="mymemo.html" class="title-link">
-      <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png" alt="icon" width="40">
-      <span>MyTask</span>
-    </a>
-    <!-- ▼ 新增：離線模式標籤 -->
-    <span id="offlineBadge" style="display:none; font-size:12px; background:#ff4d4f; color:#fff; padding:3px 8px; border-radius:12px; margin-left:8px; vertical-align:middle; font-weight:normal; box-shadow:0 2px 4px rgba(0,0,0,0.15);">離線模式</span>
-  </h1>
-</div>
+  <div style="text-align:center">
+    <h1 class="app-title" style="display:inline-flex; align-items:center; justify-content:center; margin:0;">
+      <a href="mymemo.html" class="title-link" style="display:inline-flex; align-items:center; text-decoration:none; padding-right:4px;">
+        <img src="https://cdn.jsdelivr.net/gh/a355226/kj-reminder/reminder.png" alt="icon" width="40" style="margin-right:6px;">
+        <span>MyTask</span>
+        <!-- ▼ 移入 a 標籤內，並以 margin-left: 4px 緊貼文字 ▼ -->
+        <span id="offlineBadge" style="display:none; font-size:11px; background:#ff4d4f; color:#fff; padding:2px 6px; border-radius:10px; margin-left:0px; font-weight:normal; box-shadow:0 2px 4px rgba(0,0,0,0.15); line-height:1.2; white-space:nowrap; vertical-align:middle;">離線</span>
+      </a>
+    </h1>
+  </div>
 
 <style>
   /* 只保留 h1 的字級/間距，關掉外層 hover/陰影/圓角 */
