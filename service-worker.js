@@ -1,8 +1,8 @@
-/* ===== KJ PWA 更新穩定版 SW (支援完全離線冷啟動) ===== */
+/* ===== KJ PWA 更新穩定版 SW (支援完全離線冷啟動與順暢換頁) ===== */
 
-const CACHE_NAME = "runtime-v1";
+const CACHE_NAME = "runtime-v2"; // 升級版本號以刷新快取
 
-// 啟用時：接管頁面，不再暴力清空全部快取，確保離線資料留存
+// 啟用時：接管頁面，清除舊版快取，並停用容易導致手機換頁懸掛的 navigationPreload
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
@@ -13,8 +13,10 @@ self.addEventListener("activate", (event) => {
         );
       } finally {
         await self.clients.claim();
-        self.registration.navigationPreload &&
-          self.registration.navigationPreload.enable();
+        // 關閉 navigationPreload 避免手機 WebKit 換頁卡死
+        if (self.registration.navigationPreload) {
+          await self.registration.navigationPreload.disable();
+        }
       }
     })()
   );
@@ -40,14 +42,11 @@ const ESSENTIAL_CDN_HOSTS = [
   "accounts.google.com",
 ];
 
-// 視為「殼」的頁面：開啟 App 時一定網路優先
-const APP_SHELLS = ["/", "/index.html", "/mymemo.html", "/ltc-calendar.html"];
-
 // 需要「即時更新」的 JS 名稱（同網域）
 const JS_IMMEDIATE = [
-  /^\/app(\.min)?\.js(\?.*)?$/i,
-  /^\/app2(\.min)?\.js(\?.*)?$/i,
-  /^\/mymemo(\.min)?\.js(\?.*)?$/i,
+  /^\/.*app(\.min)?\.js(\?.*)?$/i,
+  /^\/.*app2(\.min)?\.js(\?.*)?$/i,
+  /^\/.*mymemo(\.min)?\.js(\?.*)?$/i,
 ];
 
 // 工具：網路優先（失敗才回快取）
@@ -61,7 +60,7 @@ async function networkFirst(event) {
     }
     return fresh;
   } catch (e) {
-    // 斷網時先精準比對，若帶 ?v= 找不到則忽略 search 參數比對
+    // 斷網時先精準比對，找不到則忽略 search 參數比對
     const hit =
       (await cache.match(req)) ||
       (await cache.match(req, { ignoreSearch: true }));
@@ -80,7 +79,6 @@ async function cacheFirst(event) {
 
   try {
     const resp = await fetch(req);
-    // 支援同網域資源或關鍵 CDN 資源快取
     const isSameOrigin = new URL(req.url).origin === self.location.origin;
     const isCdn = ESSENTIAL_CDN_HOSTS.some((h) =>
       new URL(req.url).hostname.includes(h)
@@ -109,7 +107,7 @@ self.addEventListener("fetch", (event) => {
   // 動態 API → 不攔截（直接走網路）
   if (BYPASS.some((h) => url.hostname.includes(h))) return;
 
-  // 1) 關鍵第三方 CDN 靜態檔案（Firebase SDK / Sortable）：快取優先，確保斷網時讀得到
+  // 1) 關鍵第三方 CDN 靜態檔案（Firebase SDK / Sortable）：快取優先
   if (ESSENTIAL_CDN_HOSTS.some((h) => url.hostname.includes(h))) {
     event.respondWith(cacheFirst(event));
     return;
@@ -118,18 +116,23 @@ self.addEventListener("fetch", (event) => {
   // 非同網域其他資源不處理
   if (url.origin !== self.location.origin) return;
 
-  // 2) App 殼：一律網路優先（斷網時退回快取）
-  if (APP_SHELLS.includes(url.pathname)) {
+  // 2) 頁面導航（App 殼 / HTML 頁面）：支援子目錄與所有 HTML 換頁，一律網路優先
+  if (
+    req.mode === "navigate" ||
+    url.pathname.endsWith(".html") ||
+    url.pathname === "/" ||
+    url.pathname.endsWith("/")
+  ) {
     event.respondWith(networkFirst(event));
     return;
   }
 
-  // 3) 需要即時更新的 JS 檔：一律網路優先（斷網時退回快取）
+  // 3) 需要即時更新的 JS 檔：一律網路優先
   if (JS_IMMEDIATE.some((re) => re.test(url.pathname))) {
     event.respondWith(networkFirst(event));
     return;
   }
 
-  // 4) 其他資源（圖片、圖示、CSS等）：快取優先
+  // 4) 其他資源（圖片、圖示、CSS 等）：快取優先
   event.respondWith(cacheFirst(event));
 });
