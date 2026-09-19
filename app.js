@@ -138,6 +138,7 @@ let pendingSyncChanges = []; // 存放差異比對結果
         document.documentElement.classList.remove("show-login", "show-app");
 
         if (user && roomPath) {
+          localStorage.setItem("last_logged_uid", user.uid);
           document.documentElement.classList.add("show-app");
           const lp = document.getElementById("loginPage");
           const app = document.querySelector(".container");
@@ -248,6 +249,9 @@ let pendingSyncChanges = []; // 存放差異比對結果
 
       var fallback = setTimeout(releaseOnce, graceMs); // 還原太慢 → 顯示登入頁
 
+      if (!navigator.onLine) {
+        releaseOnce(); // 沒網路時直接掀布，不等待遠端驗證
+      }
       whenAuthReady(function (auth) {
         var off = auth.onAuthStateChanged(function () {
           try {
@@ -306,6 +310,18 @@ let pendingSyncChanges = []; // 存放差異比對結果
 
     // 讀 sessionStorage 或 localStorage，算出 roomPath
     hydrateRoomPath();
+
+    // 離線且本地有快取 UID 時，直接進主畫面，不要強制 signOut()
+    const lastUid = localStorage.getItem("last_logged_uid");
+    if (!navigator.onLine && (roomPath || lastUid)) {
+      if (!roomPath && lastUid) roomPath = `rooms/${lastUid}`;
+      document.documentElement.classList.add("show-app");
+      document.documentElement.classList.remove("show-login");
+      loadTasksFromFirebase();
+      setLoginBusy(false);
+      bootAuth.__busy = false;
+      return;
+    }
 
     if (!roomPath) {
       // 沒憑證：停在登入頁，並確保沒有殘留登入狀態
@@ -2949,6 +2965,7 @@ let pendingSyncChanges = []; // 存放差異比對結果
 
     // 清掉自動登入與房間
     localStorage.removeItem("todo_room_info");
+    localStorage.removeItem("last_logged_uid"); // 加入這行
     roomPath = "";
 
     // 嘗試登出（若沒開 Auth 也沒關係）
@@ -5842,6 +5859,7 @@ let pendingSyncChanges = []; // 存放差異比對結果
     const html = document.documentElement;
     if (user) {
       const uid = user.uid;
+      localStorage.setItem("last_logged_uid", uid);
       window.roomPath = "rooms/" + uid;
 
       // 取得登入用帳號（如果你有 username 映射）
