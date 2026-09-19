@@ -6205,22 +6205,61 @@ let pendingSyncChanges = []; // 存放差異比對結果
     restoreTaskConfirmed, // 加入這行
   });
 
-  window.addEventListener("online", handleNetworkChange);
-  window.addEventListener("offline", handleNetworkChange);
-  document.addEventListener("DOMContentLoaded", () => {
-    handleNetworkChange(); // 初始化檢查
-  });
+  // ==========================================
+  // 網路連線狀態偵測與 100% 即時觸發同步機制
+  // ==========================================
+  let syncDebounceTimer2 = null;
 
-  function handleNetworkChange() {
-    isOffline = !navigator.onLine;
+  function checkAndTriggerSync() {
     const badge = document.getElementById("offlineBadge");
     if (badge) badge.style.display = isOffline ? "inline-block" : "none";
 
+    // 如果目前已連線，且有未同步的變更，就立刻準備彈出視窗
     if (!isOffline && hasUnsyncedChanges) {
-      // 等待 Firebase 連線後觸發 on('value') 抓取最新資料
-      console.log("網路已恢復，等待雲端資料...");
+      clearTimeout(syncDebounceTimer2);
+
+      // 稍微延遲 800 毫秒，讓 Firebase SDK 有時間自動重連並抓取最新雲端狀態
+      syncDebounceTimer2 = setTimeout(() => {
+        // 防止重複打開視窗
+        const modal = document.getElementById("syncModal");
+        if (modal && modal.style.display === "flex") return;
+
+        console.log("連線已恢復，立刻觸發同步視窗...");
+        if (typeof triggerSyncFlow === "function") triggerSyncFlow();
+      }, 800);
     }
   }
+
+  function handleNetworkChange() {
+    isOffline = !navigator.onLine;
+    checkAndTriggerSync();
+  }
+
+  // 1. 監聽原生的網路狀態改變 (用於即時 UI 切換)
+  window.addEventListener("online", handleNetworkChange);
+  window.addEventListener("offline", handleNetworkChange);
+
+  document.addEventListener("DOMContentLoaded", () => {
+    handleNetworkChange(); // 初始化檢查
+
+    // 2. 加入 Firebase 內建的精準連線偵測 (雙重保險)
+    // 解決手機連著無網路 Wi-Fi 時，navigator.onLine 誤判的問題
+    setTimeout(() => {
+      if (typeof db !== "undefined" && db.ref) {
+        db.ref(".info/connected").on("value", (snap) => {
+          const connected = snap.val() === true;
+          if (connected) {
+            isOffline = false;
+            checkAndTriggerSync(); // 確定連上 Firebase 時立刻檢查並跳出視窗
+          } else {
+            isOffline = true;
+            const badge = document.getElementById("offlineBadge");
+            if (badge) badge.style.display = "inline-block";
+          }
+        });
+      }
+    }, 2000); // 延遲 2 秒綁定，避免開機瞬間的誤判斷線
+  });
 
   // --- 這行以上 ---
 })();
