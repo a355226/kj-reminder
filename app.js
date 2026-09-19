@@ -89,13 +89,13 @@ let pendingSyncChanges = []; // 存放差異比對結果
   function saveCategoriesToFirebase() {
     if (!roomPath) return;
 
-    // 無論如何先存本機，並立起未同步旗標，完美防堵 SDK 偷跑
-    saveLocalState();
-
+    // 🚨 核彈級防護：只要 Firebase 沒連上、或者已經有未同步變更，強制鎖入獨立佇列！
     if (
-      !navigator.onLine ||
-      (typeof isFirebaseConnected !== "undefined" && !isFirebaseConnected)
+      isOffline ||
+      (typeof isFirebaseConnected !== "undefined" && !isFirebaseConnected) ||
+      hasUnsyncedChanges
     ) {
+      saveLocalState();
       return;
     }
 
@@ -103,13 +103,11 @@ let pendingSyncChanges = []; // 存放差異比對結果
     db.ref(`${roomPath}/categories`)
       .set(arr)
       .then(() => {
-        // 🚨 關鍵：確實上傳成功後，才解除未同步狀態並更新快取基準
-        hasUnsyncedChanges = false;
-        localStorage.setItem("hasUnsynced_" + roomPath, "false");
-        localStorage.removeItem(`localState_${roomPath}`);
         updateServerCache("categories", arr);
       })
-      .catch(() => {});
+      .catch(() => {
+        saveLocalState(); // 失敗也退回獨立佇列
+      });
   }
 
   // === Firebase 初始化（放在這支 <script> 的最上面）===
@@ -2876,7 +2874,6 @@ let pendingSyncChanges = []; // 存放差異比對結果
   function loadTasksFromFirebase() {
     if (!roomPath || !auth.currentUser) return;
 
-    // --- 先載入本地快取 (離線啟動時很重要) ---
     hasUnsyncedChanges =
       localStorage.getItem("hasUnsynced_" + roomPath) === "true";
     let bootData = null;
@@ -2897,10 +2894,9 @@ let pendingSyncChanges = []; // 存放差異比對結果
       tasksLoaded = true;
       completedLoaded = true;
       categoriesLoaded = true;
-      refreshCurrentView(); // 繪製現有快取畫面
+      refreshCurrentView();
     }
 
-    // --- 綁定 Firebase 監聽 ---
     tasksRef = db.ref(`${roomPath}/tasks`);
     completedRef = db.ref(`${roomPath}/completedTasks`);
     categoriesRef = db.ref(`${roomPath}/categories`);
@@ -2912,11 +2908,10 @@ let pendingSyncChanges = []; // 存放差異比對結果
         : Object.values(data);
 
       if (hasUnsyncedChanges) {
-        // 🚨 絕對不可在此時 updateServerCache，否則會洗掉比對基準
+        // 🚨 嚴禁在此時更新 ServerCache，否則刪除的 A 任務會從比對清單中消失！
         scheduleSyncFlow();
         return;
       }
-
       updateServerCache("tasks", serverList);
       tasks = serverList;
       tasksLoaded = true;
@@ -2933,7 +2928,6 @@ let pendingSyncChanges = []; // 存放差異比對結果
         scheduleSyncFlow();
         return;
       }
-
       updateServerCache("completedTasks", serverList);
       completedTasks = serverList;
       completedLoaded = true;
@@ -2958,7 +2952,6 @@ let pendingSyncChanges = []; // 存放差異比對結果
         scheduleSyncFlow();
         return;
       }
-
       updateServerCache("categories", serverList);
       categories = serverList;
       categoriesLoaded = true;
@@ -2969,7 +2962,6 @@ let pendingSyncChanges = []; // 存放差異比對結果
       else showOngoing && showOngoing();
     });
   }
-
   // === 寫回雲端（先寫 tasks；completed 之後再接）===
   function saveLocalState() {
     if (!roomPath) return;
@@ -2981,19 +2973,19 @@ let pendingSyncChanges = []; // 存放差異比對結果
       categories: categories || [],
     };
     localStorage.setItem(`localState_${roomPath}`, JSON.stringify(state));
-    console.log("[Offline] 已暫存變更至本地");
+    console.log("🔒 [獨立佇列] 已將變更隔離並鎖入本機");
   }
 
   function saveTasksToFirebase() {
     if (!roomPath) return;
 
-    // 無論如何先存本機，並立起未同步旗標
-    saveLocalState();
-
+    // 🚨 只要還沒連線，或者佇列中已經有東西，任何新動作一律跟著鎖入本地！
     if (
-      !navigator.onLine ||
-      (typeof isFirebaseConnected !== "undefined" && !isFirebaseConnected)
+      isOffline ||
+      (typeof isFirebaseConnected !== "undefined" && !isFirebaseConnected) ||
+      hasUnsyncedChanges
     ) {
+      saveLocalState();
       return;
     }
 
@@ -3015,14 +3007,14 @@ let pendingSyncChanges = []; // 存放差異比對結果
       db.ref()
         .update(updates)
         .then(() => {
-          // 🚨 關鍵：確實上傳成功後，才解除未同步狀態並更新快取基準
-          hasUnsyncedChanges = false;
-          localStorage.setItem("hasUnsynced_" + roomPath, "false");
-          localStorage.removeItem(`localState_${roomPath}`);
           updateServerCache("tasks", tasks);
           updateServerCache("completedTasks", completedTasks);
         })
-        .catch(() => {});
+        .catch(() => {
+          saveLocalState();
+        });
+    } else {
+      console.warn("資料未載入完成，跳過寫入雲端");
     }
   }
 
@@ -6223,62 +6215,113 @@ let pendingSyncChanges = []; // 存放差異比對結果
   });
 
   // ==========================================
-  // 網路連線狀態與同步觸發 (iOS 終極喚醒 + 嚴格鎖定版)
+  // 網路連線狀態與同步觸發 (核彈級：手動獨立佇列拔插頭版)
   // ==========================================
   let syncDebounceTimer2 = null;
   let isFirebaseConnected = false;
 
-  function checkAndTriggerSync() {
-    isOffline = !navigator.onLine && !isFirebaseConnected;
+  // 1. 真實網路探測 (直接對伺服器發送 HEAD 請求，iPhone 的快取騙不了這招)
+  async function pingNetwork() {
+    if (!navigator.onLine) return false;
+    try {
+      const res = await fetch(
+        window.location.href.split("?")[0] + "?_t=" + Date.now(),
+        {
+          method: "HEAD",
+          cache: "no-store",
+        }
+      );
+      return res.ok || res.status === 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 2. 評估網路並接回插頭
+  async function evaluateNetworkAndSync() {
+    const reallyOnline = await pingNetwork();
+
+    if (!reallyOnline) {
+      isOffline = true;
+      isFirebaseConnected = false;
+      // 🔪 只要沒網路，直接拔掉 Firebase 的 WebSocket 插頭，絕對不准背景排程
+      if (typeof db !== "undefined" && db.goOffline) db.goOffline();
+    } else {
+      // 有網路才接回插頭，等 Firebase 自己報告上線
+      if (typeof db !== "undefined" && db.goOnline) db.goOnline();
+    }
+
     const badge = document.getElementById("offlineBadge");
     if (badge) badge.style.display = isOffline ? "inline-block" : "none";
 
-    // 強制從硬碟讀取狀態，避免休眠造成記憶體流失
     if (typeof roomPath !== "undefined" && roomPath) {
       hasUnsyncedChanges =
         localStorage.getItem("hasUnsynced_" + roomPath) === "true";
     }
 
-    // 確定網路通了，且有未同步變更，馬上呼叫視窗
-    if (!isOffline && hasUnsyncedChanges) {
+    if (reallyOnline && hasUnsyncedChanges) {
       clearTimeout(syncDebounceTimer2);
       syncDebounceTimer2 = setTimeout(() => {
         const modal = document.getElementById("syncModal");
         if (modal && modal.style.display === "flex") return;
-
-        console.log("網路與背景資料已就緒，觸發同步通知！");
+        console.log("網路已通，準備彈出手動確認視窗！");
         if (typeof triggerSyncFlow === "function") triggerSyncFlow();
-      }, 500);
+      }, 800);
     }
   }
 
-  // 專治 iPhone 假死：只要網頁回到畫面上，強制踹醒 Firebase 重建連線
-  function kickFirebase() {
-    if (typeof db !== "undefined" && db.goOffline && db.goOnline) {
-      db.goOffline();
-      setTimeout(() => db.goOnline(), 150);
-    }
-    checkAndTriggerSync();
-  }
-
-  window.addEventListener("online", kickFirebase);
-  window.addEventListener("offline", checkAndTriggerSync);
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") kickFirebase();
+  window.addEventListener("online", evaluateNetworkAndSync);
+  window.addEventListener("offline", () => {
+    isOffline = true;
+    isFirebaseConnected = false;
+    if (typeof db !== "undefined" && db.goOffline) db.goOffline();
+    const badge = document.getElementById("offlineBadge");
+    if (badge) badge.style.display = "inline-block";
   });
-  window.addEventListener("focus", kickFirebase);
+
+  // 🌟 iPhone 切換 APP / 飛航模式的殺手鐧
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      // 🔪 只要畫面一不見 (包含下拉控制中心)，瞬間拔掉 Firebase 插頭，徹底物理斷線
+      isOffline = true;
+      isFirebaseConnected = false;
+      if (typeof db !== "undefined" && db.goOffline) db.goOffline();
+    } else {
+      // 切回畫面，重新進行真實網路測試
+      evaluateNetworkAndSync();
+    }
+  });
+
+  window.addEventListener("focus", evaluateNetworkAndSync);
   window.addEventListener("pageshow", (e) => {
-    if (e.persisted) kickFirebase();
+    if (e.persisted) evaluateNetworkAndSync();
   });
 
   document.addEventListener("DOMContentLoaded", () => {
-    checkAndTriggerSync();
+    evaluateNetworkAndSync();
     setTimeout(() => {
       if (typeof db !== "undefined" && db.ref) {
         db.ref(".info/connected").on("value", (snap) => {
           isFirebaseConnected = snap.val() === true;
-          checkAndTriggerSync();
+          isOffline = !isFirebaseConnected;
+
+          const badge = document.getElementById("offlineBadge");
+          if (badge) badge.style.display = isOffline ? "inline-block" : "none";
+
+          if (
+            isFirebaseConnected &&
+            typeof roomPath !== "undefined" &&
+            roomPath
+          ) {
+            const hasUnsynced =
+              localStorage.getItem("hasUnsynced_" + roomPath) === "true";
+            if (hasUnsynced) {
+              const modal = document.getElementById("syncModal");
+              if (!modal || modal.style.display !== "flex") {
+                if (typeof triggerSyncFlow === "function") triggerSyncFlow();
+              }
+            }
+          }
         });
       }
     }, 1000);
