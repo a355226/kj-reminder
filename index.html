@@ -2000,7 +2000,7 @@ button.palette-btn:active {
 <div class="modal" id="syncModal">
   <div class="modal-content" style="max-height: 85vh; display: flex; flex-direction: column; width: 95%; max-width: 450px;">
     <h3 style="text-align:center; color:#176dff; margin-top:0;">網路已恢復</h3>
-    <p style="font-size:0.9rem; color:#555; line-height:1.5;">偵測到您在離線期間進行了變更，請勾選欲同步至雲端的項目：</p>
+    <p style="font-size:0.9rem; color:#555; line-height:1.5;">您在離線時進行變更，請勾選欲同步項目：</p>
     
     <div id="syncModalList" style="flex:1; overflow-y:auto; margin: 10px 0; border:1px solid #eee; padding:10px; border-radius:8px; background:#fafafa;">
        <!-- 系統會動態插入 checkbox 列表 -->
@@ -2008,7 +2008,7 @@ button.palette-btn:active {
 
     <div class="confirm-buttons" style="margin-top:1rem;">
       <button class="confirm-btn" style="background:#00aaff;" onclick="processSyncSelection()">確認同步</button>
-      <button class="cancel-btn" onclick="discardLocalChanges()">捨棄本機變更</button>
+      <button class="cancel-btn" onclick="discardLocalChanges()">捨棄變更</button>
     </div>
   </div>
 </div>
