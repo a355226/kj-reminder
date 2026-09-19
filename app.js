@@ -89,13 +89,13 @@ let pendingSyncChanges = []; // 存放差異比對結果
   function saveCategoriesToFirebase() {
     if (!roomPath) return;
 
-    // 🚨 終極防護：只要斷線，或「尚有未處理的本地變更」，一律不准上傳，強制存本地！
+    // 無論如何先存本機，並立起未同步旗標，完美防堵 SDK 偷跑
+    saveLocalState();
+
     if (
       !navigator.onLine ||
-      (typeof isFirebaseConnected !== "undefined" && !isFirebaseConnected) ||
-      hasUnsyncedChanges
+      (typeof isFirebaseConnected !== "undefined" && !isFirebaseConnected)
     ) {
-      saveLocalState();
       return;
     }
 
@@ -103,12 +103,13 @@ let pendingSyncChanges = []; // 存放差異比對結果
     db.ref(`${roomPath}/categories`)
       .set(arr)
       .then(() => {
-        // 確定雲端寫入成功，才更新比對基準
+        // 🚨 關鍵：確實上傳成功後，才解除未同步狀態並更新快取基準
+        hasUnsyncedChanges = false;
+        localStorage.setItem("hasUnsynced_" + roomPath, "false");
+        localStorage.removeItem(`localState_${roomPath}`);
         updateServerCache("categories", arr);
       })
-      .catch(() => {
-        saveLocalState();
-      });
+      .catch(() => {});
   }
 
   // === Firebase 初始化（放在這支 <script> 的最上面）===
@@ -2909,13 +2910,14 @@ let pendingSyncChanges = []; // 存放差異比對結果
       const serverList = Array.isArray(data)
         ? data.filter(Boolean)
         : Object.values(data);
-      updateServerCache("tasks", serverList);
 
       if (hasUnsyncedChanges) {
+        // 🚨 絕對不可在此時 updateServerCache，否則會洗掉比對基準
         scheduleSyncFlow();
         return;
-      } // 有本地變更則暫停覆寫畫面
+      }
 
+      updateServerCache("tasks", serverList);
       tasks = serverList;
       tasksLoaded = true;
       if (categoriesLoaded) showOngoing && showOngoing();
@@ -2926,13 +2928,13 @@ let pendingSyncChanges = []; // 存放差異比對結果
       const serverList = Array.isArray(data)
         ? data.filter(Boolean)
         : Object.values(data);
-      updateServerCache("completedTasks", serverList);
 
       if (hasUnsyncedChanges) {
         scheduleSyncFlow();
         return;
       }
 
+      updateServerCache("completedTasks", serverList);
       completedTasks = serverList;
       completedLoaded = true;
       if (categoriesLoaded && statusFilter === "done")
@@ -2951,13 +2953,13 @@ let pendingSyncChanges = []; // 存放差異比對結果
         serverList = Array.from(new Set([...serverList, ...categories]));
         saveCategoriesToFirebase();
       }
-      updateServerCache("categories", serverList);
 
       if (hasUnsyncedChanges) {
         scheduleSyncFlow();
         return;
       }
 
+      updateServerCache("categories", serverList);
       categories = serverList;
       categoriesLoaded = true;
       renderSections && renderSections(categories);
@@ -2985,14 +2987,13 @@ let pendingSyncChanges = []; // 存放差異比對結果
   function saveTasksToFirebase() {
     if (!roomPath) return;
 
-    // 🚨 終極防護：只要斷線，或「尚有未處理的本地變更」，一律不准上傳，強制存本地！
-    // 這樣在網路恢復後更動B任務，B任務也會被存進本地，直到同步視窗跳出統一結算，絕不默認覆蓋！
+    // 無論如何先存本機，並立起未同步旗標
+    saveLocalState();
+
     if (
       !navigator.onLine ||
-      (typeof isFirebaseConnected !== "undefined" && !isFirebaseConnected) ||
-      hasUnsyncedChanges
+      (typeof isFirebaseConnected !== "undefined" && !isFirebaseConnected)
     ) {
-      saveLocalState();
       return;
     }
 
@@ -3014,15 +3015,14 @@ let pendingSyncChanges = []; // 存放差異比對結果
       db.ref()
         .update(updates)
         .then(() => {
-          // 確定雲端寫入成功，才更新比對基準
+          // 🚨 關鍵：確實上傳成功後，才解除未同步狀態並更新快取基準
+          hasUnsyncedChanges = false;
+          localStorage.setItem("hasUnsynced_" + roomPath, "false");
+          localStorage.removeItem(`localState_${roomPath}`);
           updateServerCache("tasks", tasks);
           updateServerCache("completedTasks", completedTasks);
         })
-        .catch(() => {
-          saveLocalState();
-        });
-    } else {
-      console.warn("資料未載入完成，跳過寫入雲端");
+        .catch(() => {});
     }
   }
 
