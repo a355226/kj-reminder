@@ -95,9 +95,14 @@ let pendingSyncChanges = []; // 存放差異比對結果
     }
 
     const arr = Array.from(new Set(categories));
-    db.ref(`${roomPath}/categories`).set(arr);
+    // 加入防錯機制：如果 Firebase 寫入失敗 (可能假連線)，轉存本地
+    db.ref(`${roomPath}/categories`)
+      .set(arr)
+      .catch(() => {
+        saveLocalState();
+      });
 
-    updateServerCache("categories", arr);
+    // ❌ 刪除原本在這裡的 updateServerCache
     hasUnsyncedChanges = false;
     localStorage.setItem("hasUnsynced_" + roomPath, "false");
   }
@@ -2996,15 +3001,19 @@ let pendingSyncChanges = []; // 存放差異比對結果
       );
       updates[`${roomPath}/completedTasks`] = doneObj;
     }
+
     if (Object.keys(updates).length) {
-      db.ref().update(updates);
+      // 加入防錯機制：如果 Firebase 寫入失敗，轉存本地
+      db.ref()
+        .update(updates)
+        .catch(() => {
+          saveLocalState();
+        });
     } else {
       console.warn("資料未載入完成，跳過寫入雲端");
     }
 
-    // 寫入後更新伺服器快取，並解除未同步標記
-    updateServerCache("tasks", tasks);
-    updateServerCache("completedTasks", completedTasks);
+    // ❌ 刪除原本在這裡的 updateServerCache (這是導致比對失敗的最大元兇！)
     hasUnsyncedChanges = false;
     localStorage.setItem("hasUnsynced_" + roomPath, "false");
   }
@@ -6206,78 +6215,64 @@ let pendingSyncChanges = []; // 存放差異比對結果
   });
 
   // ==========================================
-  // 網路連線狀態與同步觸發 (極簡精準版，專治 iPhone)
+  // 網路連線狀態與同步觸發 (徹底解決漏接與比對失效)
   // ==========================================
+  let syncDebounceTimer2 = null;
 
-  // 1. 真實網路探測器 (發送 HEAD 請求，完美繞過 Service Worker 快取)
-  async function checkRealNetwork() {
-    if (!navigator.onLine) return false;
-    try {
-      const res = await fetch(
-        window.location.href.split("?")[0] + "?_t=" + Date.now(),
-        {
-          method: "HEAD",
-          cache: "no-store",
-        }
-      );
-      return res.ok || res.status === 200;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // 2. 評估網路並觸發同步
-  async function evaluateNetworkAndSync() {
-    // 執行真實網路檢測，強制更新 isOffline 變數
-    const reallyOnline = await checkRealNetwork();
-    isOffline = !reallyOnline;
-
-    // 更新右上角標籤 UI
+  function checkAndTriggerSync() {
     const badge = document.getElementById("offlineBadge");
     if (badge) badge.style.display = isOffline ? "inline-block" : "none";
 
-    // 檢查 localStorage 是否有未同步的變更
-    let hasUnsynced = false;
     if (typeof roomPath !== "undefined" && roomPath) {
-      hasUnsynced = localStorage.getItem("hasUnsynced_" + roomPath) === "true";
+      hasUnsyncedChanges =
+        localStorage.getItem("hasUnsynced_" + roomPath) === "true";
     }
 
-    // 若確定有網路且有資料待同步，立刻彈出視窗
-    if (!isOffline && hasUnsynced) {
-      const modal = document.getElementById("syncModal");
-      if (modal && modal.style.display === "flex") return; // 防止重複開啟
+    if (!isOffline && hasUnsyncedChanges) {
+      clearTimeout(syncDebounceTimer2);
+      syncDebounceTimer2 = setTimeout(() => {
+        const modal = document.getElementById("syncModal");
+        if (modal && modal.style.display === "flex") return;
 
-      console.log("網路已確實恢復，觸發同步視窗");
-      if (typeof triggerSyncFlow === "function") triggerSyncFlow();
+        console.log("連線已恢復，觸發同步視窗...");
+        if (typeof triggerSyncFlow === "function") triggerSyncFlow();
+      }, 600); // 縮短延遲，讓彈出更即時
     }
   }
 
-  // 3. 綁定所有可能的喚醒時機
-  window.addEventListener("online", evaluateNetworkAndSync);
-  window.addEventListener("offline", () => {
-    isOffline = true;
-    const badge = document.getElementById("offlineBadge");
-    if (badge) badge.style.display = "inline-block";
-  });
+  // 只要瀏覽器說斷線，立刻切斷 Firebase，確保寫入 LocalStorage
+  function handleNetworkChange() {
+    if (!navigator.onLine) {
+      isOffline = true;
+      if (typeof db !== "undefined" && db.goOffline) db.goOffline();
+    } else {
+      if (typeof db !== "undefined" && db.goOnline) db.goOnline();
+    }
+    checkAndTriggerSync();
+  }
 
-  // iPhone 從背景切回前景時，一定會觸發 visibilitychange 或 focus
+  window.addEventListener("online", handleNetworkChange);
+  window.addEventListener("offline", handleNetworkChange);
+
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") evaluateNetworkAndSync();
+    if (document.visibilityState === "visible") handleNetworkChange();
   });
-  window.addEventListener("focus", evaluateNetworkAndSync);
-  window.addEventListener("pageshow", evaluateNetworkAndSync);
+  window.addEventListener("focus", handleNetworkChange);
+  window.addEventListener("pageshow", handleNetworkChange);
 
-  // 4. 開機與 Firebase 輔助連線偵測
   document.addEventListener("DOMContentLoaded", () => {
-    evaluateNetworkAndSync();
+    handleNetworkChange();
 
     setTimeout(() => {
       if (typeof db !== "undefined" && db.ref) {
         db.ref(".info/connected").on("value", (snap) => {
-          if (snap.val() === true) evaluateNetworkAndSync();
+          // 只要 Firebase 沒連上，絕對視為離線，阻斷直接寫入雲端
+          const connected = snap.val() === true;
+          isOffline = !connected;
+          checkAndTriggerSync();
         });
       }
-    }, 1500);
+    }, 1000);
   });
   // --- 這行以上 ---
 })();
