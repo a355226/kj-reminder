@@ -6206,105 +6206,75 @@ let pendingSyncChanges = []; // 存放差異比對結果
   });
 
   // ==========================================
-  // 網路連線狀態偵測與 100% 即時觸發同步機制 (iOS 終極輪詢 + 觸控甦醒版)
+  // 網路連線狀態與同步觸發 (極簡精準版，專治 iPhone)
   // ==========================================
-  let syncDebounceTimer2 = null;
-  let isFirebaseConnected = false;
-  let iosWatchdog = null;
 
-  function checkAndTriggerSync() {
-    isOffline = !navigator.onLine && !isFirebaseConnected;
+  // 1. 真實網路探測器 (發送 HEAD 請求，完美繞過 Service Worker 快取)
+  async function checkRealNetwork() {
+    if (!navigator.onLine) return false;
+    try {
+      const res = await fetch(
+        window.location.href.split("?")[0] + "?_t=" + Date.now(),
+        {
+          method: "HEAD",
+          cache: "no-store",
+        }
+      );
+      return res.ok || res.status === 200;
+    } catch (e) {
+      return false;
+    }
+  }
 
+  // 2. 評估網路並觸發同步
+  async function evaluateNetworkAndSync() {
+    // 執行真實網路檢測，強制更新 isOffline 變數
+    const reallyOnline = await checkRealNetwork();
+    isOffline = !reallyOnline;
+
+    // 更新右上角標籤 UI
     const badge = document.getElementById("offlineBadge");
     if (badge) badge.style.display = isOffline ? "inline-block" : "none";
 
-    // 強制從 localStorage 讀取最新狀態
+    // 檢查 localStorage 是否有未同步的變更
+    let hasUnsynced = false;
     if (typeof roomPath !== "undefined" && roomPath) {
-      hasUnsyncedChanges =
-        localStorage.getItem("hasUnsynced_" + roomPath) === "true";
+      hasUnsynced = localStorage.getItem("hasUnsynced_" + roomPath) === "true";
     }
 
-    if (!isOffline && hasUnsyncedChanges) {
-      clearTimeout(syncDebounceTimer2);
-      syncDebounceTimer2 = setTimeout(() => {
-        const modal = document.getElementById("syncModal");
-        if (modal && modal.style.display === "flex") return;
+    // 若確定有網路且有資料待同步，立刻彈出視窗
+    if (!isOffline && hasUnsynced) {
+      const modal = document.getElementById("syncModal");
+      if (modal && modal.style.display === "flex") return; // 防止重複開啟
 
-        console.log("連線已恢復，立刻觸發同步視窗...");
-        if (typeof triggerSyncFlow === "function") triggerSyncFlow();
-      }, 500); // 縮短延遲，讓彈出更迅速
+      console.log("網路已確實恢復，觸發同步視窗");
+      if (typeof triggerSyncFlow === "function") triggerSyncFlow();
     }
   }
 
-  function forceFirebaseReconnect() {
-    // 強制踹醒 Firebase 的 WebSocket 通道
-    if (typeof db !== "undefined" && db.goOffline && db.goOnline) {
-      console.log("強制重置 Firebase 連線...");
-      db.goOffline();
-      setTimeout(() => db.goOnline(), 150);
-    }
-  }
-
-  function handleNetworkChange() {
-    if (navigator.onLine && !isFirebaseConnected) {
-      forceFirebaseReconnect();
-    }
-    checkAndTriggerSync();
-  }
-
-  // 1. 原生監聽 (對 Android 與桌機最有效)
-  window.addEventListener("online", handleNetworkChange);
-  window.addEventListener("offline", handleNetworkChange);
-
-  // 🌟 破解 iPhone 痛點 1：無賴輪詢 (Heartbeat)
-  // 針對 iOS 下拉控制中心開關飛航，不觸發事件的硬傷
-  function startWatchdog() {
-    if (iosWatchdog) clearInterval(iosWatchdog);
-    iosWatchdog = setInterval(() => {
-      // 只有當網頁是顯示狀態時才檢查
-      if (document.visibilityState === "visible") {
-        if (navigator.onLine && !isFirebaseConnected) {
-          forceFirebaseReconnect();
-        }
-        checkAndTriggerSync();
-      }
-    }, 2000); // 每 2 秒強制掃描一次
-  }
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      handleNetworkChange();
-      startWatchdog();
-    } else {
-      if (iosWatchdog) clearInterval(iosWatchdog);
-    }
+  // 3. 綁定所有可能的喚醒時機
+  window.addEventListener("online", evaluateNetworkAndSync);
+  window.addEventListener("offline", () => {
+    isOffline = true;
+    const badge = document.getElementById("offlineBadge");
+    if (badge) badge.style.display = "inline-block";
   });
 
-  window.addEventListener("focus", handleNetworkChange);
+  // iPhone 從背景切回前景時，一定會觸發 visibilitychange 或 focus
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") evaluateNetworkAndSync();
+  });
+  window.addEventListener("focus", evaluateNetworkAndSync);
+  window.addEventListener("pageshow", evaluateNetworkAndSync);
 
-  // 🌟 破解 iPhone 痛點 2：觸控甦醒
-  // 只要手指碰到螢幕，且有未同步資料，立刻偷查並喚醒
-  document.addEventListener(
-    "touchstart",
-    () => {
-      if (hasUnsyncedChanges && navigator.onLine && !isFirebaseConnected) {
-        forceFirebaseReconnect();
-        checkAndTriggerSync();
-      }
-    },
-    { passive: true }
-  );
-
+  // 4. 開機與 Firebase 輔助連線偵測
   document.addEventListener("DOMContentLoaded", () => {
-    handleNetworkChange();
-    startWatchdog(); // 啟動輪詢
+    evaluateNetworkAndSync();
 
-    // 延遲綁定 Firebase 狀態，避免開機誤判
     setTimeout(() => {
       if (typeof db !== "undefined" && db.ref) {
         db.ref(".info/connected").on("value", (snap) => {
-          isFirebaseConnected = snap.val() === true;
-          checkAndTriggerSync();
+          if (snap.val() === true) evaluateNetworkAndSync();
         });
       }
     }, 1500);
